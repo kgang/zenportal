@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 
 from textual.app import ComposeResult
-from textual.containers import Vertical
+from textual.containers import Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Static
 
@@ -100,13 +100,17 @@ class InsertModal(ModalScreen[InsertResult | None]):
         margin-bottom: 1;
     }
 
-    InsertModal #buffer {
+    InsertModal #buffer-scroll {
         width: 100%;
         height: 5;
         padding: 0 1;
         background: $surface-darken-1;
         border: round $surface-lighten-1;
-        overflow-y: auto;
+    }
+
+    InsertModal #buffer {
+        width: 100%;
+        height: auto;
     }
 
     InsertModal .hint {
@@ -124,7 +128,8 @@ class InsertModal(ModalScreen[InsertResult | None]):
     def compose(self) -> ComposeResult:
         with Vertical(id="dialog"):
             yield Static(f"insert  {self._session_name}", classes="title")
-            yield Static("", id="buffer")
+            with VerticalScroll(id="buffer-scroll"):
+                yield Static("", id="buffer")
             yield Static("type keys · arrows/shift+enter supported · esc to send", classes="hint")
 
     def _get_display_text(self) -> str:
@@ -142,8 +147,9 @@ class InsertModal(ModalScreen[InsertResult | None]):
         return "".join(parts)
 
     def _update_buffer_display(self) -> None:
-        """Update the buffer display."""
+        """Update the buffer display and auto-scroll to bottom."""
         self.query_one("#buffer", Static).update(self._get_display_text())
+        self.query_one("#buffer-scroll", VerticalScroll).scroll_end(animate=False)
 
     def _add_literal(self, char: str, display: str | None = None) -> None:
         """Add a literal character to the buffer."""
