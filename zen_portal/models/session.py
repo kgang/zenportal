@@ -17,16 +17,17 @@ class SessionType(Enum):
     """Type of session."""
 
     CLAUDE = "claude"  # Claude Code session
-    CODEX = "codex"
+    CODEX = "codex"  # OpenAI Codex CLI
+    GEMINI = "gemini"  # Google Gemini CLI
     SHELL = "shell"  # Plain shell session
 
 
 class SessionState(Enum):
     """State of a Claude session."""
 
-    GROWING = "growing"  # Running
-    BLOOMED = "bloomed"  # Completed normally
-    WILTED = "wilted"  # Failed to start (tmux error)
+    RUNNING = "running"  # Active tmux session
+    COMPLETED = "completed"  # Completed normally
+    FAILED = "failed"  # Failed to start (tmux error)
     PAUSED = "paused"  # Manually paused (worktree preserved)
     KILLED = "killed"  # Manually killed (worktree removed)
 
@@ -66,7 +67,7 @@ class Session:
     name: str = ""  # Display name
     prompt: str = ""  # Initial prompt (if any)
     claude_session_id: str = ""  # Claude Code session ID for --resume
-    state: SessionState = SessionState.GROWING
+    state: SessionState = SessionState.RUNNING
     session_type: SessionType = SessionType.CLAUDE  # Type of session
     created_at: datetime = field(default_factory=datetime.now)
     ended_at: datetime | None = None
@@ -80,7 +81,7 @@ class Session:
     worktree_branch: str | None = None  # Branch name in worktree
     # Dangerous mode
     dangerously_skip_permissions: bool = False
-    # Revive tracking - prevents immediate BLOOMED detection after revive
+    # Revive tracking - prevents immediate COMPLETED detection after revive
     revived_at: datetime | None = None
 
     def __post_init__(self):
@@ -110,7 +111,7 @@ class Session:
 
     @property
     def status_glyph(self) -> str:
-        """Organic, zen-inspired state glyphs.
+        """State indicator glyphs.
 
         ● active (filled, present)
         ○ complete (open, released)
@@ -118,9 +119,9 @@ class Session:
         · ended (small, minimal)
         """
         glyphs = {
-            SessionState.GROWING: "●",
-            SessionState.BLOOMED: "○",
-            SessionState.WILTED: "·",
+            SessionState.RUNNING: "●",
+            SessionState.COMPLETED: "○",
+            SessionState.FAILED: "·",
             SessionState.PAUSED: "◐",
             SessionState.KILLED: "·",
         }
@@ -137,4 +138,4 @@ class Session:
 
     @property
     def is_active(self) -> bool:
-        return self.state == SessionState.GROWING
+        return self.state == SessionState.RUNNING

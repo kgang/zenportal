@@ -172,10 +172,15 @@ class SessionManager:
             # Clear the pre-generated session ID since we're not using it
             session.claude_session_id = ""
         elif session_type == SessionType.CODEX:
-            # Codex session
-            command_args = ["codex"]
+            # Codex session - OpenAI CLI
+            command_args = ["codex", "--cd", str(working_dir)]
             if prompt:
                 command_args.append(prompt)
+        elif session_type == SessionType.GEMINI:
+            # Gemini session - Google CLI
+            command_args = ["gemini"]
+            if prompt:
+                command_args.extend(["-p", prompt])
         else:
             # Shell session - start user's default shell (zsh) with login profile
             command_args = ["zsh", "-l"]
@@ -192,9 +197,9 @@ class SessionManager:
         )
 
         if result.success:
-            session.state = SessionState.GROWING
+            session.state = SessionState.RUNNING
         else:
-            session.state = SessionState.WILTED
+            session.state = SessionState.FAILED
 
         self._emit(SessionCreated(session))
         self._persist_session_change(session, "created")
@@ -251,9 +256,9 @@ class SessionManager:
         )
 
         if result.success:
-            session.state = SessionState.GROWING
+            session.state = SessionState.RUNNING
         else:
-            session.state = SessionState.WILTED
+            session.state = SessionState.FAILED
 
         self._emit(SessionCreated(session))
         self._persist_session_change(session, "created")
@@ -297,7 +302,7 @@ class SessionManager:
         return ["bash", "-c", script]
 
     def revive_session(self, session_id: str) -> bool:
-        """Revive a bloomed/wilted/paused/killed session.
+        """Revive a completed/failed/paused/killed session.
 
         For Claude sessions: uses --resume to continue the same session
         For shell sessions: restarts the shell with original configuration
@@ -308,7 +313,7 @@ class SessionManager:
         if not session:
             return False
 
-        if session.state == SessionState.GROWING:
+        if session.state == SessionState.RUNNING:
             return False  # Already running
 
         # Build command based on session type
@@ -316,8 +321,11 @@ class SessionManager:
             # Shell session - just restart the shell
             command_args = ["zsh", "-l"]
         elif session.session_type == SessionType.CODEX:
-            # Codex session
-            command_args = ["codex"]
+            # Codex session - with resume
+            command_args = ["codex", "resume", "--last"]
+        elif session.session_type == SessionType.GEMINI:
+            # Gemini session - with resume
+            command_args = ["gemini", "--resume"]
         else:
             # Claude session - need to discover or use known session ID
             claude_session_id = session.claude_session_id
@@ -375,7 +383,7 @@ class SessionManager:
         )
 
         if result.success:
-            session.state = SessionState.GROWING
+            session.state = SessionState.RUNNING
             session.ended_at = None
             session.revived_at = datetime.now()  # Grace period for startup
             self._persist_session_change(session, "revived")
@@ -531,14 +539,14 @@ class SessionManager:
         """Update session states based on tmux status.
 
         Detects:
-        - Session tmux no longer exists -> BLOOMED
-        - Session tmux exists but pane is dead -> BLOOMED
+        - Session tmux no longer exists -> COMPLETED
+        - Session tmux exists but pane is dead -> COMPLETED
 
         Note: Recently revived sessions get a 5-second grace period before
         dead pane detection kicks in, allowing Claude to start up.
         """
         for session in self._sessions.values():
-            if session.state != SessionState.GROWING:
+            if session.state != SessionState.RUNNING:
                 continue
 
             # Get the correct tmux name (handles external sessions)
@@ -548,7 +556,7 @@ class SessionManager:
 
             # Check if tmux session exists at all
             if not self._tmux.session_exists(tmux_name):
-                session.state = SessionState.BLOOMED
+                session.state = SessionState.COMPLETED
                 session.ended_at = datetime.now()
                 session.revived_at = None
                 continue
@@ -563,11 +571,33 @@ class SessionManager:
                     session.revived_at = None  # Grace period expired
 
             if self._tmux.is_pane_dead(tmux_name):
-                session.state = SessionState.BLOOMED
+                session.state = SessionState.COMPLETED
                 session.ended_at = datetime.now()
 
     def get_session(self, session_id: str) -> Session | None:
         return self._sessions.get(session_id)
+
+    def rename_session(self, session_id: str, new_name: str) -> bool:
+        """Rename a session.
+
+        Args:
+            session_id: ID of the session to rename
+            new_name: New display name for the session
+
+        Returns:
+            True if successful, False if session not found or name invalid
+        """
+        session = self._sessions.get(session_id)
+        if not session:
+            return False
+
+        new_name = new_name.strip()
+        if not new_name:
+            return False
+
+        session.name = new_name
+        self._persist_session_change(session, "renamed")
+        return True
 
     def count_by_state(self) -> tuple[int, int]:
         """Return (active_count, dead_count)."""
@@ -584,7 +614,7 @@ class SessionManager:
         return count
 
     def kill_dead_sessions(self) -> int:
-        """Kill only dead/bloomed sessions. Returns count killed."""
+        """Kill only dead/completed sessions. Returns count killed."""
         count = 0
         for session in list(self._sessions.values()):
             if not session.is_active:
@@ -639,7 +669,7 @@ class SessionManager:
                 if self._tmux.session_exists(tmux_name) and self._tmux.is_pane_dead(tmux_name):
                     self.revive_session(existing.id)
                 elif self._tmux.session_exists(tmux_name):
-                    existing.state = SessionState.GROWING
+                    existing.state = SessionState.RUNNING
                 return existing
 
         # Check if we already track this Claude session by claude_session_id
@@ -655,7 +685,7 @@ class SessionManager:
                     if self._tmux.session_exists(tmux_name) and self._tmux.is_pane_dead(tmux_name):
                         self.revive_session(existing.id)
                     elif self._tmux.session_exists(tmux_name):
-                        existing.state = SessionState.GROWING
+                        existing.state = SessionState.RUNNING
                         existing.ended_at = None
                     return existing
 
@@ -681,11 +711,11 @@ class SessionManager:
         # Check initial state
         if self._tmux.session_exists(tmux_name):
             if self._tmux.is_pane_dead(tmux_name):
-                session.state = SessionState.BLOOMED
+                session.state = SessionState.COMPLETED
             else:
-                session.state = SessionState.GROWING
+                session.state = SessionState.RUNNING
         else:
-            session.state = SessionState.WILTED
+            session.state = SessionState.FAILED
 
         self._emit(SessionCreated(session))
         return session
@@ -731,7 +761,7 @@ class SessionManager:
         try:
             state = SessionState(record.state)
         except ValueError:
-            state = SessionState.BLOOMED
+            state = SessionState.COMPLETED
 
         # Parse session type
         try:
@@ -803,14 +833,14 @@ class SessionManager:
 
         # Update state based on current tmux status
         if tmux_exists and not tmux_dead:
-            session.state = SessionState.GROWING
+            session.state = SessionState.RUNNING
         elif state == SessionState.PAUSED:
             # Keep paused state if worktree exists
-            session.state = SessionState.PAUSED if worktree_exists else SessionState.BLOOMED
+            session.state = SessionState.PAUSED if worktree_exists else SessionState.COMPLETED
         elif state == SessionState.KILLED:
             session.state = SessionState.KILLED
         else:
-            session.state = SessionState.BLOOMED
+            session.state = SessionState.COMPLETED
 
         return session
 

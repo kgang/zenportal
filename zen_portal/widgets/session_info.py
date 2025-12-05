@@ -1,10 +1,67 @@
 """SessionInfoView widget for displaying session metadata."""
 
+import subprocess
+from pathlib import Path
+
 from textual.app import ComposeResult
 from textual.reactive import reactive
 from textual.widgets import Static
 
 from ..models.session import Session, SessionState
+
+
+def _get_git_info(working_dir: Path) -> dict | None:
+    """Get git info for a directory (branch, commit, dirty state)."""
+    try:
+        # Get current branch
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=working_dir,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode != 0:
+            return None
+        branch = result.stdout.strip()
+
+        # Get short commit hash
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=working_dir,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        commit = result.stdout.strip() if result.returncode == 0 else ""
+
+        # Check if dirty (uncommitted changes)
+        result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=working_dir,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        is_dirty = bool(result.stdout.strip()) if result.returncode == 0 else False
+
+        return {"branch": branch, "commit": commit, "dirty": is_dirty}
+    except Exception:
+        return None
+
+
+def _get_env_symlinks(working_dir: Path) -> list[str]:
+    """Get list of env file symlinks in the directory."""
+    env_patterns = [".env", ".env.local", ".env.secrets", ".env.development"]
+    symlinks = []
+    try:
+        for pattern in env_patterns:
+            path = working_dir / pattern
+            if path.is_symlink():
+                symlinks.append(pattern)
+    except Exception:
+        pass
+    return symlinks
 
 
 class SessionInfoView(Static):
@@ -107,8 +164,27 @@ class SessionInfoView(Static):
             if len(wt_str) > 40:
                 wt_str = "..." + wt_str[-37:]
             lines.append(f"  worktree      {wt_str}")
-        if s.worktree_branch:
-            lines.append(f"  branch        {s.worktree_branch}")
+
+        # Git info section (if in a git repo)
+        working_path = s.worktree_path or s.resolved_working_dir
+        if working_path and working_path.exists():
+            git_info = _get_git_info(working_path)
+            if git_info:
+                lines.append("")
+                lines.append(f"[dim]git[/dim]")
+                branch = git_info["branch"]
+                commit = git_info["commit"]
+                dirty_marker = " [yellow]*[/yellow]" if git_info["dirty"] else ""
+                lines.append(f"  branch        {branch}{dirty_marker}")
+                if commit:
+                    lines.append(f"  commit        {commit}")
+
+            # Env files section (show symlinked env files)
+            env_symlinks = _get_env_symlinks(working_path)
+            if env_symlinks:
+                lines.append("")
+                lines.append(f"[dim]env files[/dim]")
+                lines.append(f"  symlinked     {', '.join(env_symlinks)}")
 
         # Config section (if relevant)
         if s.resolved_model or s.dangerously_skip_permissions:
@@ -135,9 +211,9 @@ class SessionInfoView(Static):
     def _format_state(self, state: SessionState) -> str:
         """Format state with description."""
         descriptions = {
-            SessionState.GROWING: "active",
-            SessionState.BLOOMED: "complete",
-            SessionState.WILTED: "failed",
+            SessionState.RUNNING: "active",
+            SessionState.COMPLETED: "complete",
+            SessionState.FAILED: "failed",
             SessionState.PAUSED: "paused",
             SessionState.KILLED: "killed",
         }

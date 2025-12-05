@@ -22,7 +22,7 @@ class TestSessionManager:
 
         assert session.name == "my-task"
         assert session.prompt == ""
-        assert session.state == SessionState.GROWING
+        assert session.state == SessionState.RUNNING
         mock_tmux.create_session.assert_called_once()
 
     def test_create_session_with_prompt(
@@ -33,18 +33,18 @@ class TestSessionManager:
 
         assert session.name == "fix-bug"
         assert session.prompt == "fix the auth bug"
-        assert session.state == SessionState.GROWING
+        assert session.state == SessionState.RUNNING
 
     def test_create_session_tmux_failure(
         self, session_manager: SessionManager, mock_tmux: MagicMock
     ):
-        """Session state is WILTED when tmux fails."""
+        """Session state is FAILED when tmux fails."""
         mock_tmux.create_session.return_value = TmuxResult(
             success=False, error="tmux error"
         )
 
         session = session_manager.create_session("test")
-        assert session.state == SessionState.WILTED
+        assert session.state == SessionState.FAILED
 
     def test_create_session_max_sessions(
         self, session_manager: SessionManager, mock_tmux: MagicMock
@@ -92,28 +92,28 @@ class TestSessionManager:
         output = session_manager.get_output("nonexistent-id")
         assert output == ""
 
-    def test_refresh_states_bloomed(
+    def test_refresh_states_completed(
         self, session_manager: SessionManager, mock_tmux: MagicMock
     ):
-        """Session becomes BLOOMED when tmux session ends."""
+        """Session becomes COMPLETED when tmux session ends."""
         session = session_manager.create_session("test")
         mock_tmux.session_exists.return_value = False
 
         session_manager.refresh_states()
 
-        assert session.state == SessionState.BLOOMED
+        assert session.state == SessionState.COMPLETED
         assert session.ended_at is not None
 
-    def test_refresh_states_still_growing(
+    def test_refresh_states_still_running(
         self, session_manager: SessionManager, mock_tmux: MagicMock
     ):
-        """Session stays GROWING when tmux session exists."""
+        """Session stays RUNNING when tmux session exists."""
         session = session_manager.create_session("test")
         mock_tmux.session_exists.return_value = True
 
         session_manager.refresh_states()
 
-        assert session.state == SessionState.GROWING
+        assert session.state == SessionState.RUNNING
 
     def test_sessions_sorted_newest_first(
         self, session_manager: SessionManager, mock_tmux: MagicMock
@@ -140,6 +140,36 @@ class TestSessionManager:
         assert result is True
         assert session_manager.get_session(session.id) is None
 
+    def test_rename_session(
+        self, session_manager: SessionManager, mock_tmux: MagicMock
+    ):
+        """Rename a session."""
+        session = session_manager.create_session("original")
+
+        result = session_manager.rename_session(session.id, "renamed")
+
+        assert result is True
+        assert session.name == "renamed"
+
+    def test_rename_session_empty_name_fails(
+        self, session_manager: SessionManager, mock_tmux: MagicMock
+    ):
+        """Rename with empty name should fail."""
+        session = session_manager.create_session("original")
+
+        result = session_manager.rename_session(session.id, "  ")
+
+        assert result is False
+        assert session.name == "original"
+
+    def test_rename_nonexistent_session(
+        self, session_manager: SessionManager, mock_tmux: MagicMock
+    ):
+        """Rename a nonexistent session should fail."""
+        result = session_manager.rename_session("nonexistent", "new")
+
+        assert result is False
+
     def test_get_tmux_session_name(
         self, session_manager: SessionManager, mock_tmux: MagicMock
     ):
@@ -162,18 +192,18 @@ class TestSessionManager:
         # and we discover it when needed for revival
         assert session.claude_session_id == ""
 
-    def test_revive_bloomed_session(
+    def test_revive_completed_session(
         self, session_manager: SessionManager, mock_tmux: MagicMock
     ):
-        """Revive a bloomed session."""
+        """Revive a completed session."""
         session = session_manager.create_session("test")
-        session.state = SessionState.BLOOMED
+        session.state = SessionState.COMPLETED
         mock_tmux.session_exists.return_value = False
 
         result = session_manager.revive_session(session.id)
 
         assert result is True
-        assert session.state == SessionState.GROWING
+        assert session.state == SessionState.RUNNING
         assert session.ended_at is None
 
     def test_revive_running_session_fails(
@@ -181,7 +211,7 @@ class TestSessionManager:
     ):
         """Cannot revive an already running session."""
         session = session_manager.create_session("test")
-        assert session.state == SessionState.GROWING
+        assert session.state == SessionState.RUNNING
 
         result = session_manager.revive_session(session.id)
 
@@ -296,7 +326,7 @@ class TestSessionManagerWithWorktree:
         )
 
         # Session should still be created successfully
-        assert session.state == SessionState.GROWING
+        assert session.state == SessionState.RUNNING
         assert session.worktree_path is None  # Falls back to regular working dir
         mock_tmux.create_session.assert_called_once()
 
