@@ -35,6 +35,7 @@ class MainScreen(Screen):
         Binding("W", "view_worktrees", "Worktrees", show=False),
         ("a", "attach_tmux", "Attach tmux"),
         ("v", "revive", "Revive"),
+        Binding("R", "rename", "Rename", show=False),
         Binding("i", "insert", "Insert", show=False),
         Binding("ctrl+i", "toggle_info", "Info", show=False),
         ("r", "refresh_output", "Refresh"),
@@ -214,8 +215,8 @@ class MainScreen(Screen):
         paused_desc = "Stopped with worktree preserved" if session.worktree_path else "Session paused"
         killed_desc = "Stopped and worktree removed" if session.worktree_path else "Session ended"
         state_info = {
-            SessionState.BLOOMED: ("completed", "Process exited normally"),
-            SessionState.WILTED: ("failed", "Process failed to start or crashed"),
+            SessionState.COMPLETED: ("completed", "Process exited normally"),
+            SessionState.FAILED: ("failed", "Process failed to start or crashed"),
             SessionState.PAUSED: ("paused", paused_desc),
             SessionState.KILLED: ("killed", killed_desc),
         }
@@ -264,7 +265,7 @@ class MainScreen(Screen):
         elif session.state == SessionState.PAUSED:
             lines.append("    [bold]v[/bold]  revive session")
             lines.append("    [bold]d[/bold]  clean up (remove from list)")
-        elif session.state in (SessionState.BLOOMED, SessionState.WILTED):
+        elif session.state in (SessionState.COMPLETED, SessionState.FAILED):
             if session.worktree_path:
                 lines.append("    [bold]w[/bold]  open shell in worktree")
             lines.append("    [bold]v[/bold]  revive session")
@@ -592,6 +593,28 @@ class MainScreen(Screen):
                 self.notify("Could not revive session", severity="error")
         else:
             self.notify("No session selected", severity="warning")
+
+    def action_rename(self) -> None:
+        """Rename the selected session."""
+        from .rename_modal import RenameModal
+
+        session_list = self.query_one("#session-list", SessionList)
+        selected = session_list.get_selected()
+        if not selected:
+            self.notify("No session selected", severity="warning")
+            return
+
+        def handle_result(new_name: str | None) -> None:
+            if new_name is None:
+                return  # Cancelled
+
+            if self._manager.rename_session(selected.id, new_name):
+                self._refresh_sessions()
+                self.notify(f"Renamed to: {new_name}", timeout=2)
+            else:
+                self.notify("Could not rename session", severity="error")
+
+        self.app.push_screen(RenameModal(selected.name), handle_result)
 
     def action_refresh_output(self) -> None:
         """Refresh output for selected session."""
