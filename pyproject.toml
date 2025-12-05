@@ -1,0 +1,28 @@
+[project]
+name = "zen-portal"
+version = "0.2.0"
+description = "Contemplative multi-session Claude Code manager"
+requires-python = ">=3.11"
+dependencies = [
+    "textual>=0.89.0",
+    "rich>=13.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=4.0",
+]
+
+[project.scripts]
+zen = "zen_portal.app:main"
+zen-portal = "zen_portal.app:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["zen_portal/tests"]

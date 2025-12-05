@@ -1,0 +1,314 @@
+"""Configuration management for Zen Portal.
+
+3-Tier Feature System:
+1. Config Level (~/.config/zen-portal/config.json) - Global defaults
+2. Portal Level (~/.config/zen-portal/portal.json) - Current zen-portal state, survives restarts
+3. Session Level (per-session at creation) - Stored in Session dataclass
+
+Each level can override the previous. Resolution order: session > portal > config > defaults
+"""
+
+import json
+from dataclasses import dataclass, field
+from pathlib import Path
+from enum import Enum
+
+
+class ExitBehavior(Enum):
+    """What to do with tmux sessions on exit."""
+
+    ASK = "ask"  # Ask every time
+    KILL_ALL = "kill_all"  # Kill all zen sessions
+    KILL_DEAD = "kill_dead"  # Kill only dead panes
+    KEEP_ALL = "keep_all"  # Keep everything running
+
+
+class ClaudeModel(Enum):
+    """Claude model selection."""
+
+    SONNET = "sonnet"
+    OPUS = "opus"
+    HAIKU = "haiku"
+
+
+@dataclass
+class WorktreeSettings:
+    """Settings for git worktree integration.
+
+    When enabled, each session gets its own isolated worktree,
+    allowing parallel work on different branches.
+    """
+
+    enabled: bool = False
+    base_dir: Path | None = None  # Default: ~/.zen-portal/worktrees
+    source_repo: Path | None = None  # Default: resolved working_dir
+    auto_cleanup: bool = True  # Remove worktree when session is pruned
+    default_from_branch: str = "main"  # Base branch for new worktrees
+    env_files: list[str] | None = None  # Relative paths to symlink (e.g., [".env", ".env.secrets"])
+
+    def to_dict(self) -> dict:
+        result: dict = {"enabled": self.enabled}
+        if self.base_dir is not None:
+            result["base_dir"] = str(self.base_dir)
+        if self.source_repo is not None:
+            result["source_repo"] = str(self.source_repo)
+        result["auto_cleanup"] = self.auto_cleanup
+        result["default_from_branch"] = self.default_from_branch
+        if self.env_files is not None:
+            result["env_files"] = self.env_files
+        return result
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "WorktreeSettings":
+        base_dir = Path(data["base_dir"]) if data.get("base_dir") else None
+        source_repo = Path(data["source_repo"]) if data.get("source_repo") else None
+        return cls(
+            enabled=data.get("enabled", False),
+            base_dir=base_dir,
+            source_repo=source_repo,
+            auto_cleanup=data.get("auto_cleanup", True),
+            default_from_branch=data.get("default_from_branch", "main"),
+            env_files=data.get("env_files"),
+        )
+
+    def merge_with(self, override: "WorktreeSettings") -> "WorktreeSettings":
+        """Return new settings with override values taking precedence.
+
+        Note: enabled=False in override is meaningful, so we check if override
+        has any non-default values set.
+        """
+        return WorktreeSettings(
+            enabled=override.enabled if override.enabled else self.enabled,
+            base_dir=override.base_dir if override.base_dir is not None else self.base_dir,
+            source_repo=override.source_repo if override.source_repo is not None else self.source_repo,
+            auto_cleanup=override.auto_cleanup,
+            default_from_branch=override.default_from_branch if override.default_from_branch != "main" else self.default_from_branch,
+            env_files=override.env_files if override.env_files is not None else self.env_files,
+        )
+
+
+@dataclass
+class FeatureSettings:
+    """Settings that can be overridden at any tier.
+
+    These are the "features" that flow through config -> portal -> session.
+    """
+
+    working_dir: Path | None = None  # Where Claude Code starts
+    model: ClaudeModel | None = None  # Claude model to use
+    session_prefix: str | None = None  # Prefix for tmux sessions
+    worktree: WorktreeSettings | None = None  # Git worktree settings
+
+    def to_dict(self) -> dict:
+        result = {}
+        if self.working_dir is not None:
+            result["working_dir"] = str(self.working_dir)
+        if self.model is not None:
+            result["model"] = self.model.value
+        if self.session_prefix is not None:
+            result["session_prefix"] = self.session_prefix
+        if self.worktree is not None:
+            result["worktree"] = self.worktree.to_dict()
+        return result
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "FeatureSettings":
+        working_dir = Path(data["working_dir"]) if data.get("working_dir") else None
+        model = ClaudeModel(data["model"]) if data.get("model") else None
+        worktree = WorktreeSettings.from_dict(data["worktree"]) if data.get("worktree") else None
+        return cls(
+            working_dir=working_dir,
+            model=model,
+            session_prefix=data.get("session_prefix"),
+            worktree=worktree,
+        )
+
+    def merge_with(self, override: "FeatureSettings") -> "FeatureSettings":
+        """Return new settings with override values taking precedence."""
+        # Merge worktree settings if both exist
+        merged_worktree = self.worktree
+        if override.worktree is not None:
+            if self.worktree is not None:
+                merged_worktree = self.worktree.merge_with(override.worktree)
+            else:
+                merged_worktree = override.worktree
+
+        return FeatureSettings(
+            working_dir=override.working_dir if override.working_dir is not None else self.working_dir,
+            model=override.model if override.model is not None else self.model,
+            session_prefix=override.session_prefix if override.session_prefix is not None else self.session_prefix,
+            worktree=merged_worktree,
+        )
+
+
+@dataclass
+class Config:
+    """Level 1: Global Zen Portal configuration.
+
+    Stored in ~/.config/zen-portal/config.json
+    These are persistent defaults that rarely change.
+    """
+
+    exit_behavior: ExitBehavior = ExitBehavior.ASK
+    features: FeatureSettings = field(default_factory=FeatureSettings)
+
+    def to_dict(self) -> dict:
+        return {
+            "exit_behavior": self.exit_behavior.value,
+            "features": self.features.to_dict(),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Config":
+        features = FeatureSettings.from_dict(data.get("features", {}))
+        return cls(
+            exit_behavior=ExitBehavior(data.get("exit_behavior", "ask")),
+            features=features,
+        )
+
+
+@dataclass
+class PortalState:
+    """Level 2: Current zen-portal state.
+
+    Stored in ~/.config/zen-portal/portal.json
+    Survives restarts. Use for "current project" or temporary overrides.
+    Clear explicitly when switching contexts.
+    """
+
+    features: FeatureSettings = field(default_factory=FeatureSettings)
+    description: str = ""  # Optional description of current context
+
+    def to_dict(self) -> dict:
+        return {
+            "features": self.features.to_dict(),
+            "description": self.description,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "PortalState":
+        return cls(
+            features=FeatureSettings.from_dict(data.get("features", {})),
+            description=data.get("description", ""),
+        )
+
+
+class ConfigManager:
+    """Manages the 3-tier configuration system."""
+
+    DEFAULT_SESSION_PREFIX = "zen"
+
+    def __init__(self, config_dir: Path | None = None):
+        if config_dir is None:
+            config_dir = Path.home() / ".config" / "zen-portal"
+        self._config_dir = config_dir
+        self._config_file = config_dir / "config.json"
+        self._portal_file = config_dir / "portal.json"
+        self._config: Config | None = None
+        self._portal: PortalState | None = None
+
+    # --- Level 1: Config ---
+
+    @property
+    def config(self) -> Config:
+        if self._config is None:
+            self._config = self._load_config()
+        return self._config
+
+    def _load_config(self) -> Config:
+        """Load config from disk."""
+        if self._config_file.exists():
+            try:
+                data = json.loads(self._config_file.read_text())
+                return Config.from_dict(data)
+            except (json.JSONDecodeError, KeyError, ValueError):
+                pass
+        return Config()
+
+    def save_config(self, config: Config) -> None:
+        """Save config to disk."""
+        self._config_dir.mkdir(parents=True, exist_ok=True)
+        self._config_file.write_text(json.dumps(config.to_dict(), indent=2))
+        self._config = config
+
+    def update_exit_behavior(self, behavior: ExitBehavior) -> None:
+        """Update exit behavior setting."""
+        config = self.config
+        config.exit_behavior = behavior
+        self.save_config(config)
+
+    # --- Level 2: Portal State ---
+
+    @property
+    def portal(self) -> PortalState:
+        if self._portal is None:
+            self._portal = self._load_portal()
+        return self._portal
+
+    def _load_portal(self) -> PortalState:
+        """Load portal state from disk."""
+        if self._portal_file.exists():
+            try:
+                data = json.loads(self._portal_file.read_text())
+                return PortalState.from_dict(data)
+            except (json.JSONDecodeError, KeyError, ValueError):
+                pass
+        return PortalState()
+
+    def save_portal(self, state: PortalState) -> None:
+        """Save portal state to disk."""
+        self._config_dir.mkdir(parents=True, exist_ok=True)
+        self._portal_file.write_text(json.dumps(state.to_dict(), indent=2))
+        self._portal = state
+
+    def clear_portal(self) -> None:
+        """Clear portal state (e.g., when switching projects)."""
+        if self._portal_file.exists():
+            self._portal_file.unlink()
+        self._portal = PortalState()
+
+    def update_portal_features(self, features: FeatureSettings, description: str = "") -> None:
+        """Update portal-level feature overrides."""
+        state = self.portal
+        state.features = features
+        if description:
+            state.description = description
+        self.save_portal(state)
+
+    # --- Resolution: Merge all tiers ---
+
+    def resolve_features(self, session_override: FeatureSettings | None = None) -> FeatureSettings:
+        """Resolve features through all tiers.
+
+        Resolution order: session > portal > config > defaults
+
+        Args:
+            session_override: Optional session-level overrides
+
+        Returns:
+            Fully resolved FeatureSettings with defaults filled in
+        """
+        # Start with config defaults
+        resolved = self.config.features
+
+        # Apply portal overrides
+        resolved = resolved.merge_with(self.portal.features)
+
+        # Apply session overrides
+        if session_override:
+            resolved = resolved.merge_with(session_override)
+
+        # Fill in system defaults for any remaining None values
+        if resolved.working_dir is None:
+            resolved.working_dir = Path.cwd()
+        if resolved.session_prefix is None:
+            resolved.session_prefix = self.DEFAULT_SESSION_PREFIX
+        # model can remain None (use Claude's default)
+
+        return resolved
+
+    # --- Backward compatibility ---
+
+    def save(self, config: Config) -> None:
+        """Deprecated: use save_config instead."""
+        self.save_config(config)
