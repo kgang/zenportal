@@ -40,6 +40,12 @@ SPECIAL_KEYS = {
     "shift+enter": ("S-Enter", "⇧↵"),
     "shift+tab": ("BTab", "⇧⇥"),
     # Ctrl combinations
+    "ctrl+c": ("C-c", "^C"),
+    "ctrl+d": ("C-d", "^D"),
+    "ctrl+z": ("C-z", "^Z"),
+    "ctrl+l": ("C-l", "^L"),
+    "ctrl+a": ("C-a", "^A"),
+    "ctrl+e": ("C-e", "^E"),
     "ctrl+up": ("C-Up", "^↑"),
     "ctrl+down": ("C-Down", "^↓"),
     "ctrl+left": ("C-Left", "^←"),
@@ -130,7 +136,7 @@ class InsertModal(ModalScreen[InsertResult | None]):
             yield Static(f"insert  {self._session_name}", classes="title")
             with VerticalScroll(id="buffer-scroll"):
                 yield Static("", id="buffer")
-            yield Static("type keys · arrows/shift+enter supported · esc to send", classes="hint")
+            yield Static("type keys · arrows/ctrl+c/shift+enter · esc to send", classes="hint")
 
     def _get_display_text(self) -> str:
         """Get the display representation of the buffer."""
