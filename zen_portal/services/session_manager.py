@@ -172,10 +172,15 @@ class SessionManager:
             # Clear the pre-generated session ID since we're not using it
             session.claude_session_id = ""
         elif session_type == SessionType.CODEX:
-            # Codex session
-            command_args = ["codex"]
+            # Codex session - OpenAI CLI
+            command_args = ["codex", "--cd", str(working_dir)]
             if prompt:
                 command_args.append(prompt)
+        elif session_type == SessionType.GEMINI:
+            # Gemini session - Google CLI
+            command_args = ["gemini"]
+            if prompt:
+                command_args.extend(["-p", prompt])
         else:
             # Shell session - start user's default shell (zsh) with login profile
             command_args = ["zsh", "-l"]
@@ -316,8 +321,11 @@ class SessionManager:
             # Shell session - just restart the shell
             command_args = ["zsh", "-l"]
         elif session.session_type == SessionType.CODEX:
-            # Codex session
-            command_args = ["codex"]
+            # Codex session - with resume
+            command_args = ["codex", "resume", "--last"]
+        elif session.session_type == SessionType.GEMINI:
+            # Gemini session - with resume
+            command_args = ["gemini", "--resume"]
         else:
             # Claude session - need to discover or use known session ID
             claude_session_id = session.claude_session_id

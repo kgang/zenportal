@@ -21,6 +21,8 @@ class SessionType(Enum):
     """Type of session to create."""
 
     CLAUDE = "claude"
+    CODEX = "codex"
+    GEMINI = "gemini"
     SHELL = "shell"
 
 
@@ -231,7 +233,12 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
                     # Type selector at the top for discoverability
                     yield Static("type", classes="field-label")
                     yield Select(
-                        [(SessionType.CLAUDE.value, SessionType.CLAUDE), (SessionType.SHELL.value, SessionType.SHELL)],
+                        [
+                            (SessionType.CLAUDE.value, SessionType.CLAUDE),
+                            (SessionType.CODEX.value, SessionType.CODEX),
+                            (SessionType.GEMINI.value, SessionType.GEMINI),
+                            (SessionType.SHELL.value, SessionType.SHELL),
+                        ],
                         value=SessionType.CLAUDE,
                         id="type-select",
                     )
@@ -381,11 +388,12 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
     def on_select_changed(self, event: Select.Changed) -> None:
         """Handle session type changes."""
         if event.select.id == "type-select":
+            is_ai_session = event.value in (SessionType.CLAUDE, SessionType.CODEX, SessionType.GEMINI)
             is_claude = event.value == SessionType.CLAUDE
-            # Toggle visibility of Claude-specific fields
-            self.query_one("#prompt-label", Static).display = is_claude
-            self.query_one("#prompt-input", Input).display = is_claude
-            # Hide advanced config for shell (it only contains Claude options)
+            # Toggle visibility of prompt (for AI sessions)
+            self.query_one("#prompt-label", Static).display = is_ai_session
+            self.query_one("#prompt-input", Input).display = is_ai_session
+            # Hide advanced config for non-Claude (it contains Claude-specific options)
             self.query_one("#advanced-config", Collapsible).display = is_claude
 
             # Update default name based on session type

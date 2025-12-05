@@ -301,12 +301,14 @@ class MainScreen(Screen):
 
             try:
                 if result.result_type == ResultType.NEW:
-                    # Create new session
-                    session_type = (
-                        SessionType.SHELL
-                        if result.session_type == ScreenSessionType.SHELL
-                        else SessionType.CLAUDE
-                    )
+                    # Create new session - map screen session type to model session type
+                    type_mapping = {
+                        ScreenSessionType.CLAUDE: SessionType.CLAUDE,
+                        ScreenSessionType.CODEX: SessionType.CODEX,
+                        ScreenSessionType.GEMINI: SessionType.GEMINI,
+                        ScreenSessionType.SHELL: SessionType.SHELL,
+                    }
+                    session_type = type_mapping.get(result.session_type, SessionType.CLAUDE)
                     session = self._manager.create_session(
                         result.name,
                         result.prompt,
@@ -318,8 +320,7 @@ class MainScreen(Screen):
                     session_list.selected_index = 0
                     session_list.refresh(recompose=True)
                     self._start_rapid_refresh()
-                    type_label = "shell" if session_type == SessionType.SHELL else "Claude"
-                    self.notify(f"Created {type_label}: {session.display_name}", timeout=3)
+                    self.notify(f"Created {session_type.value}: {session.display_name}", timeout=3)
 
                 elif result.result_type == ResultType.ATTACH:
                     # Attach to external tmux session
