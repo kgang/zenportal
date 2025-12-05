@@ -210,6 +210,15 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
             counter += 1
         return f"{base}-{counter}"
 
+    def _get_default_name(self, session_type: SessionType) -> str:
+        """Generate a smart default name based on session type."""
+        if session_type == SessionType.SHELL:
+            # Use directory name for shell sessions
+            base = self._initial_dir.name or "shell"
+        else:
+            base = "session"
+        return self._generate_unique_name(base)
+
     def compose(self) -> ComposeResult:
         resolved = self._config.resolve_features()
 
@@ -219,8 +228,16 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
             with TabbedContent(id="tabs"):
                 # Tab 1: New session
                 with TabPane("new", id="tab-new"):
+                    # Type selector at the top for discoverability
+                    yield Static("type", classes="field-label")
+                    yield Select(
+                        [(SessionType.CLAUDE.value, SessionType.CLAUDE), (SessionType.SHELL.value, SessionType.SHELL)],
+                        value=SessionType.CLAUDE,
+                        id="type-select",
+                    )
+
                     yield Static("name", classes="field-label")
-                    default_name = self._generate_unique_name("session")
+                    default_name = self._get_default_name(SessionType.CLAUDE)
                     yield Input(
                         placeholder="session name",
                         value=default_name,
@@ -248,13 +265,6 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
                     yield DirectoryBrowser(initial_path=self._initial_dir, id="dir-browser", show_hint=False)
 
                     with Collapsible(title="advanced", id="advanced-config", collapsed=True):
-                        yield Static("type", classes="field-label")
-                        yield Select(
-                            [(SessionType.CLAUDE.value, SessionType.CLAUDE), (SessionType.SHELL.value, SessionType.SHELL)],
-                            value=SessionType.CLAUDE,
-                            id="type-select",
-                        )
-
                         yield Static("model", classes="field-label", id="model-label")
                         model_options = [
                             ("default", None),
@@ -372,10 +382,19 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         """Handle session type changes."""
         if event.select.id == "type-select":
             is_claude = event.value == SessionType.CLAUDE
+            # Toggle visibility of Claude-specific fields
             self.query_one("#prompt-label", Static).display = is_claude
             self.query_one("#prompt-input", Input).display = is_claude
-            self.query_one("#model-label", Static).display = is_claude
-            self.query_one("#model-select", Select).display = is_claude
+            # Hide advanced config for shell (it only contains Claude options)
+            self.query_one("#advanced-config", Collapsible).display = is_claude
+
+            # Update default name based on session type
+            name_input = self.query_one("#name-input", Input)
+            current_name = name_input.value
+            # Only auto-update if user hasn't customized the name
+            if current_name.startswith("session") or current_name.startswith(self._initial_dir.name):
+                new_default = self._get_default_name(event.value)
+                name_input.value = new_default
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
