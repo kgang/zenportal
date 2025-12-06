@@ -75,26 +75,32 @@ class ResumeListBuilder:
         self.sessions = self._discovery.list_claude_sessions(limit=limit)
 
     def build_list(self, container: Vertical) -> None:
-        """Build the resume list display (called once on load).
+        """Build the resume list display.
 
-        Sessions known to zen-portal (via state) are tagged with a glyph.
+        Zen design: project name first (most meaningful), minimal chrome.
+        Known sessions (managed by zen-portal) marked with ●, others with ○.
         """
         container.remove_children()
 
         if not self.sessions:
-            container.mount(Static("no claude sessions found", classes="empty-list"))
+            container.mount(Static("no sessions in ~/.claude/projects/", classes="empty-list"))
             return
 
         for i, session in enumerate(self.sessions):
-            short_id = session.session_id[:8]
-            project_name = session.project_path.name if session.project_path else "?"
+            project_name = session.project_path.name if session.project_path else "unknown"
             time_ago = self._format_time_ago(session.modified_at)
 
-            # Tag sessions known to zen-portal
+            # Known sessions (tracked by zen-portal) get filled glyph
             is_known = session.session_id in self._known_ids
-            glyph = "[cyan]●[/cyan]" if is_known else "○"
+            glyph = "[cyan]●[/cyan]" if is_known else "[dim]○[/dim]"
 
-            label = f"{glyph} {short_id}  {project_name:<24} {time_ago}"
+            # Zen format: glyph + project name (left) + time (right)
+            # Truncate project name to fit, pad for alignment
+            max_name_len = 42
+            if len(project_name) > max_name_len:
+                project_name = project_name[:max_name_len - 1] + "…"
+
+            label = f"{glyph} {project_name:<{max_name_len}} [dim]{time_ago:>6}[/dim]"
             classes = "list-row selected" if i == self.selected else "list-row"
             container.mount(Static(label, id=f"resume-row-{i}", classes=classes, markup=True))
 
@@ -105,7 +111,7 @@ class ResumeListBuilder:
         return None
 
     def _format_time_ago(self, dt: datetime) -> str:
-        """Format a datetime as a human-readable time ago string."""
+        """Format time ago - compact, zen style."""
         now = datetime.now()
         diff = now - dt
         seconds = diff.total_seconds()
@@ -113,14 +119,13 @@ class ResumeListBuilder:
         if seconds < 60:
             return "now"
         elif seconds < 3600:
-            minutes = int(seconds / 60)
-            return f"{minutes}m ago"
+            return f"{int(seconds / 60)}m"
         elif seconds < 86400:
-            hours = int(seconds / 3600)
-            return f"{hours}h ago"
+            return f"{int(seconds / 3600)}h"
+        elif seconds < 604800:  # 7 days
+            return f"{int(seconds / 86400)}d"
         else:
-            days = int(seconds / 86400)
-            return f"{days}d ago"
+            return f"{int(seconds / 604800)}w"
 
 
 def update_list_selection(

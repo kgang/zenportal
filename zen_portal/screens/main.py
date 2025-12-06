@@ -353,7 +353,13 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, Screen):
                         session_list.selected_index = 0
                         session_list.refresh(recompose=True)
                         self._start_rapid_refresh()
-                        self.notify(f"Resumed: {session.display_name}", timeout=3)
+
+                        # Show appropriate notification based on session state
+                        if session.state == SessionState.FAILED:
+                            error_msg = session.error_message or "Resume failed"
+                            self.notify(error_msg, severity="error", timeout=5)
+                        else:
+                            self.notify(f"Resumed: {session.display_name}", timeout=3)
 
             except SessionLimitError as e:
                 self.notify(str(e), severity="error", timeout=5)

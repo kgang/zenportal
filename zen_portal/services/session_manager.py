@@ -241,6 +241,15 @@ class SessionManager:
 
         self._sessions[session.id] = session
 
+        # Validate session file exists before attempting resume
+        discovery = DiscoveryService(effective_working_dir)
+        if not discovery.session_file_exists(resume_session_id, effective_working_dir):
+            session.state = SessionState.FAILED
+            session.error_message = f"Session file not found: {resume_session_id[:8]}..."
+            self._emit(SessionCreated(session))
+            self._persist_change(session, "created")
+            return session
+
         command_args = self._commands.build_resume_command(resume_session_id, resolved.model)
         command = self._commands.wrap_with_banner(command_args, name, session.id)
 
@@ -252,6 +261,8 @@ class SessionManager:
         )
 
         session.state = SessionState.RUNNING if result.success else SessionState.FAILED
+        if not result.success:
+            session.error_message = result.error or "Failed to create tmux session"
 
         self._emit(SessionCreated(session))
         self._persist_change(session, "created")

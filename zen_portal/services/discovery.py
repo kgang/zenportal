@@ -230,6 +230,35 @@ class DiscoveryService:
         )
         return bool(uuid_pattern.match(s))
 
+    def session_file_exists(self, session_id: str, project_path: Path | None = None) -> bool:
+        """Check if a Claude session file exists and can be resumed.
+
+        Args:
+            session_id: Claude session ID (UUID)
+            project_path: Optional project path to narrow search
+
+        Returns:
+            True if the session file exists and is readable
+        """
+        if not self.PROJECTS_DIR.exists():
+            return False
+
+        # If project path specified, check only that project
+        if project_path:
+            project_name = self._path_to_claude_project_name(project_path)
+            session_file = self.PROJECTS_DIR / project_name / f"{session_id}.jsonl"
+            return session_file.exists() and session_file.is_file()
+
+        # Search all projects for the session
+        for project_dir in self.PROJECTS_DIR.iterdir():
+            if not project_dir.is_dir():
+                continue
+            session_file = project_dir / f"{session_id}.jsonl"
+            if session_file.exists() and session_file.is_file():
+                return True
+
+        return False
+
     def list_sessions_for_current_project(self, limit: int = 10) -> list[ClaudeSessionInfo]:
         """List Claude sessions for the current working directory.
 

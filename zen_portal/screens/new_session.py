@@ -232,7 +232,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
 
                 # Tab 3: Resume Claude session
                 with TabPane("resume", id="tab-resume"):
-                    yield Static("recent claude sessions", classes="field-label")
+                    yield Static("claude sessions", classes="field-label")
                     yield Vertical(id="resume-list", classes="list-container")
 
             yield Static("h/l tabs  j/k select  f expand  enter confirm  esc cancel", classes="hint")
