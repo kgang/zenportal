@@ -87,6 +87,31 @@ class TestFeatureSettings:
         assert merged.model == ClaudeModel.SONNET
         assert merged.session_prefix == "test"
 
+    def test_enabled_session_types_to_dict(self):
+        """Session types serialize correctly."""
+        settings = FeatureSettings(enabled_session_types=["claude", "shell"])
+        result = settings.to_dict()
+        assert result["enabled_session_types"] == ["claude", "shell"]
+
+    def test_enabled_session_types_from_dict(self):
+        """Session types deserialize correctly."""
+        data = {"enabled_session_types": ["claude", "codex"]}
+        settings = FeatureSettings.from_dict(data)
+        assert settings.enabled_session_types == ["claude", "codex"]
+
+    def test_enabled_session_types_none_means_all(self):
+        """None means all types enabled (default behavior)."""
+        settings = FeatureSettings()
+        assert settings.enabled_session_types is None
+        assert "enabled_session_types" not in settings.to_dict()
+
+    def test_enabled_session_types_merge(self):
+        """Session types merge correctly."""
+        base = FeatureSettings(enabled_session_types=["claude", "shell"])
+        override = FeatureSettings(enabled_session_types=["claude"])
+        merged = base.merge_with(override)
+        assert merged.enabled_session_types == ["claude"]
+
 
 class TestConfigManager:
     """Tests for ConfigManager 3-tier system."""

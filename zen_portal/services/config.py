@@ -31,6 +31,10 @@ class ClaudeModel(Enum):
     HAIKU = "haiku"
 
 
+# All available session types for configuration
+ALL_SESSION_TYPES = ["claude", "codex", "gemini", "shell"]
+
+
 @dataclass
 class WorktreeSettings:
     """Settings for git worktree integration.
@@ -98,6 +102,9 @@ class FeatureSettings:
     model: ClaudeModel | None = None  # Claude model to use
     session_prefix: str | None = None  # Prefix for tmux sessions
     worktree: WorktreeSettings | None = None  # Git worktree settings
+    # Session types to show in the new session modal
+    # None means all types enabled (default), empty list means none
+    enabled_session_types: list[str] | None = None
 
     def to_dict(self) -> dict:
         result = {}
@@ -109,6 +116,8 @@ class FeatureSettings:
             result["session_prefix"] = self.session_prefix
         if self.worktree is not None:
             result["worktree"] = self.worktree.to_dict()
+        if self.enabled_session_types is not None:
+            result["enabled_session_types"] = self.enabled_session_types
         return result
 
     @classmethod
@@ -116,11 +125,13 @@ class FeatureSettings:
         working_dir = Path(data["working_dir"]) if data.get("working_dir") else None
         model = ClaudeModel(data["model"]) if data.get("model") else None
         worktree = WorktreeSettings.from_dict(data["worktree"]) if data.get("worktree") else None
+        enabled_types = data.get("enabled_session_types")
         return cls(
             working_dir=working_dir,
             model=model,
             session_prefix=data.get("session_prefix"),
             worktree=worktree,
+            enabled_session_types=enabled_types,
         )
 
     def merge_with(self, override: "FeatureSettings") -> "FeatureSettings":
@@ -138,6 +149,7 @@ class FeatureSettings:
             model=override.model if override.model is not None else self.model,
             session_prefix=override.session_prefix if override.session_prefix is not None else self.session_prefix,
             worktree=merged_worktree,
+            enabled_session_types=override.enabled_session_types if override.enabled_session_types is not None else self.enabled_session_types,
         )
 
 

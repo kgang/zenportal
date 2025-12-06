@@ -11,7 +11,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, Checkbox, Collapsible, Input, Select, Static, TabbedContent, TabPane
 
 from ..models.session import SessionFeatures
-from ..services.config import ConfigManager, ClaudeModel
+from ..services.config import ConfigManager, ClaudeModel, ALL_SESSION_TYPES
 from ..services.discovery import DiscoveryService, ClaudeSessionInfo, ExternalTmuxSession
 from ..services.tmux import TmuxService
 from ..widgets.directory_browser import DirectoryBrowser
@@ -175,6 +175,10 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
     NewSessionModal #dir-browser.visible {
         display: block;
     }
+
+    NewSessionModal Select.hidden {
+        display: none;
+    }
     """
 
     def __init__(
@@ -201,6 +205,18 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         # Claude sessions for resume tab
         self._claude_sessions: list[ClaudeSessionInfo] = []
         self._claude_selected = 0
+        # Enabled session types from config
+        self._enabled_types = self._get_enabled_session_types()
+
+    def _get_enabled_session_types(self) -> list[SessionType]:
+        """Get enabled session types from config."""
+        resolved = self._config.resolve_features()
+        enabled = resolved.enabled_session_types
+        if enabled is None:
+            # None means all types enabled
+            return list(SessionType)
+        # Map string values to SessionType enum
+        return [SessionType(t) for t in enabled if t in [st.value for st in SessionType]]
 
     def _generate_unique_name(self, base: str = "session") -> str:
         """Generate a unique session name."""
@@ -230,20 +246,21 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
                 # Tab 1: New session
                 with TabPane("new", id="tab-new"):
                     # Type selector at the top for discoverability
-                    yield Static("type", classes="field-label")
-                    yield Select(
-                        [
-                            (SessionType.CLAUDE.value, SessionType.CLAUDE),
-                            (SessionType.CODEX.value, SessionType.CODEX),
-                            (SessionType.GEMINI.value, SessionType.GEMINI),
-                            (SessionType.SHELL.value, SessionType.SHELL),
-                        ],
-                        value=SessionType.CLAUDE,
-                        id="type-select",
-                    )
+                    # Only show enabled session types
+                    type_options = [
+                        (st.value, st) for st in SessionType if st in self._enabled_types
+                    ]
+                    default_type = self._enabled_types[0] if self._enabled_types else SessionType.CLAUDE
+                    # Only show type selector if more than one type is enabled
+                    if len(type_options) > 1:
+                        yield Static("type", classes="field-label")
+                        yield Select(type_options, value=default_type, id="type-select")
+                    else:
+                        # Hidden select with default value for single-type mode
+                        yield Select(type_options, value=default_type, id="type-select", classes="hidden")
 
                     yield Static("name", classes="field-label")
-                    default_name = self._get_default_name(SessionType.CLAUDE)
+                    default_name = self._get_default_name(default_type)
                     yield Input(
                         placeholder="session name",
                         value=default_name,
@@ -304,6 +321,14 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         self.query_one("#name-input", Input).focus()
         self._load_external_sessions()
         self._load_claude_sessions()
+        # Set initial visibility based on default type
+        if self._enabled_types:
+            default_type = self._enabled_types[0]
+            is_ai_session = default_type in (SessionType.CLAUDE, SessionType.CODEX, SessionType.GEMINI)
+            is_claude = default_type == SessionType.CLAUDE
+            self.query_one("#prompt-label", Static).display = is_ai_session
+            self.query_one("#prompt-input", Input).display = is_ai_session
+            self.query_one("#advanced-config", Collapsible).display = is_claude
 
     def _load_external_sessions(self) -> None:
         """Load all tmux sessions for attach tab.

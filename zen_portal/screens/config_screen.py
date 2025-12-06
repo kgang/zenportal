@@ -6,10 +6,10 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.screen import ModalScreen
 from textual.containers import Vertical, Horizontal
-from textual.widgets import Button, Static, Select, OptionList, Input
+from textual.widgets import Button, Checkbox, Static, Select, OptionList, Input
 from textual.widgets.option_list import Option
 
-from ..services.config import ConfigManager, ExitBehavior, FeatureSettings
+from ..services.config import ConfigManager, ExitBehavior, FeatureSettings, ALL_SESSION_TYPES
 from ..services.profile import ProfileManager
 
 
@@ -193,6 +193,16 @@ class ConfigScreen(ModalScreen[None]):
         color: $text-disabled;
         height: 1;
     }
+
+    ConfigScreen #session-types-row {
+        width: 100%;
+        height: auto;
+        margin-top: 0;
+    }
+
+    ConfigScreen #session-types-row Checkbox {
+        margin-right: 2;
+    }
     """
 
     def __init__(self, config_manager: ConfigManager, profile_manager: ProfileManager | None = None):
@@ -205,9 +215,18 @@ class ConfigScreen(ModalScreen[None]):
         current_exit = self._config_manager.config.exit_behavior
         global_dir = self._config_manager.config.features.working_dir
         instance_dir = self._config_manager.portal.features.working_dir
+        enabled_types = self._config_manager.config.features.enabled_session_types
 
         with Vertical(id="dialog"):
             yield Static("settings", id="title")
+
+            # Session types section
+            yield Static("session types", classes="section-title")
+            with Horizontal(id="session-types-row"):
+                for st in ALL_SESSION_TYPES:
+                    # None means all enabled, otherwise check if in list
+                    is_enabled = enabled_types is None or st in enabled_types
+                    yield Checkbox(st, is_enabled, id=f"type-{st}")
 
             # Exit behavior section
             yield Static("exit behavior", classes="section-title")
@@ -296,11 +315,24 @@ class ConfigScreen(ModalScreen[None]):
         behavior = ExitBehavior(select.value)
         self._config_manager.update_exit_behavior(behavior)
 
+        # Save enabled session types
+        enabled_types = []
+        for st in ALL_SESSION_TYPES:
+            checkbox = self.query_one(f"#type-{st}", Checkbox)
+            if checkbox.value:
+                enabled_types.append(st)
+        # If all are enabled, store None (default behavior)
+        if set(enabled_types) == set(ALL_SESSION_TYPES):
+            enabled_types_to_save = None
+        else:
+            enabled_types_to_save = enabled_types
+
         # Save global directory from input
         global_input = self.query_one("#global-dir-input", PathInput)
         global_path = global_input.get_path()
         config = self._config_manager.config
         config.features.working_dir = global_path
+        config.features.enabled_session_types = enabled_types_to_save
         self._config_manager.save_config(config)
 
         # Save instance directory from input
@@ -352,6 +384,7 @@ class ConfigScreen(ModalScreen[None]):
     def action_next_section(self) -> None:
         """Move focus to next section."""
         focusables = [
+            "#type-claude",
             "#exit-behavior",
             "#global-dir-input",
             "#instance-dir-input",

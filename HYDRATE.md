@@ -96,7 +96,7 @@ Resolution order: `session > portal > config > defaults`
 2. **Level 2: Portal** (`~/.config/zen-portal/portal.json`) - Current context
 3. **Level 3: Session** - Per-session overrides (not persisted)
 
-Key settings: `exit_behavior`, `working_dir`, `model`, `worktree.*`
+Key settings: `exit_behavior`, `working_dir`, `model`, `worktree.*`, `enabled_session_types`
 
 ## Key Patterns
 
@@ -263,3 +263,12 @@ Recent design pass established consistent visual patterns:
 - Gemini: `gm:`
 
 **Info view:** Compact single-line format for git/tokens/model
+
+## Session Type Filtering
+
+Users can enable/disable session types via settings (`c` key):
+
+- **Config key:** `features.enabled_session_types` (list of strings or null)
+- **Values:** `["claude", "codex", "gemini", "shell"]`
+- **Default:** `null` (all types enabled)
+- **Effect:** Disabled types hidden from new session modal type selector
