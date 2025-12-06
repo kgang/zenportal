@@ -222,20 +222,22 @@ class ConfigScreen(ModalScreen[None]):
                     id="instance-dir-input",
                 )
 
-            # OpenRouter proxy settings (collapsible)
+            # y-router proxy settings (collapsible)
             openrouter_proxy = self._config_manager.config.features.openrouter_proxy
             proxy_enabled = openrouter_proxy.enabled if openrouter_proxy else False
-            proxy_url = openrouter_proxy.base_url if openrouter_proxy else "https://openrouter.ai/api/v1"
+            proxy_url = openrouter_proxy.base_url if openrouter_proxy else "http://localhost:8787"
             proxy_key = openrouter_proxy.api_key if openrouter_proxy else ""
+            proxy_model = openrouter_proxy.default_model if openrouter_proxy else ""
 
-            with Collapsible(title="openrouter proxy", id="openrouter-collapsible", collapsed=True):
+            with Collapsible(title="y-router proxy", id="openrouter-collapsible", collapsed=True):
                 with Vertical(classes="openrouter-content"):
-                    yield Checkbox("Route Claude through OpenRouter", proxy_enabled, id="openrouter-enabled")
+                    yield Checkbox("Route Claude through y-router", proxy_enabled, id="openrouter-enabled")
+                    yield Static("docker-compose up -d in y-router dir", classes="openrouter-label")
                     with Vertical(classes="openrouter-row"):
                         yield Static("proxy url", classes="openrouter-label")
                         yield Input(
                             value=proxy_url,
-                            placeholder="https://openrouter.ai/api/v1",
+                            placeholder="http://localhost:8787",
                             id="openrouter-url",
                             classes="openrouter-input",
                         )
@@ -246,6 +248,14 @@ class ConfigScreen(ModalScreen[None]):
                             placeholder="sk-or-...",
                             password=True,
                             id="openrouter-key",
+                            classes="openrouter-input",
+                        )
+                    with Vertical(classes="openrouter-row"):
+                        yield Static("model (optional)", classes="openrouter-label")
+                        yield Input(
+                            value=proxy_model,
+                            placeholder="anthropic/claude-sonnet-4",
+                            id="openrouter-model",
                             classes="openrouter-input",
                         )
 
@@ -306,17 +316,19 @@ class ConfigScreen(ModalScreen[None]):
         global_input = self.query_one("#global-dir-input", PathInput)
         global_path = global_input.get_path()
 
-        # Save OpenRouter proxy settings
+        # Save y-router proxy settings
         openrouter_enabled = self.query_one("#openrouter-enabled", Checkbox).value
         openrouter_url = self.query_one("#openrouter-url", Input).value.strip()
         openrouter_key = self.query_one("#openrouter-key", Input).value.strip()
+        openrouter_model = self.query_one("#openrouter-model", Input).value.strip()
 
         openrouter_proxy = None
-        if openrouter_enabled or openrouter_key:
+        if openrouter_enabled or openrouter_key or openrouter_model:
             openrouter_proxy = OpenRouterProxySettings(
                 enabled=openrouter_enabled,
-                base_url=openrouter_url or "https://openrouter.ai/api/v1",
+                base_url=openrouter_url or "http://localhost:8787",
                 api_key=openrouter_key,
+                default_model=openrouter_model,
             )
 
         config = self._config_manager.config

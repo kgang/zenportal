@@ -44,8 +44,8 @@ class OpenRouterProxySettings:
     """
 
     enabled: bool = False
-    # Proxy URL (e.g., https://cc.yovy.app or self-hosted y-router)
-    base_url: str = "https://openrouter.ai/api/v1"
+    # y-router proxy URL (self-hosted default, or use https://cc.yovy.app)
+    base_url: str = "http://localhost:8787"
     # OpenRouter API key (stored here or via OPENROUTER_API_KEY env var)
     api_key: str = ""
     # Default model to use (e.g., "anthropic/claude-sonnet-4")
@@ -53,7 +53,7 @@ class OpenRouterProxySettings:
 
     def to_dict(self) -> dict:
         result: dict = {"enabled": self.enabled}
-        if self.base_url != "https://openrouter.ai/api/v1":
+        if self.base_url != "http://localhost:8787":
             result["base_url"] = self.base_url
         if self.api_key:
             result["api_key"] = self.api_key
@@ -65,7 +65,7 @@ class OpenRouterProxySettings:
     def from_dict(cls, data: dict) -> "OpenRouterProxySettings":
         return cls(
             enabled=data.get("enabled", False),
-            base_url=data.get("base_url", "https://openrouter.ai/api/v1"),
+            base_url=data.get("base_url", "http://localhost:8787"),
             api_key=data.get("api_key", ""),
             default_model=data.get("default_model", ""),
         )
@@ -74,7 +74,7 @@ class OpenRouterProxySettings:
         """Return new settings with override values taking precedence."""
         return OpenRouterProxySettings(
             enabled=override.enabled if override.enabled else self.enabled,
-            base_url=override.base_url if override.base_url != "https://openrouter.ai/api/v1" else self.base_url,
+            base_url=override.base_url if override.base_url != "http://localhost:8787" else self.base_url,
             api_key=override.api_key if override.api_key else self.api_key,
             default_model=override.default_model if override.default_model else self.default_model,
         )

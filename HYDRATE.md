@@ -340,18 +340,19 @@ Users can enable/disable session types via settings (`c` key):
 - **Effect:** Disabled types hidden from new session modal type selector
 - **UI:** `SessionTypeDropdown` widget in config_screen.py - collapsible with checkboxes
 
-## OpenRouter Proxy
+## y-router Proxy
 
-Route Claude Code through OpenRouter for alternative models or cost savings:
+Route Claude Code through OpenRouter via [y-router](https://github.com/luohy15/y-router) for alternative models:
 
 - **Config location:** `features.openrouter_proxy` in `~/.config/zen-portal/config.json`
 - **Settings:**
   - `enabled: bool` - Enable/disable proxy routing
-  - `base_url: str` - Proxy URL (default: `https://openrouter.ai/api/v1`)
+  - `base_url: str` - Proxy URL (default: `http://localhost:8787`)
   - `api_key: str` - OpenRouter API key (or set `OPENROUTER_API_KEY` env var)
+  - `default_model: str` - Model override (e.g., `anthropic/claude-sonnet-4`)
 - **UI:** Collapsible section in settings (`c` key)
-- **Effect:** Sets `ANTHROPIC_BASE_URL`, `ANTHROPIC_API_KEY`, `ANTHROPIC_CUSTOM_HEADERS` for Claude sessions
-- **Note:** Requires a proxy that translates Anthropic API to OpenRouter (e.g., y-router)
+- **Effect:** Sets `ANTHROPIC_BASE_URL`, `ANTHROPIC_API_KEY`, `ANTHROPIC_CUSTOM_HEADERS`, `ANTHROPIC_MODEL` for Claude sessions
+- **Setup:** Run y-router locally: `git clone https://github.com/luohy15/y-router && cd y-router && docker-compose up -d`
 
 ## Exit Modal
 

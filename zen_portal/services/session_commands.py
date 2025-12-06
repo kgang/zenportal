@@ -153,7 +153,7 @@ class SessionCommandBuilder:
         self,
         proxy_settings: OpenRouterProxySettings,
     ) -> dict[str, str]:
-        """Build environment variables for OpenRouter proxy.
+        """Build environment variables for y-router/OpenRouter proxy.
 
         Args:
             proxy_settings: OpenRouter proxy configuration
@@ -174,8 +174,12 @@ class SessionCommandBuilder:
         api_key = proxy_settings.api_key or os.environ.get("OPENROUTER_API_KEY", "")
         if api_key:
             env_vars["ANTHROPIC_API_KEY"] = api_key
-            # Some proxies need the key in custom headers
+            # y-router needs the key in custom headers
             env_vars["ANTHROPIC_CUSTOM_HEADERS"] = f"x-api-key: {api_key}"
+
+        # Set model override if specified
+        if proxy_settings.default_model:
+            env_vars["ANTHROPIC_MODEL"] = proxy_settings.default_model
 
         return env_vars
 
