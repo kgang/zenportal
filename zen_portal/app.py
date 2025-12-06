@@ -3,6 +3,8 @@
 Main Textual application.
 """
 
+import shutil
+import sys
 from pathlib import Path
 
 from textual.app import App
@@ -14,6 +16,50 @@ from zen_portal.services.session_manager import SessionManager
 from zen_portal.services.config import ConfigManager
 from zen_portal.services.worktree import WorktreeService
 from zen_portal.services.profile import ProfileManager
+
+
+def check_dependencies() -> None:
+    """Check for required and optional dependencies on startup.
+
+    Exits with error if critical dependencies (tmux) are missing.
+    Prints warnings for optional dependencies (AI CLIs).
+    """
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    # Critical: tmux is required for session management
+    if not shutil.which("tmux"):
+        errors.append("tmux is not installed or not in PATH")
+
+    # Critical: git is required for worktree features
+    if not shutil.which("git"):
+        warnings.append("git is not installed - worktree isolation won't work")
+
+    # Optional: AI assistant CLIs
+    if not shutil.which("claude"):
+        warnings.append("claude CLI not found - Claude Code sessions won't work")
+
+    if not shutil.which("codex"):
+        warnings.append("codex CLI not found - OpenAI Codex sessions won't work")
+
+    if not shutil.which("gemini"):
+        warnings.append("gemini CLI not found - Gemini CLI sessions won't work")
+
+    # Exit with error if critical dependencies missing
+    if errors:
+        print("Error: Missing required dependencies:\n")
+        for e in errors:
+            print(f"  • {e}")
+        print("\nPlease install the required dependencies and try again.")
+        print("  - tmux: https://github.com/tmux/tmux")
+        sys.exit(1)
+
+    # Print warnings for optional dependencies
+    if warnings:
+        print("Dependency warnings:")
+        for w in warnings:
+            print(f"  • {w}")
+        print()
 
 
 def _create_worktree_service(
@@ -110,6 +156,9 @@ def main():
     """Run the Zen Portal application."""
     import subprocess
 
+    # Check dependencies before starting
+    check_dependencies()
+
     # Create managers once - persist across attach/detach cycles
     working_dir = Path.cwd()
     config = ConfigManager()
@@ -141,6 +190,17 @@ def main():
             # Focus on the session we just detached from
             focus_tmux_session = tmux_name
             continue
+
+        # Handle "keep all running" exit - show which sessions are still active
+        if result and isinstance(result, dict) and "kept_sessions" in result:
+            kept = result["kept_sessions"]
+            if kept:
+                print("\nSessions kept running:")
+                for s in kept:
+                    print(f"  • {s['display_name']} ({s['tmux_name']})")
+                print("\nTo attach: tmux attach -t <session-name>")
+                print("To list:   tmux ls")
+            break
 
         # Any other exit breaks the loop
         break

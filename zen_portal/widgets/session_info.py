@@ -195,6 +195,16 @@ class SessionInfoView(Static):
             if s.dangerously_skip_permissions:
                 lines.append(f"  dangerous     yes")
 
+        # Token usage section (Claude sessions only)
+        if s.session_type.value == "claude" and s.token_stats:
+            lines.append("")
+            lines.append(f"[dim]tokens[/dim]")
+            lines.append(f"  input         {s.token_stats.input_tokens:,}")
+            lines.append(f"  output        {s.token_stats.output_tokens:,}")
+            lines.append(f"  total         {s.token_stats.total_tokens:,}")
+            if s.token_stats.cache_tokens > 0:
+                lines.append(f"  cached        {s.token_stats.cache_tokens:,}")
+
         # Prompt section (if any)
         if s.prompt:
             lines.append("")

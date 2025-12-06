@@ -45,6 +45,10 @@ class SessionRecord:
     model: str | None = None
     # External tmux session name (for adopted sessions)
     external_tmux_name: str | None = None
+    # Token tracking (persisted from session)
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_tokens: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary, omitting None values."""
@@ -66,6 +70,9 @@ class SessionRecord:
             working_dir=data.get("working_dir"),
             model=data.get("model"),
             external_tmux_name=data.get("external_tmux_name"),
+            input_tokens=data.get("input_tokens", 0),
+            output_tokens=data.get("output_tokens", 0),
+            cache_tokens=data.get("cache_tokens", 0),
         )
 
 

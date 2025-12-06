@@ -1,6 +1,7 @@
 """SessionManager: Simple session lifecycle management."""
 
 import shlex
+import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Callable
@@ -13,6 +14,7 @@ from .worktree import WorktreeService
 from .banner import generate_banner_command
 from .discovery import DiscoveryService
 from .state import StateService, PortalState, SessionRecord
+from .token_parser import TokenParser
 
 
 class SessionLimitError(Exception):
@@ -43,6 +45,7 @@ class SessionManager:
         self._on_event = on_event
         self._state = state_service or StateService()
         self._sessions: dict[str, Session] = {}
+        self._token_parser = TokenParser()
 
         # Load persisted state on startup
         self._load_persisted_state()
@@ -68,6 +71,23 @@ class SessionManager:
     def _tmux_name(self, session_id: str) -> str:
         prefix = self._get_session_prefix()
         return f"{prefix}-{session_id[:8]}"
+
+    def _validate_command_binary(self, session_type: SessionType) -> str | None:
+        """Check if the required binary exists for the session type.
+
+        Returns error message if binary not found, None if valid.
+        """
+        binary_map = {
+            SessionType.CLAUDE: "claude",
+            SessionType.CODEX: "codex",
+            SessionType.GEMINI: "gemini",
+            SessionType.SHELL: "zsh",
+        }
+
+        binary = binary_map.get(session_type)
+        if binary and not shutil.which(binary):
+            return f"Command '{binary}' not found in PATH"
+        return None
 
     def create_session(
         self,
@@ -158,6 +178,15 @@ class SessionManager:
 
         self._sessions[session.id] = session
 
+        # Validate binary exists before attempting to create session
+        binary_error = self._validate_command_binary(session_type)
+        if binary_error:
+            session.state = SessionState.FAILED
+            session.error_message = binary_error
+            self._emit(SessionCreated(session))
+            self._persist_session_change(session, "created")
+            return session
+
         # Build command based on session type
         if session_type == SessionType.CLAUDE:
             # Build claude command - don't specify session ID, let Claude generate it
@@ -200,6 +229,7 @@ class SessionManager:
             session.state = SessionState.RUNNING
         else:
             session.state = SessionState.FAILED
+            session.error_message = result.error or "Failed to create tmux session"
 
         self._emit(SessionCreated(session))
         self._persist_session_change(session, "created")
@@ -535,6 +565,33 @@ class SessionManager:
             return result.output
         return ""
 
+    def update_session_tokens(self, session_id: str) -> bool:
+        """Update token statistics for a session from Claude JSONL files.
+
+        Returns True if stats were updated.
+        """
+        session = self._sessions.get(session_id)
+        if not session:
+            return False
+
+        if session.session_type != SessionType.CLAUDE:
+            return False
+
+        # Need claude_session_id to find stats
+        if not session.claude_session_id:
+            return False
+
+        stats = self._token_parser.get_session_stats(
+            claude_session_id=session.claude_session_id,
+            working_dir=session.resolved_working_dir,
+        )
+
+        if stats:
+            session.token_stats = stats.total_usage
+            return True
+
+        return False
+
     def refresh_states(self) -> None:
         """Update session states based on tmux status.
 
@@ -573,6 +630,10 @@ class SessionManager:
             if self._tmux.is_pane_dead(tmux_name):
                 session.state = SessionState.COMPLETED
                 session.ended_at = datetime.now()
+
+            # Update token stats for running Claude sessions
+            if session.session_type == SessionType.CLAUDE:
+                self.update_session_tokens(session.id)
 
     def get_session(self, session_id: str) -> Session | None:
         return self._sessions.get(session_id)
@@ -850,6 +911,15 @@ class SessionManager:
         if hasattr(session, "_external_tmux_name"):
             external_name = session._external_tmux_name
 
+        # Extract token stats if available
+        input_tokens = 0
+        output_tokens = 0
+        cache_tokens = 0
+        if session.token_stats:
+            input_tokens = session.token_stats.input_tokens
+            output_tokens = session.token_stats.output_tokens
+            cache_tokens = session.token_stats.cache_tokens
+
         return SessionRecord(
             id=session.id,
             name=session.name,
@@ -863,6 +933,9 @@ class SessionManager:
             working_dir=str(session.resolved_working_dir) if session.resolved_working_dir else None,
             model=session.resolved_model.value if session.resolved_model else None,
             external_tmux_name=external_name,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cache_tokens=cache_tokens,
         )
 
     def save_state(self) -> bool:

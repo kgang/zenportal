@@ -70,6 +70,13 @@ class TmuxService:
         working_dir: Path,
     ) -> TmuxResult:
         """Create a new detached tmux session running a command."""
+        # Validate working directory exists
+        if not working_dir.exists():
+            return TmuxResult(
+                success=False,
+                error=f"Working directory does not exist: {working_dir}",
+            )
+
         args = [
             "new-session",
             "-d",  # Detached

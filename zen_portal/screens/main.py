@@ -226,6 +226,11 @@ class MainScreen(Screen):
         lines.append(f"  session {state_label}")
         if state_desc:
             lines.append(f"  {state_desc}")
+
+        # Show error message for failed sessions
+        if session.state == SessionState.FAILED and session.error_message:
+            lines.append(f"  [red]{session.error_message}[/red]")
+
         lines.append("")
 
         # Session details
@@ -716,17 +721,34 @@ class MainScreen(Screen):
 
         self.app.push_screen(HelpScreen())
 
-    def _exit_with_cleanup(self, cleanup_orphans: bool = False) -> None:
+    def _exit_with_cleanup(self, cleanup_orphans: bool = False, keep_running: bool = False) -> None:
         """Exit the application.
 
         Args:
             cleanup_orphans: If True, clean up orphaned tmux sessions with dead panes.
                            Only used with "kill all" exit behavior.
+            keep_running: If True, return session info for display after exit.
         """
         if cleanup_orphans:
             self._manager.cleanup_dead_tmux_sessions()
         # Save state before exit so sessions persist across restarts
         self._manager.save_state()
+
+        # Collect info about running sessions to display after exit
+        if keep_running:
+            running_sessions = []
+            for session in self._manager.sessions:
+                if session.is_active:
+                    tmux_name = self._manager.get_tmux_session_name(session.id)
+                    if tmux_name:
+                        running_sessions.append({
+                            "tmux_name": tmux_name,
+                            "display_name": session.display_name,
+                        })
+            if running_sessions:
+                self.app.exit(result={"kept_sessions": running_sessions})
+                return
+
         self.app.exit()
 
     def action_quit(self) -> None:
@@ -750,7 +772,7 @@ class MainScreen(Screen):
             self._exit_with_cleanup()
             return
         elif behavior == ExitBehavior.KEEP_ALL:
-            self._exit_with_cleanup()
+            self._exit_with_cleanup(keep_running=True)
             return
 
         # ASK behavior - show modal
@@ -767,12 +789,13 @@ class MainScreen(Screen):
                     self._config.update_exit_behavior(ExitBehavior.KEEP_ALL)
 
             cleanup_orphans = result.choice == ExitChoice.KILL_ALL
+            keep_running = result.choice == ExitChoice.KEEP_ALL
             if result.choice == ExitChoice.KILL_ALL:
                 self._manager.kill_all_sessions()
             elif result.choice == ExitChoice.KILL_DEAD:
                 self._manager.kill_dead_sessions()
 
-            self._exit_with_cleanup(cleanup_orphans=cleanup_orphans)
+            self._exit_with_cleanup(cleanup_orphans=cleanup_orphans, keep_running=keep_running)
 
         self.app.push_screen(ExitModal(active, dead), handle_exit)
 

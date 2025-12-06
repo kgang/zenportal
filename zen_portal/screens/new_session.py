@@ -285,6 +285,9 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
                             yield Checkbox("worktree", id="worktree-check")
                             yield Checkbox("dangerous", id="dangerous-check")
 
+                        with Horizontal(id="default-dir-row"):
+                            yield Checkbox("set as default dir", id="set-default-dir-check")
+
                 # Tab 2: Attach to existing tmux
                 with TabPane("attach", id="tab-attach"):
                     yield Static("tmux sessions", classes="field-label")
@@ -530,6 +533,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         model_select = self.query_one("#model-select", Select)
         worktree_check = self.query_one("#worktree-check", Checkbox)
         dangerous_check = self.query_one("#dangerous-check", Checkbox)
+        set_default_check = self.query_one("#set-default-dir-check", Checkbox)
 
         name = name_input.value.strip()
         if not name:
@@ -557,6 +561,11 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
                 working_dir = self._initial_dir
         except Exception:
             working_dir = self._initial_dir
+
+        # Save as default directory if checkbox is checked
+        if set_default_check.value:
+            from ..services.config import FeatureSettings
+            self._config.update_portal_features(FeatureSettings(working_dir=working_dir))
 
         features = SessionFeatures(
             working_dir=working_dir,

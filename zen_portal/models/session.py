@@ -11,6 +11,7 @@ import uuid
 
 if TYPE_CHECKING:
     from ..services.config import ClaudeModel
+    from ..services.token_parser import TokenUsage
 
 
 class SessionType(Enum):
@@ -83,6 +84,10 @@ class Session:
     dangerously_skip_permissions: bool = False
     # Revive tracking - prevents immediate COMPLETED detection after revive
     revived_at: datetime | None = None
+    # Error tracking for failed sessions
+    error_message: str = ""
+    # Token tracking (populated from Claude JSONL parsing)
+    token_stats: TokenUsage | None = None
 
     def __post_init__(self):
         # Don't auto-generate claude_session_id - let Claude Code generate it
