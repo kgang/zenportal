@@ -36,6 +36,7 @@ zen_portal/
 │   ├── session_manager.py # Core lifecycle (create, revive, pause, kill)
 │   ├── session_persistence.py # State loading/saving
 │   ├── session_commands.py # Command building for session types
+│   ├── proxy_validation.py # Proxy connectivity/credential checks
 │   ├── tmux.py            # Low-level tmux commands
 │   ├── worktree.py        # Git worktree isolation
 │   ├── config.py          # 3-tier config system
@@ -201,9 +202,11 @@ These patterns MUST be followed consistently across all screens:
 | `services/session_manager.py` | Core session lifecycle logic |
 | `services/tmux.py` | All tmux command wrappers |
 | `services/config.py` | 3-tier config resolution |
+| `services/proxy_validation.py` | Proxy connectivity/credential checks |
 | `services/token_parser.py` | Parse Claude JSONL for token stats |
 | `screens/main.py` | Primary UI with keybindings |
 | `screens/new_session.py` | Session creation modal |
+| `screens/config_screen.py` | Settings UI with proxy test button |
 | `models/session.py` | Session dataclass + enums |
 
 ## Constraints & Limits
@@ -221,7 +224,8 @@ uv run pytest zen_portal/tests/ --cov=zen_portal
 
 Tests use mocked tmux operations. Key test files:
 - `test_session_manager.py`
-- `test_session_commands.py` - Proxy env var validation (52 tests)
+- `test_session_commands.py` - Proxy env var validation
+- `test_proxy_validation.py` - Proxy connectivity/credential checks (39 tests)
 - `test_config.py`
 - `test_tmux.py`
 - `test_worktree.py`
@@ -341,41 +345,55 @@ Users can enable/disable session types via settings (`c` key):
 - **Effect:** Disabled types hidden from new session modal type selector
 - **UI:** `SessionTypeDropdown` widget in config_screen.py - collapsible with checkboxes
 
-## Claude Proxy
+## Session Proxy
 
-Route Claude Code through a proxy for alternative models or subscription-based usage:
+Route Claude sessions through a proxy for OpenRouter models or Claude Pro/Max subscription:
 
 - **Config location:** `features.openrouter_proxy` in `~/.config/zen-portal/config.json`
-- **Settings:**
-  - `enabled: bool` - Enable/disable proxy routing
-  - `auth_type: str` - `"api_key"` (OpenRouter) or `"oauth"` (Claude Pro/Max)
-  - `base_url: str` - Proxy URL (default: `http://localhost:8787`)
-  - `api_key: str` - For API_KEY mode: OpenRouter key (or `OPENROUTER_API_KEY` env)
-  - `oauth_token: str` - For OAUTH mode: Bearer token (or `CLAUDE_OAUTH_TOKEN` env)
-  - `default_model: str` - Model override (e.g., `anthropic/claude-sonnet-4`)
-- **UI:** Collapsible section in settings (`c` key)
-- **Effect:** Sets `ANTHROPIC_BASE_URL`, `ANTHROPIC_API_KEY`, `ANTHROPIC_CUSTOM_HEADERS`, `ANTHROPIC_MODEL`
+- **UI:** Collapsible "session proxy" section in settings (`c` key)
 
-**Authentication Modes:**
+**Two Modes:**
 
-| Mode | Header | Use Case | Proxy |
-|------|--------|----------|-------|
-| API Key | `x-api-key: {key}` | OpenRouter (pay-per-token) | y-router |
-| Passthrough | *(none - proxy handles)* | Claude Pro/Max (proxy-managed) | CLIProxyAPI |
-| OAuth | `Authorization: Bearer {token}` | Manual token injection | Custom proxies |
+| Mode | Proxy | Default Port | Credentials | Use Case |
+|------|-------|--------------|-------------|----------|
+| **OpenRouter** | y-router | 8787 | API key (`sk-or-*`) | Pay-per-token via OpenRouter |
+| **Claude Account** | CLIProxyAPI | 8080 | None (proxy handles) | Claude Pro/Max subscription |
+
+**Settings:**
+- `enabled: bool` - Enable/disable proxy routing
+- `auth_type: str` - `"openrouter"` or `"claude_account"`
+- `base_url: str` - Proxy URL (leave empty for mode-appropriate default)
+- `api_key: str` - For OpenRouter: key from openrouter.ai/keys (or `OPENROUTER_API_KEY` env)
+- `default_model: str` - Model override (OpenRouter uses `provider/model` format)
 
 **Setup:**
-- **y-router (API Key):** `git clone https://github.com/luohy15/y-router && cd y-router && docker-compose up -d`
-- **CLIProxyAPI (Passthrough):** Run `./cli-proxy-api --claude-login` to authenticate; use Passthrough mode (proxy handles auth internally)
+- **OpenRouter:** `git clone https://github.com/luohy15/y-router && cd y-router && docker-compose up -d`
+- **Claude Account:** Run `./cli-proxy-api --claude-login` to authenticate
+
+**UI Behavior:**
+- Mode selector auto-updates URL placeholder with correct default port
+- API key field hidden in Claude Account mode (not needed)
+- Model hint updates based on mode (OpenRouter needs `provider/model` format)
+
+**Proxy Validation (`services/proxy_validation.py`):**
+
+Detects common gotchas before session creation:
+
+| Issue | Mode | Detection | Hint |
+|-------|------|-----------|------|
+| y-router not running | OpenRouter | Connection refused on :8787 | "Is y-router running? Try: docker-compose up -d" |
+| CLIProxyAPI not running | Claude Account | Connection refused on :8080 | "Is CLIProxyAPI running?" |
+| Missing API key | OpenRouter | No key configured | "Get key from openrouter.ai/keys" |
+| Wrong key format | OpenRouter | Key doesn't start with `sk-or-` | "OpenRouter keys start with 'sk-or-'" |
+| Remote URL with Claude Account | Claude Account | base_url not localhost | "Claude Account is for local CLIProxyAPI" |
+| Model missing provider | OpenRouter | No "/" in model name | "Use 'provider/model' format" |
 
 **Security:**
-- All env var values validated before shell injection (see `SessionCommandBuilder`)
+- All env var values validated before shell injection
 - URLs: Only http/https schemes; normalized to prevent obfuscation
 - API keys: Alphanumeric + dash/underscore only; shell metacharacters rejected
-- OAuth tokens: Base64 charset (alphanumeric + `.`, `-`, `_`, `=`); max 4096 chars
-- Model names: Strict character whitelist; max 128 chars
 - Config files saved with 0600 permissions (owner read/write only)
-- Prefer env vars (`OPENROUTER_API_KEY`, `CLAUDE_OAUTH_TOKEN`) over storing credentials in config
+- Prefer env vars (`OPENROUTER_API_KEY`) over storing credentials in config
 
 ## Exit Modal
 

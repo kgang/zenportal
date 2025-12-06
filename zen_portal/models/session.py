@@ -89,6 +89,8 @@ class Session:
     error_message: str = ""
     # Token tracking (populated from Claude JSONL parsing)
     token_stats: TokenUsage | None = None
+    # Proxy warning (set when proxy validation finds issues)
+    proxy_warning: str = ""
 
     def __post_init__(self):
         # Don't auto-generate claude_session_id - let Claude Code generate it

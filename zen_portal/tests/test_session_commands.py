@@ -430,7 +430,9 @@ class TestBuildOpenRouterEnvVarsOAuth:
 
         assert result["ANTHROPIC_BASE_URL"] == "http://localhost:5000"
         assert result["ANTHROPIC_API_KEY"] == "my-jwt-token.abc.xyz"
-        assert result["ANTHROPIC_CUSTOM_HEADERS"] == "Authorization: Bearer my-jwt-token.abc.xyz"
+        # OAuth mode now sets both Authorization and Cookie headers for compatibility
+        assert "Authorization: Bearer my-jwt-token.abc.xyz" in result["ANTHROPIC_CUSTOM_HEADERS"]
+        assert "Cookie: sessionKey=my-jwt-token.abc.xyz" in result["ANTHROPIC_CUSTOM_HEADERS"]
         assert result["ANTHROPIC_MODEL"] == "anthropic/claude-sonnet-4"
 
 

@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 
 from ..models.session import Session, SessionType
 from .banner import generate_banner_command
-from .config import ClaudeModel, OpenRouterProxySettings, ProxyAuthType
+from .config import ClaudeModel, ProxySettings, ProxyAuthType
 
 
 # Validation patterns
@@ -237,16 +237,15 @@ class SessionCommandBuilder:
 
         return token
 
-    def build_openrouter_env_vars(
+    def build_proxy_env_vars(
         self,
-        proxy_settings: OpenRouterProxySettings,
+        proxy_settings: ProxySettings,
     ) -> dict[str, str]:
-        """Build environment variables for Claude proxy (y-router, CLIProxyAPI, etc).
+        """Build environment variables for Claude proxy (y-router or CLIProxyAPI).
 
-        Supports three authentication modes:
-        - API_KEY: OpenRouter-style with x-api-key header
-        - OAUTH: Claude Pro/Max with Authorization: Bearer header (manual token)
-        - PASSTHROUGH: Only set base URL, proxy handles auth internally (CLIProxyAPI)
+        Two primary modes:
+        - OPENROUTER: y-router with OpenRouter API key (pay-per-token)
+        - CLAUDE_ACCOUNT: CLIProxyAPI handles auth internally (Pro/Max subscription)
 
         All values are validated before use to prevent injection attacks.
 
@@ -261,44 +260,53 @@ class SessionCommandBuilder:
 
         env_vars = {}
 
-        # Validate and set base URL for the proxy
-        if proxy_settings.base_url:
-            validated_url = self._validate_url(proxy_settings.base_url)
-            if validated_url:
-                env_vars["ANTHROPIC_BASE_URL"] = validated_url
+        # Use effective_base_url which applies mode-appropriate defaults
+        validated_url = self._validate_url(proxy_settings.effective_base_url)
+        if validated_url:
+            env_vars["ANTHROPIC_BASE_URL"] = validated_url
 
-        # Handle authentication based on auth_type
-        if proxy_settings.auth_type == ProxyAuthType.PASSTHROUGH:
-            # Passthrough mode: Only set base URL, proxy handles auth internally
-            # Used for CLIProxyAPI which manages OAuth tokens automatically
+        # Normalize auth type for consistent handling
+        auth_type = ProxyAuthType.normalize(proxy_settings.auth_type)
+
+        if auth_type == ProxyAuthType.CLAUDE_ACCOUNT:
+            # Claude Account mode: proxy handles auth internally (CLIProxyAPI)
+            # No credentials needed from us
             pass
-        elif proxy_settings.auth_type == ProxyAuthType.OAUTH:
-            # OAuth mode: Use bearer token (manual token injection)
-            oauth_token = proxy_settings.oauth_token or os.environ.get("CLAUDE_OAUTH_TOKEN", "")
-            if oauth_token:
-                validated_token = self._validate_oauth_token(oauth_token)
-                if validated_token:
-                    # Set as API key (some proxies still need this field)
-                    env_vars["ANTHROPIC_API_KEY"] = validated_token
-                    # Set Authorization header for OAuth
-                    env_vars["ANTHROPIC_CUSTOM_HEADERS"] = f"Authorization: Bearer {validated_token}"
-        else:
-            # API_KEY mode: Use x-api-key header (OpenRouter style)
+        elif auth_type == ProxyAuthType.OPENROUTER:
+            # OpenRouter mode: x-api-key header for y-router
             api_key = proxy_settings.api_key or os.environ.get("OPENROUTER_API_KEY", "")
             if api_key:
                 validated_key = self._validate_api_key(api_key)
                 if validated_key:
                     env_vars["ANTHROPIC_API_KEY"] = validated_key
-                    # y-router needs the key in custom headers
                     env_vars["ANTHROPIC_CUSTOM_HEADERS"] = f"x-api-key: {validated_key}"
+        else:
+            # OAuth mode (deprecated): manual token injection
+            oauth_token = proxy_settings.oauth_token or os.environ.get("CLAUDE_OAUTH_TOKEN", "")
+            if oauth_token:
+                validated_token = self._validate_oauth_token(oauth_token)
+                if validated_token:
+                    env_vars["ANTHROPIC_API_KEY"] = validated_token
+                    env_vars["ANTHROPIC_CUSTOM_HEADERS"] = (
+                        f"Authorization: Bearer {validated_token}\n"
+                        f"Cookie: sessionKey={validated_token}"
+                    )
 
-        # Validate and set model override if specified
+        # Model override (primarily for OpenRouter which uses provider/model format)
         if proxy_settings.default_model:
             validated_model = self._validate_model_name(proxy_settings.default_model)
             if validated_model:
                 env_vars["ANTHROPIC_MODEL"] = validated_model
 
         return env_vars
+
+    # Backwards compatibility alias
+    def build_openrouter_env_vars(
+        self,
+        proxy_settings: ProxySettings,
+    ) -> dict[str, str]:
+        """Deprecated: Use build_proxy_env_vars instead."""
+        return self.build_proxy_env_vars(proxy_settings)
 
     def wrap_with_banner(
         self,

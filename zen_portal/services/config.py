@@ -66,11 +66,31 @@ class ClaudeModel(Enum):
 
 
 class ProxyAuthType(Enum):
-    """Authentication type for Claude proxy."""
+    """Proxy mode for Claude sessions."""
 
-    API_KEY = "api_key"  # OpenRouter-style: x-api-key header
-    OAUTH = "oauth"  # Claude Pro/Max: Authorization: Bearer token (manual)
-    PASSTHROUGH = "passthrough"  # Proxy handles auth internally (CLIProxyAPI)
+    OPENROUTER = "openrouter"  # y-router: OpenRouter API key, pay-per-token
+    CLAUDE_ACCOUNT = "claude_account"  # CLIProxyAPI: proxy handles auth (Pro/Max)
+    # Legacy values for backwards compatibility
+    API_KEY = "api_key"  # Alias for OPENROUTER
+    PASSTHROUGH = "passthrough"  # Alias for CLAUDE_ACCOUNT
+    OAUTH = "oauth"  # Deprecated: manual token injection
+
+    @classmethod
+    def normalize(cls, value: "ProxyAuthType") -> "ProxyAuthType":
+        """Normalize legacy values to current ones."""
+        if value == cls.API_KEY:
+            return cls.OPENROUTER
+        if value == cls.PASSTHROUGH:
+            return cls.CLAUDE_ACCOUNT
+        return value
+
+    @property
+    def default_port(self) -> int:
+        """Default port for this proxy mode."""
+        normalized = self.normalize(self)
+        if normalized == ProxyAuthType.CLAUDE_ACCOUNT:
+            return 8080
+        return 8787  # OpenRouter/y-router default
 
 
 # All available session types for configuration
@@ -78,13 +98,12 @@ ALL_SESSION_TYPES = ["claude", "codex", "gemini", "shell", "openrouter"]
 
 
 @dataclass
-class OpenRouterProxySettings:
-    """Settings for routing Claude Code through a proxy.
+class ProxySettings:
+    """Settings for routing Claude sessions through a proxy.
 
-    Supports three authentication modes:
-    1. API Key (OpenRouter): Uses x-api-key header, pay-per-token
-    2. OAuth (manual): Uses Authorization: Bearer, for manual token injection
-    3. Passthrough (CLIProxyAPI): Only sets base URL, proxy handles auth internally
+    Two primary modes:
+    1. OpenRouter (y-router): Pay-per-token via OpenRouter API key
+    2. Claude Account (CLIProxyAPI): Use Claude Pro/Max subscription, proxy handles auth
 
     Security notes:
     - Credentials stored in plain text; prefer environment variables
@@ -93,17 +112,28 @@ class OpenRouterProxySettings:
     """
 
     enabled: bool = False
-    # Authentication type
-    auth_type: ProxyAuthType = ProxyAuthType.API_KEY
-    # Proxy URL (y-router default, or CLIProxyAPI, etc.)
-    base_url: str = "http://localhost:8787"
-    # For API_KEY auth: OpenRouter API key (or OPENROUTER_API_KEY env var)
+    # Proxy mode
+    auth_type: ProxyAuthType = ProxyAuthType.OPENROUTER
+    # Proxy URL (auto-filled based on mode if empty)
+    base_url: str = ""
+    # For OpenRouter: API key (or OPENROUTER_API_KEY env var)
     api_key: str = ""
-    # For OAUTH auth: Bearer token (or CLAUDE_OAUTH_TOKEN env var)
-    # Note: CLIProxyAPI handles tokens automatically; only needed for manual setup
+    # Deprecated: OAuth token for manual injection
     oauth_token: str = ""
-    # Default model to use (e.g., "anthropic/claude-sonnet-4")
+    # Model override (e.g., "anthropic/claude-sonnet-4" for OpenRouter)
     default_model: str = ""
+
+    def __post_init__(self):
+        """Normalize auth_type on creation."""
+        self.auth_type = ProxyAuthType.normalize(self.auth_type)
+
+    @property
+    def effective_base_url(self) -> str:
+        """Get base URL with mode-appropriate default."""
+        if self.base_url:
+            return self.base_url
+        port = self.auth_type.default_port
+        return f"http://localhost:{port}"
 
     def to_dict(self, redact_secrets: bool = False) -> dict:
         """Serialize to dict.
@@ -112,9 +142,9 @@ class OpenRouterProxySettings:
             redact_secrets: If True, redact sensitive fields
         """
         result: dict = {"enabled": self.enabled}
-        if self.auth_type != ProxyAuthType.API_KEY:
-            result["auth_type"] = self.auth_type.value
-        if self.base_url != "http://localhost:8787":
+        # Always save auth_type (normalized value)
+        result["auth_type"] = self.auth_type.value
+        if self.base_url:
             result["base_url"] = self.base_url
         if self.api_key:
             if redact_secrets:
@@ -131,27 +161,29 @@ class OpenRouterProxySettings:
         return result
 
     @classmethod
-    def from_dict(cls, data: dict) -> "OpenRouterProxySettings":
-        auth_type_str = data.get("auth_type", "api_key")
+    def from_dict(cls, data: dict) -> "ProxySettings":
+        auth_type_str = data.get("auth_type", "openrouter")
         try:
             auth_type = ProxyAuthType(auth_type_str)
         except ValueError:
-            auth_type = ProxyAuthType.API_KEY
+            auth_type = ProxyAuthType.OPENROUTER
+        # Normalize legacy values
+        auth_type = ProxyAuthType.normalize(auth_type)
         return cls(
             enabled=data.get("enabled", False),
             auth_type=auth_type,
-            base_url=data.get("base_url", "http://localhost:8787"),
+            base_url=data.get("base_url", ""),
             api_key=data.get("api_key", ""),
             oauth_token=data.get("oauth_token", ""),
             default_model=data.get("default_model", ""),
         )
 
-    def merge_with(self, override: "OpenRouterProxySettings") -> "OpenRouterProxySettings":
+    def merge_with(self, override: "ProxySettings") -> "ProxySettings":
         """Return new settings with override values taking precedence."""
-        return OpenRouterProxySettings(
+        return ProxySettings(
             enabled=override.enabled if override.enabled else self.enabled,
-            auth_type=override.auth_type if override.auth_type != ProxyAuthType.API_KEY else self.auth_type,
-            base_url=override.base_url if override.base_url != "http://localhost:8787" else self.base_url,
+            auth_type=override.auth_type if override.auth_type != ProxyAuthType.OPENROUTER else self.auth_type,
+            base_url=override.base_url if override.base_url else self.base_url,
             api_key=override.api_key if override.api_key else self.api_key,
             oauth_token=override.oauth_token if override.oauth_token else self.oauth_token,
             default_model=override.default_model if override.default_model else self.default_model,
@@ -160,10 +192,17 @@ class OpenRouterProxySettings:
     @property
     def has_credentials(self) -> bool:
         """Check if credentials are configured for the selected auth type."""
-        if self.auth_type == ProxyAuthType.API_KEY:
+        normalized = ProxyAuthType.normalize(self.auth_type)
+        if normalized == ProxyAuthType.OPENROUTER:
             return bool(self.api_key or os.environ.get("OPENROUTER_API_KEY"))
-        else:  # OAUTH
+        elif normalized == ProxyAuthType.CLAUDE_ACCOUNT:
+            return True  # No credentials needed, proxy handles auth
+        else:  # OAUTH (deprecated)
             return bool(self.oauth_token or os.environ.get("CLAUDE_OAUTH_TOKEN"))
+
+
+# Backwards compatibility alias
+OpenRouterProxySettings = ProxySettings
 
 
 @dataclass
@@ -238,8 +277,8 @@ class FeatureSettings:
     enabled_session_types: list[str] | None = None
     # OpenRouter default model for orchat sessions (e.g., "anthropic/claude-3.5-sonnet")
     openrouter_model: str | None = None
-    # OpenRouter proxy settings for routing Claude Code through OpenRouter
-    openrouter_proxy: OpenRouterProxySettings | None = None
+    # Proxy settings for routing Claude sessions through y-router or CLIProxyAPI
+    openrouter_proxy: ProxySettings | None = None
 
     def to_dict(self) -> dict:
         result = {}
@@ -265,7 +304,7 @@ class FeatureSettings:
         model = ClaudeModel(data["model"]) if data.get("model") else None
         worktree = WorktreeSettings.from_dict(data["worktree"]) if data.get("worktree") else None
         enabled_types = data.get("enabled_session_types")
-        openrouter_proxy = OpenRouterProxySettings.from_dict(data["openrouter_proxy"]) if data.get("openrouter_proxy") else None
+        openrouter_proxy = ProxySettings.from_dict(data["openrouter_proxy"]) if data.get("openrouter_proxy") else None
         return cls(
             working_dir=working_dir,
             model=model,

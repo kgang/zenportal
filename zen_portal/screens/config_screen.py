@@ -7,8 +7,9 @@ from textual.containers import Vertical, Horizontal
 from textual.widgets import Button, Static, Select, OptionList, Checkbox, Input, Collapsible
 from textual.widgets.option_list import Option
 
-from ..services.config import ConfigManager, ExitBehavior, FeatureSettings, OpenRouterProxySettings, ProxyAuthType, ALL_SESSION_TYPES
+from ..services.config import ConfigManager, ExitBehavior, FeatureSettings, ProxySettings, ProxyAuthType, ALL_SESSION_TYPES
 from ..services.profile import ProfileManager
+from ..services.proxy_validation import ProxyValidator, ProxyStatus
 from ..widgets.session_type_dropdown import SessionTypeDropdown
 from ..widgets.path_input import PathInput
 
@@ -167,6 +168,43 @@ class ConfigScreen(ModalScreen[None]):
     ConfigScreen .openrouter-input {
         width: 100%;
     }
+
+    ConfigScreen .proxy-status-row {
+        width: 100%;
+        height: auto;
+        margin-top: 1;
+        padding: 0 1;
+    }
+
+    ConfigScreen .proxy-status {
+        width: 100%;
+        height: auto;
+    }
+
+    ConfigScreen .proxy-status-ok {
+        color: $success;
+    }
+
+    ConfigScreen .proxy-status-warning {
+        color: $warning;
+    }
+
+    ConfigScreen .proxy-status-error {
+        color: $error;
+    }
+
+    ConfigScreen .proxy-hint {
+        color: $text-disabled;
+        width: 100%;
+        height: auto;
+        margin-top: 0;
+        padding: 0 1;
+    }
+
+    ConfigScreen #test-proxy {
+        margin-top: 1;
+        margin-left: 1;
+    }
     """
 
     def __init__(self, config_manager: ConfigManager, profile_manager: ProfileManager | None = None):
@@ -222,34 +260,35 @@ class ConfigScreen(ModalScreen[None]):
                     id="instance-dir-input",
                 )
 
-            # Claude proxy settings (collapsible)
-            openrouter_proxy = self._config_manager.config.features.openrouter_proxy
-            proxy_enabled = openrouter_proxy.enabled if openrouter_proxy else False
-            proxy_auth_type = openrouter_proxy.auth_type if openrouter_proxy else ProxyAuthType.API_KEY
-            proxy_url = openrouter_proxy.base_url if openrouter_proxy else "http://localhost:8787"
-            proxy_key = openrouter_proxy.api_key if openrouter_proxy else ""
-            proxy_oauth = openrouter_proxy.oauth_token if openrouter_proxy else ""
-            proxy_model = openrouter_proxy.default_model if openrouter_proxy else ""
+            # Session proxy settings (collapsible)
+            proxy = self._config_manager.config.features.openrouter_proxy
+            proxy_enabled = proxy.enabled if proxy else False
+            proxy_auth_type = ProxyAuthType.normalize(proxy.auth_type) if proxy else ProxyAuthType.OPENROUTER
+            proxy_url = proxy.base_url if proxy else ""
+            proxy_key = proxy.api_key if proxy else ""
+            proxy_model = proxy.default_model if proxy else ""
 
-            with Collapsible(title="claude proxy", id="openrouter-collapsible", collapsed=True):
+            # Determine URL placeholder based on mode
+            url_placeholder = f"http://localhost:{proxy_auth_type.default_port}"
+
+            with Collapsible(title="session proxy", id="openrouter-collapsible", collapsed=True):
                 with Vertical(classes="openrouter-content"):
-                    yield Checkbox("Route Claude through proxy", proxy_enabled, id="openrouter-enabled")
+                    yield Checkbox("Route Claude sessions through proxy", proxy_enabled, id="openrouter-enabled")
                     with Vertical(classes="openrouter-row"):
-                        yield Static("auth type", classes="openrouter-label")
+                        yield Static("mode", classes="openrouter-label")
                         yield Select(
                             [
-                                ("API Key (OpenRouter)", ProxyAuthType.API_KEY.value),
-                                ("Passthrough (CLIProxyAPI)", ProxyAuthType.PASSTHROUGH.value),
-                                ("OAuth (manual token)", ProxyAuthType.OAUTH.value),
+                                ("OpenRouter (y-router)", ProxyAuthType.OPENROUTER.value),
+                                ("Claude Account (CLIProxyAPI)", ProxyAuthType.CLAUDE_ACCOUNT.value),
                             ],
                             value=proxy_auth_type.value,
                             id="proxy-auth-type",
                         )
                     with Vertical(classes="openrouter-row"):
-                        yield Static("proxy url", classes="openrouter-label")
+                        yield Static("proxy url (leave empty for default)", classes="openrouter-label")
                         yield Input(
                             value=proxy_url,
-                            placeholder="http://localhost:8787",
+                            placeholder=url_placeholder,
                             id="openrouter-url",
                             classes="openrouter-input",
                         )
@@ -262,23 +301,19 @@ class ConfigScreen(ModalScreen[None]):
                             id="openrouter-key",
                             classes="openrouter-input",
                         )
-                    with Vertical(classes="openrouter-row", id="oauth-token-row"):
-                        yield Static("oauth token (or CLAUDE_OAUTH_TOKEN env)", classes="openrouter-label")
-                        yield Input(
-                            value=proxy_oauth,
-                            placeholder="eyJ... (leave empty if proxy handles auth)",
-                            password=True,
-                            id="oauth-token",
-                            classes="openrouter-input",
-                        )
-                    with Vertical(classes="openrouter-row"):
-                        yield Static("model (optional)", classes="openrouter-label")
+                    with Vertical(classes="openrouter-row", id="model-row"):
+                        yield Static("model (OpenRouter: provider/model)", classes="openrouter-label")
                         yield Input(
                             value=proxy_model,
                             placeholder="anthropic/claude-sonnet-4",
                             id="openrouter-model",
                             classes="openrouter-input",
                         )
+                    # Status indicator and test button
+                    with Horizontal(classes="proxy-status-row"):
+                        yield Static("", id="proxy-status", classes="proxy-status")
+                        yield Button("Test", id="test-proxy", variant="default")
+                    yield Static("", id="proxy-hint", classes="proxy-hint")
 
             # Theme selection
             yield Static("theme", classes="section-title")
@@ -304,6 +339,11 @@ class ConfigScreen(ModalScreen[None]):
                 theme_list.highlighted = i
                 break
 
+        # Initial proxy UI setup (show/hide fields based on mode)
+        self._update_proxy_ui()
+        # Initial proxy status check if enabled
+        self._update_proxy_status()
+
     def on_option_list_option_highlighted(self, event: OptionList.OptionHighlighted) -> None:
         """Preview theme when hovering over option."""
         if event.option and event.option.id:
@@ -320,6 +360,8 @@ class ConfigScreen(ModalScreen[None]):
             self.dismiss(None)
         elif event.button.id == "save":
             self._save_settings()
+        elif event.button.id == "test-proxy":
+            self._test_proxy_connection()
 
     def _save_settings(self) -> None:
         """Save all settings."""
@@ -337,24 +379,22 @@ class ConfigScreen(ModalScreen[None]):
         global_input = self.query_one("#global-dir-input", PathInput)
         global_path = global_input.get_path()
 
-        # Save Claude proxy settings
-        openrouter_enabled = self.query_one("#openrouter-enabled", Checkbox).value
+        # Save session proxy settings
+        proxy_enabled = self.query_one("#openrouter-enabled", Checkbox).value
         auth_type_select = self.query_one("#proxy-auth-type", Select)
-        auth_type = ProxyAuthType(auth_type_select.value) if auth_type_select.value else ProxyAuthType.API_KEY
-        openrouter_url = self.query_one("#openrouter-url", Input).value.strip()
-        openrouter_key = self.query_one("#openrouter-key", Input).value.strip()
-        oauth_token = self.query_one("#oauth-token", Input).value.strip()
-        openrouter_model = self.query_one("#openrouter-model", Input).value.strip()
+        auth_type = ProxyAuthType(auth_type_select.value) if auth_type_select.value else ProxyAuthType.OPENROUTER
+        proxy_url = self.query_one("#openrouter-url", Input).value.strip()
+        proxy_key = self.query_one("#openrouter-key", Input).value.strip()
+        proxy_model = self.query_one("#openrouter-model", Input).value.strip()
 
         openrouter_proxy = None
-        if openrouter_enabled or openrouter_key or oauth_token or openrouter_model:
-            openrouter_proxy = OpenRouterProxySettings(
-                enabled=openrouter_enabled,
+        if proxy_enabled or proxy_key or proxy_model:
+            openrouter_proxy = ProxySettings(
+                enabled=proxy_enabled,
                 auth_type=auth_type,
-                base_url=openrouter_url or "http://localhost:8787",
-                api_key=openrouter_key,
-                oauth_token=oauth_token,
-                default_model=openrouter_model,
+                base_url=proxy_url,  # Empty string uses mode-appropriate default
+                api_key=proxy_key,
+                default_model=proxy_model,
             )
 
         config = self._config_manager.config
@@ -467,3 +507,149 @@ class ConfigScreen(ModalScreen[None]):
         """Restore original theme on cancel."""
         if self._original_theme:
             self.app.theme = self._original_theme
+
+    def _get_current_proxy_settings(self) -> ProxySettings:
+        """Get proxy settings from current form state."""
+        try:
+            enabled = self.query_one("#openrouter-enabled", Checkbox).value
+            auth_type_select = self.query_one("#proxy-auth-type", Select)
+            auth_type = ProxyAuthType(auth_type_select.value) if auth_type_select.value else ProxyAuthType.OPENROUTER
+            url = self.query_one("#openrouter-url", Input).value.strip()
+            api_key = self.query_one("#openrouter-key", Input).value.strip()
+            model = self.query_one("#openrouter-model", Input).value.strip()
+
+            return ProxySettings(
+                enabled=enabled,
+                auth_type=auth_type,
+                base_url=url,  # Empty string uses mode-appropriate default
+                api_key=api_key,
+                default_model=model,
+            )
+        except Exception:
+            return ProxySettings()
+
+    def _update_proxy_status(self, show_hint: bool = True) -> None:
+        """Update proxy status display based on current settings."""
+        try:
+            settings = self._get_current_proxy_settings()
+            status_widget = self.query_one("#proxy-status", Static)
+            hint_widget = self.query_one("#proxy-hint", Static)
+
+            if not settings.enabled:
+                status_widget.update("")
+                hint_widget.update("")
+                status_widget.remove_class("proxy-status-ok", "proxy-status-warning", "proxy-status-error")
+                return
+
+            validator = ProxyValidator(settings)
+            result = validator.validate_sync()
+
+            # Update status text and color
+            status_widget.remove_class("proxy-status-ok", "proxy-status-warning", "proxy-status-error")
+
+            if result.is_ok:
+                status_widget.update("● ready")
+                status_widget.add_class("proxy-status-ok")
+                hint_widget.update("") if not show_hint else None
+            elif result.has_errors:
+                status_widget.update(f"● {result.summary}")
+                status_widget.add_class("proxy-status-error")
+                # Show first error hint
+                for check in [result.connectivity, result.credentials, result.configuration]:
+                    if check.is_error and check.hint:
+                        hint_widget.update(check.hint)
+                        break
+            else:
+                status_widget.update(f"● {result.summary}")
+                status_widget.add_class("proxy-status-warning")
+                # Show first warning hint
+                for check in [result.connectivity, result.credentials, result.configuration]:
+                    if check.status == ProxyStatus.WARNING and check.hint:
+                        hint_widget.update(check.hint)
+                        break
+        except Exception:
+            pass
+
+    def _test_proxy_connection(self) -> None:
+        """Test proxy connection and update status."""
+        settings = self._get_current_proxy_settings()
+
+        if not settings.enabled:
+            self.app.notify("Enable proxy first", severity="warning", timeout=2)
+            return
+
+        # Update status with connection test
+        status_widget = self.query_one("#proxy-status", Static)
+        hint_widget = self.query_one("#proxy-hint", Static)
+
+        status_widget.update("● testing...")
+        status_widget.remove_class("proxy-status-ok", "proxy-status-warning", "proxy-status-error")
+
+        validator = ProxyValidator(settings)
+        result = validator.validate_sync()
+
+        # Update with results
+        status_widget.remove_class("proxy-status-ok", "proxy-status-warning", "proxy-status-error")
+
+        if result.connectivity.is_ok:
+            if result.is_ok:
+                status_widget.update("● connected")
+                status_widget.add_class("proxy-status-ok")
+                hint_widget.update("")
+                self.app.notify("Proxy connection successful", timeout=2)
+            else:
+                status_widget.update(f"● connected ({result.summary})")
+                status_widget.add_class("proxy-status-warning")
+                # Show credential/config hint
+                for check in [result.credentials, result.configuration]:
+                    if check.hint:
+                        hint_widget.update(check.hint)
+                        break
+                self.app.notify(f"Connected but: {result.summary}", severity="warning", timeout=3)
+        else:
+            status_widget.update(f"● {result.connectivity.message}")
+            status_widget.add_class("proxy-status-error")
+            hint_widget.update(result.connectivity.hint)
+            self.app.notify(result.connectivity.message, severity="error", timeout=3)
+
+    def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
+        """Handle checkbox changes."""
+        if event.checkbox.id == "openrouter-enabled":
+            self._update_proxy_status()
+
+    def on_select_changed(self, event: Select.Changed) -> None:
+        """Handle select changes."""
+        if event.select.id == "proxy-auth-type":
+            self._update_proxy_ui()
+            self._update_proxy_status()
+
+    def _update_proxy_ui(self) -> None:
+        """Update proxy UI based on selected mode."""
+        try:
+            auth_type_select = self.query_one("#proxy-auth-type", Select)
+            if not auth_type_select.value:
+                return
+
+            auth_type = ProxyAuthType(auth_type_select.value)
+            auth_type = ProxyAuthType.normalize(auth_type)
+
+            # Show/hide API key row based on mode
+            api_key_row = self.query_one("#api-key-row", Vertical)
+            if auth_type == ProxyAuthType.CLAUDE_ACCOUNT:
+                api_key_row.display = False
+            else:
+                api_key_row.display = True
+
+            # Update URL placeholder based on mode
+            url_input = self.query_one("#openrouter-url", Input)
+            url_input.placeholder = f"http://localhost:{auth_type.default_port}"
+
+            # Update model hint based on mode
+            model_row = self.query_one("#model-row", Vertical)
+            model_label = model_row.query_one(".openrouter-label", Static)
+            if auth_type == ProxyAuthType.OPENROUTER:
+                model_label.update("model (OpenRouter: provider/model)")
+            else:
+                model_label.update("model (optional)")
+        except Exception:
+            pass

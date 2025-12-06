@@ -7,17 +7,23 @@ from typing import Callable
 from ..models.session import Session, SessionState, SessionFeatures, SessionType
 from ..models.events import SessionCreated, SessionPaused, SessionKilled, SessionCleaned
 from .tmux import TmuxService
-from .config import ConfigManager, FeatureSettings, WorktreeSettings
+from .config import ConfigManager, FeatureSettings, WorktreeSettings, OpenRouterProxySettings
 from .worktree import WorktreeService
 from .discovery import DiscoveryService
 from .state import StateService
 from .token_parser import TokenParser
 from .session_persistence import SessionPersistence
 from .session_commands import SessionCommandBuilder
+from .proxy_validation import ProxyValidator, ProxyValidationResult
 
 
 class SessionLimitError(Exception):
     """Raised when session limits are exceeded."""
+    pass
+
+
+class ProxyConfigWarning(Exception):
+    """Warning about proxy configuration issues (non-fatal)."""
     pass
 
 
@@ -136,6 +142,13 @@ class SessionManager:
             self._emit(SessionCreated(session))
             self._persist_change(session, "created")
             return session
+
+        # Validate proxy settings for Claude sessions
+        if session_type == SessionType.CLAUDE and resolved.openrouter_proxy:
+            proxy_result = self.validate_proxy(resolved.openrouter_proxy)
+            if proxy_result and proxy_result.has_errors:
+                # Store warning but don't fail - proxy issues shouldn't block session start
+                session.proxy_warning = proxy_result.summary
 
         # Build and wrap command
         if session_type == SessionType.CLAUDE:
@@ -613,3 +626,55 @@ class SessionManager:
         """Persist state after a session change."""
         self.save_state()
         self._persistence.append_history(session, event)
+
+    def validate_proxy(
+        self,
+        settings: OpenRouterProxySettings | None = None,
+    ) -> ProxyValidationResult | None:
+        """Validate proxy configuration.
+
+        Checks for common gotchas:
+        - y-router: Docker not running, missing API key, wrong key format
+        - CLIProxyAPI: Not running, not logged in
+        - General: URL unreachable, port conflicts, missing credentials
+
+        Args:
+            settings: Proxy settings to validate. If None, uses resolved config.
+
+        Returns:
+            ProxyValidationResult with detailed check results, or None if proxy disabled.
+        """
+        if settings is None:
+            resolved = self._config.resolve_features()
+            settings = resolved.openrouter_proxy
+
+        if not settings or not settings.enabled:
+            return None
+
+        validator = ProxyValidator(settings)
+        return validator.validate_sync()
+
+    def get_proxy_status(self) -> str:
+        """Get a one-line proxy status for display.
+
+        Returns:
+            Status like "proxy: ready", "proxy: unreachable", or "proxy: disabled"
+        """
+        resolved = self._config.resolve_features()
+        if not resolved.openrouter_proxy or not resolved.openrouter_proxy.enabled:
+            return "proxy: disabled"
+
+        result = self.validate_proxy(resolved.openrouter_proxy)
+        if not result:
+            return "proxy: disabled"
+
+        if result.is_ok:
+            from .config import ProxyAuthType
+            auth_type = ProxyAuthType.normalize(resolved.openrouter_proxy.auth_type)
+            auth_desc = {
+                ProxyAuthType.OPENROUTER: "OpenRouter",
+                ProxyAuthType.CLAUDE_ACCOUNT: "Claude Account",
+            }.get(auth_type, "custom")
+            return f"proxy: {auth_desc}"
+
+        return f"proxy: {result.summary}"

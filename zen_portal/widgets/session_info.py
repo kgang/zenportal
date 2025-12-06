@@ -202,6 +202,16 @@ class SessionInfoView(Static):
             lines.append(f"[dim]prompt[/dim]")
             lines.append(f"  {prompt_preview}")
 
+        # Error message for failed sessions
+        if s.error_message:
+            lines.append("")
+            lines.append(f"[red]error[/red]  {s.error_message}")
+
+        # Proxy warning (non-fatal issues)
+        if s.proxy_warning:
+            lines.append("")
+            lines.append(f"[yellow]proxy[/yellow]  {s.proxy_warning}")
+
         return "\n".join(lines)
 
     def _format_state(self, state: SessionState) -> str:
