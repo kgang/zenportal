@@ -1,17 +1,16 @@
 """ConfigScreen: Settings configuration with keyboard navigation."""
 
-from pathlib import Path
-
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.screen import ModalScreen
 from textual.containers import Vertical, Horizontal
-from textual.reactive import reactive
-from textual.widgets import Button, Checkbox, Static, Select, OptionList, Input
+from textual.widgets import Button, Static, Select, OptionList
 from textual.widgets.option_list import Option
 
 from ..services.config import ConfigManager, ExitBehavior, FeatureSettings, ALL_SESSION_TYPES
 from ..services.profile import ProfileManager
+from ..widgets.session_type_dropdown import SessionTypeDropdown
+from ..widgets.path_input import PathInput
 
 
 # Available themes
@@ -26,234 +25,6 @@ THEMES = [
     ("tokyo-night", "Tokyo Night"),
     ("solarized-light", "Solarized Light"),
 ]
-
-
-class SessionTypeDropdown(Static):
-    """Collapsible dropdown with checkboxes for session types."""
-
-    expanded: reactive[bool] = reactive(False)
-
-    DEFAULT_CSS = """
-    SessionTypeDropdown {
-        width: 100%;
-        height: auto;
-    }
-
-    SessionTypeDropdown .dropdown-header {
-        width: 100%;
-        height: 1;
-        padding: 0 1;
-        background: $surface-darken-1;
-    }
-
-    SessionTypeDropdown .dropdown-header:focus {
-        background: $surface-lighten-1;
-    }
-
-    SessionTypeDropdown .dropdown-header:hover {
-        background: $surface-lighten-1;
-    }
-
-    SessionTypeDropdown .dropdown-content {
-        width: 100%;
-        height: auto;
-        padding: 0 2;
-        background: $surface-darken-1;
-        display: none;
-    }
-
-    SessionTypeDropdown .dropdown-content.expanded {
-        display: block;
-    }
-
-    SessionTypeDropdown .dropdown-content Checkbox {
-        width: 100%;
-        height: auto;
-        padding: 0;
-        margin: 0;
-    }
-
-    SessionTypeDropdown .dropdown-content Checkbox:focus {
-        background: $surface-lighten-1;
-    }
-    """
-
-    BINDINGS = [
-        Binding("f", "toggle_expand", "Expand", show=False),
-        Binding("enter", "toggle_expand", "Expand", show=False),
-        Binding("space", "toggle_expand", "Expand", show=False),
-    ]
-
-    def __init__(self, enabled_types: list[str] | None = None, **kwargs):
-        super().__init__(**kwargs)
-        self._enabled_types = enabled_types
-        self.can_focus = True
-
-    def compose(self) -> ComposeResult:
-        yield Static(self._get_header_text(), id="dropdown-header", classes="dropdown-header")
-        with Vertical(id="dropdown-content", classes="dropdown-content"):
-            for st in ALL_SESSION_TYPES:
-                is_enabled = self._enabled_types is None or st in self._enabled_types
-                yield Checkbox(st, is_enabled, id=f"type-{st}")
-
-    def _get_header_text(self) -> str:
-        """Generate header text showing selection summary."""
-        if self._enabled_types is None:
-            summary = "all"
-        elif len(self._enabled_types) == 0:
-            summary = "none"
-        else:
-            summary = ", ".join(self._enabled_types)
-        arrow = "▼" if self.expanded else "▶"
-        return f"{arrow} session types: {summary}"
-
-    def watch_expanded(self, expanded: bool) -> None:
-        """Update visibility when expanded changes."""
-        try:
-            content = self.query_one("#dropdown-content")
-            header = self.query_one("#dropdown-header", Static)
-            if expanded:
-                content.add_class("expanded")
-                # Focus first checkbox when expanded
-                first_cb = self.query_one(f"#type-{ALL_SESSION_TYPES[0]}", Checkbox)
-                first_cb.focus()
-            else:
-                content.remove_class("expanded")
-            self._update_header()
-        except Exception:
-            pass
-
-    def _update_header(self) -> None:
-        """Update header text based on current selections."""
-        try:
-            enabled = self.get_enabled_types()
-            if set(enabled) == set(ALL_SESSION_TYPES):
-                self._enabled_types = None
-            else:
-                self._enabled_types = enabled
-            header = self.query_one("#dropdown-header", Static)
-            header.update(self._get_header_text())
-        except Exception:
-            pass
-
-    def action_toggle_expand(self) -> None:
-        """Toggle dropdown expansion."""
-        self.expanded = not self.expanded
-
-    def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
-        """Update header when checkbox state changes."""
-        self._update_header()
-        event.stop()
-
-    def get_enabled_types(self) -> list[str]:
-        """Get list of enabled session types."""
-        enabled = []
-        for st in ALL_SESSION_TYPES:
-            try:
-                cb = self.query_one(f"#type-{st}", Checkbox)
-                if cb.value:
-                    enabled.append(st)
-            except Exception:
-                pass
-        return enabled
-
-    def on_focus(self) -> None:
-        """Handle focus on the dropdown."""
-        # Focus the header when dropdown gets focus
-        pass
-
-    def on_key(self, event) -> None:
-        """Handle navigation within dropdown."""
-        if not self.expanded:
-            return
-
-        # h or escape collapses the dropdown
-        if event.key in ("h", "escape"):
-            self.expanded = False
-            self.focus()
-            event.stop()
-            return
-
-        # j/k navigation within checkboxes
-        if event.key in ("j", "k", "down", "up"):
-            checkboxes = [self.query_one(f"#type-{st}", Checkbox) for st in ALL_SESSION_TYPES]
-            focused_idx = None
-            for i, cb in enumerate(checkboxes):
-                if cb.has_focus:
-                    focused_idx = i
-                    break
-
-            if focused_idx is not None:
-                if event.key in ("j", "down"):
-                    next_idx = (focused_idx + 1) % len(checkboxes)
-                else:
-                    next_idx = (focused_idx - 1) % len(checkboxes)
-                checkboxes[next_idx].focus()
-                event.stop()
-
-
-class PathInput(Input):
-    """Path input with validation and autocomplete hint."""
-
-    DEFAULT_CSS = """
-    PathInput {
-        width: 100%;
-        height: 1;
-        border: none;
-        background: $surface-darken-1;
-        padding: 0 1;
-    }
-
-    PathInput:focus {
-        border: none;
-        background: $surface-darken-2;
-    }
-
-    PathInput.-valid {
-        color: $success;
-    }
-
-    PathInput.-invalid {
-        color: $error;
-    }
-    """
-
-    def __init__(self, initial_path: Path | None = None, placeholder: str = "", **kwargs):
-        value = str(initial_path) if initial_path else ""
-        super().__init__(value=value, placeholder=placeholder, **kwargs)
-        self._validate_path()
-
-    def on_input_changed(self, event: Input.Changed) -> None:
-        """Validate path as user types."""
-        self._validate_path()
-
-    def _validate_path(self) -> None:
-        """Update styling based on path validity."""
-        self.remove_class("-valid", "-invalid")
-        path_str = self.value.strip()
-        if not path_str:
-            return
-        try:
-            path = Path(path_str).expanduser()
-            if path.is_dir():
-                self.add_class("-valid")
-            else:
-                self.add_class("-invalid")
-        except Exception:
-            self.add_class("-invalid")
-
-    def get_path(self) -> Path | None:
-        """Get the path if valid, None otherwise."""
-        path_str = self.value.strip()
-        if not path_str:
-            return None
-        try:
-            path = Path(path_str).expanduser().resolve()
-            if path.is_dir():
-                return path
-        except Exception:
-            pass
-        return None
 
 
 class ConfigScreen(ModalScreen[None]):
@@ -384,7 +155,7 @@ class ConfigScreen(ModalScreen[None]):
         with Vertical(id="dialog"):
             yield Static("settings", id="title")
 
-            # Session types section - collapsible dropdown
+            # Session types section
             yield SessionTypeDropdown(enabled_types=enabled_types, id="session-types")
 
             # Exit behavior section
@@ -439,7 +210,6 @@ class ConfigScreen(ModalScreen[None]):
         """Store original theme for cancel."""
         self._original_theme = self.app.theme
 
-        # Highlight current theme in list (from profile)
         current_theme = self._profile_manager.profile.theme or "textual-dark"
         theme_list = self.query_one("#theme-list", OptionList)
         for i, (theme_id, _) in enumerate(THEMES):
@@ -458,13 +228,10 @@ class ConfigScreen(ModalScreen[None]):
             self.app.theme = event.option.id
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        button_id = event.button.id
-
-        if button_id == "cancel":
+        if event.button.id == "cancel":
             self._restore_theme()
             self.dismiss(None)
-
-        elif button_id == "save":
+        elif event.button.id == "save":
             self._save_settings()
 
     def _save_settings(self) -> None:
@@ -474,16 +241,12 @@ class ConfigScreen(ModalScreen[None]):
         behavior = ExitBehavior(select.value)
         self._config_manager.update_exit_behavior(behavior)
 
-        # Save enabled session types from dropdown
+        # Save enabled session types
         dropdown = self.query_one("#session-types", SessionTypeDropdown)
         enabled_types = dropdown.get_enabled_types()
-        # If all are enabled, store None (default behavior)
-        if set(enabled_types) == set(ALL_SESSION_TYPES):
-            enabled_types_to_save = None
-        else:
-            enabled_types_to_save = enabled_types
+        enabled_types_to_save = None if set(enabled_types) == set(ALL_SESSION_TYPES) else enabled_types
 
-        # Save global directory from input
+        # Save global directory
         global_input = self.query_one("#global-dir-input", PathInput)
         global_path = global_input.get_path()
         config = self._config_manager.config
@@ -491,14 +254,13 @@ class ConfigScreen(ModalScreen[None]):
         config.features.enabled_session_types = enabled_types_to_save
         self._config_manager.save_config(config)
 
-        # Save instance directory from input
+        # Save instance directory
         instance_input = self.query_one("#instance-dir-input", PathInput)
         instance_path = instance_input.get_path()
         if instance_path:
             features = FeatureSettings(working_dir=instance_path)
             self._config_manager.update_portal_features(features)
         else:
-            # Clear instance directory
             portal = self._config_manager.portal
             portal.features.working_dir = None
             self._config_manager.save_portal(portal)
@@ -551,8 +313,6 @@ class ConfigScreen(ModalScreen[None]):
     def action_next_section(self) -> None:
         """Move focus to next section (l/right/tab)."""
         focusables = self._get_focusables()
-
-        # Find current focus and move to next
         for i, selector in enumerate(focusables):
             try:
                 widget = self.query_one(selector)
@@ -562,8 +322,6 @@ class ConfigScreen(ModalScreen[None]):
                     return
             except Exception:
                 continue
-
-        # Default to first focusable
         try:
             self.query_one(focusables[0]).focus()
         except Exception:
@@ -572,8 +330,6 @@ class ConfigScreen(ModalScreen[None]):
     def action_prev_section(self) -> None:
         """Move focus to previous section (h/left)."""
         focusables = self._get_focusables()
-
-        # Find current focus and move to previous
         for i, selector in enumerate(focusables):
             try:
                 widget = self.query_one(selector)
@@ -583,8 +339,6 @@ class ConfigScreen(ModalScreen[None]):
                     return
             except Exception:
                 continue
-
-        # Default to first focusable
         try:
             self.query_one(focusables[0]).focus()
         except Exception:

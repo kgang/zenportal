@@ -1,53 +1,22 @@
 """NewSessionModal: Create, attach, or resume sessions."""
 
-from dataclasses import dataclass
-from enum import Enum
 from pathlib import Path
 
 from textual.app import ComposeResult
-from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, Checkbox, Collapsible, Input, Select, Static, TabbedContent, TabPane
 
 from ..models.session import SessionFeatures
+from ..models.new_session import NewSessionType, ResultType, NewSessionResult
 from ..services.config import ConfigManager, ClaudeModel, ALL_SESSION_TYPES
-from ..services.discovery import DiscoveryService, ClaudeSessionInfo, ExternalTmuxSession
+from ..services.discovery import DiscoveryService
 from ..services.tmux import TmuxService
 from ..widgets.directory_browser import DirectoryBrowser
+from .new_session_lists import AttachListBuilder, ResumeListBuilder, update_list_selection
 
-
-class SessionType(Enum):
-    """Type of session to create."""
-
-    CLAUDE = "claude"
-    CODEX = "codex"
-    GEMINI = "gemini"
-    SHELL = "shell"
-
-
-class ResultType(Enum):
-    """Type of result from the modal."""
-
-    NEW = "new"
-    ATTACH = "attach"
-    RESUME = "resume"
-
-
-@dataclass
-class NewSessionResult:
-    """Result from new session modal."""
-
-    result_type: ResultType
-    # For NEW sessions
-    name: str = ""
-    prompt: str = ""
-    features: SessionFeatures | None = None
-    session_type: SessionType = SessionType.CLAUDE
-    # For ATTACH sessions
-    tmux_session: ExternalTmuxSession | None = None
-    # For RESUME sessions
-    claude_session: ClaudeSessionInfo | None = None
+# Re-export for backwards compatibility
+SessionType = NewSessionType
 
 
 class NewSessionModal(ModalScreen[NewSessionResult | None]):
@@ -205,29 +174,28 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         self._tmux = tmux_service or TmuxService()
         self._existing_names = existing_names or set()
         self._prefix = session_prefix
+
         # Resolve initial working directory
         resolved = self._config.resolve_features()
         self._initial_dir = initial_working_dir or resolved.working_dir or Path.cwd()
-        # External tmux sessions for attach tab
-        self._external_sessions: list[ExternalTmuxSession] = []
-        self._external_selected = 0
-        # Claude sessions for resume tab
-        self._claude_sessions: list[ClaudeSessionInfo] = []
-        self._claude_selected = 0
+
+        # List builders for attach and resume tabs
+        self._attach_list = AttachListBuilder(self._discovery, self._tmux)
+        self._resume_list = ResumeListBuilder(
+            self._discovery,
+            known_claude_session_ids,
+        )
+
         # Enabled session types from config
         self._enabled_types = self._get_enabled_session_types()
-        # Known Claude session IDs from zen-portal state (for tagging)
-        self._known_claude_ids = known_claude_session_ids or set()
 
-    def _get_enabled_session_types(self) -> list[SessionType]:
+    def _get_enabled_session_types(self) -> list[NewSessionType]:
         """Get enabled session types from config."""
         resolved = self._config.resolve_features()
         enabled = resolved.enabled_session_types
         if enabled is None:
-            # None means all types enabled
-            return list(SessionType)
-        # Map string values to SessionType enum
-        return [SessionType(t) for t in enabled if t in [st.value for st in SessionType]]
+            return list(NewSessionType)
+        return [NewSessionType(t) for t in enabled if t in [st.value for st in NewSessionType]]
 
     def _generate_unique_name(self, base: str = "session") -> str:
         """Generate a unique session name."""
@@ -238,10 +206,9 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
             counter += 1
         return f"{base}-{counter}"
 
-    def _get_default_name(self, session_type: SessionType) -> str:
+    def _get_default_name(self, session_type: NewSessionType) -> str:
         """Generate a smart default name based on session type."""
-        if session_type == SessionType.SHELL:
-            # Use directory name for shell sessions
+        if session_type == NewSessionType.SHELL:
             base = self._initial_dir.name or "shell"
         else:
             base = "session"
@@ -256,68 +223,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
             with TabbedContent(id="tabs"):
                 # Tab 1: New session
                 with TabPane("new", id="tab-new"):
-                    # Type selector at the top for discoverability
-                    # Only show enabled session types
-                    type_options = [
-                        (st.value, st) for st in SessionType if st in self._enabled_types
-                    ]
-                    default_type = self._enabled_types[0] if self._enabled_types else SessionType.CLAUDE
-                    # Only show type selector if more than one type is enabled
-                    if len(type_options) > 1:
-                        yield Static("type", classes="field-label")
-                        yield Select(type_options, value=default_type, id="type-select")
-                    else:
-                        # Hidden select with default value for single-type mode
-                        yield Select(type_options, value=default_type, id="type-select", classes="hidden")
-
-                    yield Static("name", classes="field-label")
-                    default_name = self._get_default_name(default_type)
-                    yield Input(
-                        placeholder="session name",
-                        value=default_name,
-                        id="name-input",
-                        classes="field-input",
-                    )
-
-                    yield Static("prompt", classes="field-label", id="prompt-label")
-                    yield Input(
-                        placeholder="initial prompt for claude",
-                        id="prompt-input",
-                        classes="field-input",
-                    )
-
-                    yield Static("directory", classes="field-label", id="dir-label")
-                    with Horizontal(id="dir-path-row"):
-                        yield Input(
-                            placeholder="working directory",
-                            value=str(self._initial_dir),
-                            id="dir-path-input",
-                            classes="field-input",
-                        )
-                        yield Button("browse", id="browse-btn", variant="default")
-
-                    yield DirectoryBrowser(initial_path=self._initial_dir, id="dir-browser", show_hint=False)
-
-                    # Shell-specific options (shown only for shell sessions)
-                    with Horizontal(id="shell-options", classes="hidden"):
-                        yield Checkbox("worktree", id="shell-worktree-check")
-
-                    with Collapsible(title="advanced", id="advanced-config", collapsed=True):
-                        yield Static("model", classes="field-label", id="model-label")
-                        model_options = [
-                            ("default", None),
-                            (ClaudeModel.SONNET.value, ClaudeModel.SONNET),
-                            (ClaudeModel.OPUS.value, ClaudeModel.OPUS),
-                            (ClaudeModel.HAIKU.value, ClaudeModel.HAIKU),
-                        ]
-                        yield Select(model_options, value=resolved.model, id="model-select")
-
-                        with Horizontal(id="options-row"):
-                            yield Checkbox("worktree", id="worktree-check")
-                            yield Checkbox("dangerous", id="dangerous-check")
-
-                        with Horizontal(id="default-dir-row"):
-                            yield Checkbox("set as default dir", id="set-default-dir-check")
+                    yield from self._compose_new_tab(resolved)
 
                 # Tab 2: Attach to existing tmux
                 with TabPane("attach", id="tab-attach"):
@@ -331,140 +237,94 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
 
             yield Static("h/l tabs  j/k select  f expand  enter confirm  esc cancel", classes="hint")
 
+    def _compose_new_tab(self, resolved) -> ComposeResult:
+        """Compose the new session tab content."""
+        type_options = [
+            (st.value, st) for st in NewSessionType if st in self._enabled_types
+        ]
+        default_type = self._enabled_types[0] if self._enabled_types else NewSessionType.CLAUDE
+
+        # Type selector (hidden if only one type)
+        if len(type_options) > 1:
+            yield Static("type", classes="field-label")
+            yield Select(type_options, value=default_type, id="type-select")
+        else:
+            yield Select(type_options, value=default_type, id="type-select", classes="hidden")
+
+        yield Static("name", classes="field-label")
+        yield Input(
+            placeholder="session name",
+            value=self._get_default_name(default_type),
+            id="name-input",
+            classes="field-input",
+        )
+
+        yield Static("prompt", classes="field-label", id="prompt-label")
+        yield Input(placeholder="initial prompt for claude", id="prompt-input", classes="field-input")
+
+        yield Static("directory", classes="field-label", id="dir-label")
+        with Horizontal(id="dir-path-row"):
+            yield Input(
+                placeholder="working directory",
+                value=str(self._initial_dir),
+                id="dir-path-input",
+                classes="field-input",
+            )
+            yield Button("browse", id="browse-btn", variant="default")
+
+        yield DirectoryBrowser(initial_path=self._initial_dir, id="dir-browser", show_hint=False)
+
+        # Shell-specific options
+        with Horizontal(id="shell-options", classes="hidden"):
+            yield Checkbox("worktree", id="shell-worktree-check")
+
+        with Collapsible(title="advanced", id="advanced-config", collapsed=True):
+            yield Static("model", classes="field-label", id="model-label")
+            model_options = [
+                ("default", None),
+                (ClaudeModel.SONNET.value, ClaudeModel.SONNET),
+                (ClaudeModel.OPUS.value, ClaudeModel.OPUS),
+                (ClaudeModel.HAIKU.value, ClaudeModel.HAIKU),
+            ]
+            yield Select(model_options, value=resolved.model, id="model-select")
+
+            with Horizontal(id="options-row"):
+                yield Checkbox("worktree", id="worktree-check")
+                yield Checkbox("dangerous", id="dangerous-check")
+
+            with Horizontal(id="default-dir-row"):
+                yield Checkbox("set as default dir", id="set-default-dir-check")
+
     def on_mount(self) -> None:
         """Focus the name input and load lists."""
         self.query_one("#name-input", Input).focus()
-        self._load_external_sessions()
-        self._load_claude_sessions()
-        # Set initial visibility based on default type
-        if self._enabled_types:
-            default_type = self._enabled_types[0]
-            is_ai_session = default_type in (SessionType.CLAUDE, SessionType.CODEX, SessionType.GEMINI)
-            is_claude = default_type == SessionType.CLAUDE
-            is_shell = default_type == SessionType.SHELL
-            self.query_one("#prompt-label", Static).display = is_ai_session
-            self.query_one("#prompt-input", Input).display = is_ai_session
-            self.query_one("#advanced-config", Collapsible).display = is_claude
-            # Show shell options if default is shell
-            shell_options = self.query_one("#shell-options", Horizontal)
-            if is_shell:
-                shell_options.remove_class("hidden")
-            else:
-                shell_options.add_class("hidden")
+        self._load_lists()
+        self._set_initial_visibility()
 
-    def _load_external_sessions(self) -> None:
-        """Load all tmux sessions for attach tab.
+    def _load_lists(self) -> None:
+        """Load attach and resume lists."""
+        self._attach_list.load_sessions()
+        self._attach_list.build_list(self.query_one("#attach-list", Vertical))
 
-        Shows all tmux sessions (including those from other zen-portal instances)
-        so user can attach to any session.
-        """
-        all_names = self._tmux.list_sessions()
-        self._external_sessions = []
+        self._resume_list.load_sessions()
+        self._resume_list.build_list(self.query_one("#resume-list", Vertical))
 
-        for name in all_names:
-            info = self._tmux.get_session_info(name)
-            session = self._discovery.analyze_tmux_session(info)
-            if not session.is_dead:
-                self._external_sessions.append(session)
-
-        self._build_attach_list()
-
-    def _load_claude_sessions(self) -> None:
-        """Load recent Claude sessions for resume tab."""
-        self._claude_sessions = self._discovery.list_claude_sessions(limit=15)
-        self._build_resume_list()
-
-    def _build_attach_list(self) -> None:
-        """Build the attach list display (called once on load)."""
-        attach_list = self.query_one("#attach-list", Vertical)
-        attach_list.remove_children()
-
-        if not self._external_sessions:
-            attach_list.mount(Static("no tmux sessions", classes="empty-list"))
+    def _set_initial_visibility(self) -> None:
+        """Set initial visibility based on default type."""
+        if not self._enabled_types:
             return
 
-        for i, session in enumerate(self._external_sessions):
-            glyph = "[green]●[/green]" if session.has_claude else "○"
-            cmd = session.command or "?"
-            cwd_name = session.cwd.name if session.cwd else ""
+        default_type = self._enabled_types[0]
+        is_ai = default_type in (NewSessionType.CLAUDE, NewSessionType.CODEX, NewSessionType.GEMINI)
+        is_claude = default_type == NewSessionType.CLAUDE
+        is_shell = default_type == NewSessionType.SHELL
 
-            label = f"{glyph} {session.name:<20} {cmd:<10} {cwd_name}"
-            classes = "list-row selected" if i == self._external_selected else "list-row"
-            attach_list.mount(Static(label, id=f"attach-row-{i}", classes=classes, markup=True))
+        self.query_one("#prompt-label", Static).display = is_ai
+        self.query_one("#prompt-input", Input).display = is_ai
+        self.query_one("#advanced-config", Collapsible).display = is_claude
 
-    def _update_attach_selection(self, old_idx: int, new_idx: int) -> None:
-        """Update selection styling without rebuilding the list."""
-        if old_idx == new_idx:
-            return
-        try:
-            old_row = self.query_one(f"#attach-row-{old_idx}", Static)
-            old_row.remove_class("selected")
-        except Exception:
-            pass
-        try:
-            new_row = self.query_one(f"#attach-row-{new_idx}", Static)
-            new_row.add_class("selected")
-        except Exception:
-            pass
-
-    def _build_resume_list(self) -> None:
-        """Build the resume list display (called once on load).
-
-        Sessions known to zen-portal (via state) are tagged with a glyph.
-        """
-        resume_list = self.query_one("#resume-list", Vertical)
-        resume_list.remove_children()
-
-        if not self._claude_sessions:
-            resume_list.mount(Static("no claude sessions found", classes="empty-list"))
-            return
-
-        for i, session in enumerate(self._claude_sessions):
-            short_id = session.session_id[:8]
-            project_name = session.project_path.name if session.project_path else "?"
-            time_ago = self._format_time_ago(session.modified_at)
-
-            # Tag sessions known to zen-portal
-            is_known = session.session_id in self._known_claude_ids
-            glyph = "[cyan]●[/cyan]" if is_known else "○"
-
-            label = f"{glyph} {short_id}  {project_name:<24} {time_ago}"
-            classes = "list-row selected" if i == self._claude_selected else "list-row"
-            resume_list.mount(Static(label, id=f"resume-row-{i}", classes=classes, markup=True))
-
-    def _update_resume_selection(self, old_idx: int, new_idx: int) -> None:
-        """Update selection styling without rebuilding the list."""
-        if old_idx == new_idx:
-            return
-        try:
-            old_row = self.query_one(f"#resume-row-{old_idx}", Static)
-            old_row.remove_class("selected")
-        except Exception:
-            pass
-        try:
-            new_row = self.query_one(f"#resume-row-{new_idx}", Static)
-            new_row.add_class("selected")
-        except Exception:
-            pass
-
-    def _format_time_ago(self, dt) -> str:
-        """Format a datetime as a human-readable time ago string."""
-        from datetime import datetime
-        now = datetime.now()
-        diff = now - dt
-        seconds = diff.total_seconds()
-
-        if seconds < 60:
-            return "now"
-        elif seconds < 3600:
-            minutes = int(seconds / 60)
-            return f"{minutes}m ago"
-        elif seconds < 86400:
-            hours = int(seconds / 3600)
-            return f"{hours}h ago"
-        else:
-            days = int(seconds / 86400)
-            return f"{days}d ago"
+        shell_options = self.query_one("#shell-options", Horizontal)
+        shell_options.remove_class("hidden") if is_shell else shell_options.add_class("hidden")
 
     def _get_active_tab(self) -> str:
         """Get the currently active tab ID."""
@@ -473,32 +333,26 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
 
     def on_select_changed(self, event: Select.Changed) -> None:
         """Handle session type changes."""
-        if event.select.id == "type-select":
-            is_ai_session = event.value in (SessionType.CLAUDE, SessionType.CODEX, SessionType.GEMINI)
-            is_claude = event.value == SessionType.CLAUDE
-            is_shell = event.value == SessionType.SHELL
-            # Toggle visibility of prompt (for AI sessions)
-            self.query_one("#prompt-label", Static).display = is_ai_session
-            self.query_one("#prompt-input", Input).display = is_ai_session
-            # Hide advanced config for non-Claude (it contains Claude-specific options)
-            self.query_one("#advanced-config", Collapsible).display = is_claude
-            # Show shell options for shell sessions
-            shell_options = self.query_one("#shell-options", Horizontal)
-            if is_shell:
-                shell_options.remove_class("hidden")
-            else:
-                shell_options.add_class("hidden")
+        if event.select.id != "type-select":
+            return
 
-            # Update default name based on session type
-            name_input = self.query_one("#name-input", Input)
-            current_name = name_input.value
-            # Only auto-update if user hasn't customized the name
-            if current_name.startswith("session") or current_name.startswith(self._initial_dir.name):
-                new_default = self._get_default_name(event.value)
-                name_input.value = new_default
+        is_ai = event.value in (NewSessionType.CLAUDE, NewSessionType.CODEX, NewSessionType.GEMINI)
+        is_claude = event.value == NewSessionType.CLAUDE
+        is_shell = event.value == NewSessionType.SHELL
+
+        self.query_one("#prompt-label", Static).display = is_ai
+        self.query_one("#prompt-input", Input).display = is_ai
+        self.query_one("#advanced-config", Collapsible).display = is_claude
+
+        shell_options = self.query_one("#shell-options", Horizontal)
+        shell_options.remove_class("hidden") if is_shell else shell_options.add_class("hidden")
+
+        # Auto-update name if not customized
+        name_input = self.query_one("#name-input", Input)
+        if name_input.value.startswith("session") or name_input.value.startswith(self._initial_dir.name):
+            name_input.value = self._get_default_name(event.value)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        """Handle button presses."""
         if event.button.id == "browse-btn":
             self._toggle_directory_browser()
 
@@ -512,40 +366,37 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
             dir_browser.focus()
 
     def on_directory_browser_path_changed(self, event: DirectoryBrowser.PathChanged) -> None:
-        """Update path input when directory browser path changes."""
         self.query_one("#dir-path-input", Input).value = str(event.path)
 
     def on_directory_browser_directory_selected(self, event: DirectoryBrowser.DirectorySelected) -> None:
-        """Handle directory selection from browser."""
         self.query_one("#dir-path-input", Input).value = str(event.path)
         self.query_one("#dir-browser", DirectoryBrowser).remove_class("visible")
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
-        """Handle enter in input fields."""
         if event.input.id == "dir-path-input":
-            # Navigate directory browser to entered path
-            path_str = event.value.strip()
-            if path_str.startswith("~"):
-                path_str = str(Path.home()) + path_str[1:]
-            try:
-                path = Path(path_str).expanduser().resolve()
-                if path.is_dir():
-                    self.query_one("#dir-browser", DirectoryBrowser).set_path(path)
-            except Exception:
-                pass
+            self._handle_dir_input_submit(event.value)
         elif event.input.id in ("name-input", "prompt-input"):
             self._submit()
 
+    def _handle_dir_input_submit(self, path_str: str) -> None:
+        """Handle enter on directory path input."""
+        path_str = path_str.strip()
+        if path_str.startswith("~"):
+            path_str = str(Path.home()) + path_str[1:]
+        try:
+            path = Path(path_str).expanduser().resolve()
+            if path.is_dir():
+                self.query_one("#dir-browser", DirectoryBrowser).set_path(path)
+        except Exception:
+            pass
+
     def action_cancel(self) -> None:
-        """Cancel the modal."""
         self.dismiss(None)
 
     def _is_in_new_tab_input(self) -> bool:
         """Check if focus is in an input field on the new tab."""
-        tab = self._get_active_tab()
-        if tab != "tab-new":
+        if self._get_active_tab() != "tab-new":
             return False
-        # Check if any input has focus
         try:
             for input_widget in self.query(Input):
                 if input_widget.has_focus:
@@ -560,7 +411,6 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         if not options:
             return
 
-        # Find current value index (skip BLANK option at index 0 if present)
         current_value = select.value
         current_idx = -1
         for i, (_, value) in enumerate(options):
@@ -569,10 +419,8 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
                 break
 
         if current_idx == -1:
-            # Not found, start from first non-BLANK option
             current_idx = 1 if len(options) > 1 and options[0][1] == Select.BLANK else 0
 
-        # Calculate next index (skip BLANK option)
         start_idx = 1 if options[0][1] == Select.BLANK else 0
         end_idx = len(options) - 1
 
@@ -581,11 +429,10 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         else:
             new_idx = current_idx - 1 if current_idx > start_idx else end_idx
 
-        # Set new value
         select.value = options[new_idx][1]
 
     def on_key(self, event) -> None:
-        """Handle key events, including those that need to work in Input fields."""
+        """Handle key events."""
         # ctrl+t cycles tabs even when Input has focus
         if event.key == "ctrl+t":
             event.prevent_default()
@@ -593,7 +440,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
             self._next_tab()
             return
 
-        # Handle j/k in type-select dropdown (when it has focus)
+        # Handle j/k in type-select dropdown
         type_select = self.query_one("#type-select", Select)
         if type_select.has_focus:
             if event.key == "j":
@@ -613,111 +460,87 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
                 event.prevent_default()
                 event.stop()
                 self._prev_tab()
-                return
             elif event.key == "l":
                 event.prevent_default()
                 event.stop()
                 self._next_tab()
-                return
             elif event.key == "j":
                 event.prevent_default()
                 event.stop()
                 self._select_next()
-                return
             elif event.key == "k":
                 event.prevent_default()
                 event.stop()
                 self._select_prev()
-                return
             elif event.key == "f":
-                # f to focus/expand elements
                 event.prevent_default()
                 event.stop()
                 self._handle_focus_expand()
-                return
             elif event.key == "space":
-                # space to confirm selection on attach/resume tabs
                 tab = self._get_active_tab()
                 if tab in ("tab-attach", "tab-resume"):
                     event.prevent_default()
                     event.stop()
                     self._submit()
-                    return
 
     def _handle_focus_expand(self) -> None:
         """Handle f key to focus/expand appropriate element."""
         tab = self._get_active_tab()
         if tab != "tab-new":
-            # On attach/resume tabs, f submits like space
             self._submit()
             return
 
-        # Check what's focused and toggle accordingly
         type_select = self.query_one("#type-select", Select)
-        dir_browser = self.query_one("#dir-browser", DirectoryBrowser)
         browse_btn = self.query_one("#browse-btn", Button)
         dir_input = self.query_one("#dir-path-input", Input)
         advanced = self.query_one("#advanced-config", Collapsible)
 
-        # If type select has focus, expand it
         if type_select.has_focus:
             if type_select.expanded:
                 type_select.action_dismiss()
             else:
                 type_select.action_show_overlay()
-            return
-
-        # If browse button or dir input has focus, toggle directory browser
-        if browse_btn.has_focus or dir_input.has_focus:
+        elif browse_btn.has_focus or dir_input.has_focus:
             self._toggle_directory_browser()
-            return
-
-        # If advanced collapsible or its children have focus, toggle it
-        if advanced.has_focus:
+        elif advanced.has_focus:
             advanced.collapsed = not advanced.collapsed
-            return
-
-        # Default: toggle directory browser as most common action
-        self._toggle_directory_browser()
+        else:
+            self._toggle_directory_browser()
 
     def _select_next(self) -> None:
         """Move selection down in attach/resume lists."""
         tab = self._get_active_tab()
-        if tab == "tab-attach" and self._external_sessions:
-            if self._external_selected < len(self._external_sessions) - 1:
-                old_idx = self._external_selected
-                self._external_selected += 1
-                self._update_attach_selection(old_idx, self._external_selected)
-        elif tab == "tab-resume" and self._claude_sessions:
-            if self._claude_selected < len(self._claude_sessions) - 1:
-                old_idx = self._claude_selected
-                self._claude_selected += 1
-                self._update_resume_selection(old_idx, self._claude_selected)
+        if tab == "tab-attach" and self._attach_list.sessions:
+            if self._attach_list.selected < len(self._attach_list.sessions) - 1:
+                old_idx = self._attach_list.selected
+                self._attach_list.selected += 1
+                update_list_selection(self.query_one, "attach-row-", old_idx, self._attach_list.selected)
+        elif tab == "tab-resume" and self._resume_list.sessions:
+            if self._resume_list.selected < len(self._resume_list.sessions) - 1:
+                old_idx = self._resume_list.selected
+                self._resume_list.selected += 1
+                update_list_selection(self.query_one, "resume-row-", old_idx, self._resume_list.selected)
 
     def _select_prev(self) -> None:
         """Move selection up in attach/resume lists."""
         tab = self._get_active_tab()
-        if tab == "tab-attach" and self._external_selected > 0:
-            old_idx = self._external_selected
-            self._external_selected -= 1
-            self._update_attach_selection(old_idx, self._external_selected)
-        elif tab == "tab-resume" and self._claude_selected > 0:
-            old_idx = self._claude_selected
-            self._claude_selected -= 1
-            self._update_resume_selection(old_idx, self._claude_selected)
+        if tab == "tab-attach" and self._attach_list.selected > 0:
+            old_idx = self._attach_list.selected
+            self._attach_list.selected -= 1
+            update_list_selection(self.query_one, "attach-row-", old_idx, self._attach_list.selected)
+        elif tab == "tab-resume" and self._resume_list.selected > 0:
+            old_idx = self._resume_list.selected
+            self._resume_list.selected -= 1
+            update_list_selection(self.query_one, "resume-row-", old_idx, self._resume_list.selected)
 
     def key_enter(self) -> None:
         """Submit on enter (unless in directory browser)."""
-        # Check if directory browser has focus
         try:
             dir_browser = self.query_one("#dir-browser", DirectoryBrowser)
-            if dir_browser.has_focus or any(
-                child.has_focus for child in dir_browser.query("*")
-            ):
-                return  # Let directory browser handle it
+            if dir_browser.has_focus or any(child.has_focus for child in dir_browser.query("*")):
+                return
         except Exception:
             pass
-
         self._submit()
 
     def _next_tab(self) -> None:
@@ -732,7 +555,6 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
             self._focus_for_tab(tab_ids[next_idx])
         except ValueError:
             tabs.active = "tab-new"
-            self._focus_for_tab("tab-new")
 
     def _prev_tab(self) -> None:
         """Switch to the previous tab."""
@@ -746,10 +568,8 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
             self._focus_for_tab(tab_ids[prev_idx])
         except ValueError:
             tabs.active = "tab-new"
-            self._focus_for_tab("tab-new")
 
     def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
-        """Handle tab activation (e.g., when clicked)."""
         self._focus_for_tab(event.pane.id)
 
     def _focus_for_tab(self, tab_id: str) -> None:
@@ -757,14 +577,11 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         if tab_id == "tab-new":
             self.query_one("#name-input", Input).focus()
         else:
-            # For attach/resume tabs, blur any inputs to prevent Enter capture
-            # Focus the screen itself so Enter goes to key_enter
             self.focus()
 
     def _submit(self) -> None:
         """Submit based on active tab."""
         tab = self._get_active_tab()
-
         if tab == "tab-new":
             self._submit_new()
         elif tab == "tab-attach":
@@ -774,38 +591,32 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
 
     def _submit_new(self) -> None:
         """Create a new session."""
-        name_input = self.query_one("#name-input", Input)
-        prompt_input = self.query_one("#prompt-input", Input)
-        dir_path_input = self.query_one("#dir-path-input", Input)
-        type_select = self.query_one("#type-select", Select)
-        model_select = self.query_one("#model-select", Select)
-        worktree_check = self.query_one("#worktree-check", Checkbox)
-        shell_worktree_check = self.query_one("#shell-worktree-check", Checkbox)
-        dangerous_check = self.query_one("#dangerous-check", Checkbox)
-        set_default_check = self.query_one("#set-default-dir-check", Checkbox)
-
-        name = name_input.value.strip()
+        name = self.query_one("#name-input", Input).value.strip()
         if not name:
             self.app.notify("enter a session name", severity="warning")
             return
 
+        type_select = self.query_one("#type-select", Select)
         session_type = type_select.value
         if session_type is Select.BLANK:
-            session_type = SessionType.CLAUDE
+            session_type = NewSessionType.CLAUDE
 
         prompt = ""
         model = None
         use_worktree = None
 
-        if session_type == SessionType.CLAUDE:
-            prompt = prompt_input.value.strip()
+        if session_type == NewSessionType.CLAUDE:
+            prompt = self.query_one("#prompt-input", Input).value.strip()
+            model_select = self.query_one("#model-select", Select)
             model = model_select.value if model_select.value is not Select.BLANK else None
+            worktree_check = self.query_one("#worktree-check", Checkbox)
             use_worktree = worktree_check.value if worktree_check.value else None
-        elif session_type == SessionType.SHELL:
-            use_worktree = shell_worktree_check.value if shell_worktree_check.value else None
+        elif session_type == NewSessionType.SHELL:
+            shell_worktree = self.query_one("#shell-worktree-check", Checkbox)
+            use_worktree = shell_worktree.value if shell_worktree.value else None
 
-        # Get working directory from path input
-        path_str = dir_path_input.value.strip()
+        # Get working directory
+        path_str = self.query_one("#dir-path-input", Input).value.strip()
         if path_str.startswith("~"):
             path_str = str(Path.home()) + path_str[1:]
         try:
@@ -815,11 +626,12 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         except Exception:
             working_dir = self._initial_dir
 
-        # Save as default directory if checkbox is checked
-        if set_default_check.value:
+        # Save as default if checked
+        if self.query_one("#set-default-dir-check", Checkbox).value:
             from ..services.config import FeatureSettings
             self._config.update_portal_features(FeatureSettings(working_dir=working_dir))
 
+        dangerous_check = self.query_one("#dangerous-check", Checkbox)
         features = SessionFeatures(
             working_dir=working_dir,
             model=model,
@@ -837,30 +649,16 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
 
     def _submit_attach(self) -> None:
         """Attach to external tmux session."""
-        if not self._external_sessions:
+        session = self._attach_list.get_selected()
+        if not session:
             self.app.notify("no sessions to attach", severity="warning")
             return
-
-        if self._external_selected >= len(self._external_sessions):
-            return
-
-        session = self._external_sessions[self._external_selected]
-        self.dismiss(NewSessionResult(
-            result_type=ResultType.ATTACH,
-            tmux_session=session,
-        ))
+        self.dismiss(NewSessionResult(result_type=ResultType.ATTACH, tmux_session=session))
 
     def _submit_resume(self) -> None:
         """Resume a Claude session."""
-        if not self._claude_sessions:
+        session = self._resume_list.get_selected()
+        if not session:
             self.app.notify("no sessions to resume", severity="warning")
             return
-
-        if self._claude_selected >= len(self._claude_sessions):
-            return
-
-        session = self._claude_sessions[self._claude_selected]
-        self.dismiss(NewSessionResult(
-            result_type=ResultType.RESUME,
-            claude_session=session,
-        ))
+        self.dismiss(NewSessionResult(result_type=ResultType.RESUME, claude_session=session))

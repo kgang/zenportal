@@ -1,7 +1,5 @@
-"""SessionManager: Simple session lifecycle management."""
+"""SessionManager: Core session lifecycle management."""
 
-import shlex
-import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Callable
@@ -11,15 +9,15 @@ from ..models.events import SessionCreated, SessionPaused, SessionKilled, Sessio
 from .tmux import TmuxService
 from .config import ConfigManager, FeatureSettings, WorktreeSettings
 from .worktree import WorktreeService
-from .banner import generate_banner_command
 from .discovery import DiscoveryService
-from .state import StateService, PortalState, SessionRecord
+from .state import StateService
 from .token_parser import TokenParser
+from .session_persistence import SessionPersistence
+from .session_commands import SessionCommandBuilder
 
 
 class SessionLimitError(Exception):
     """Raised when session limits are exceeded."""
-
     pass
 
 
@@ -40,15 +38,23 @@ class SessionManager:
         self._tmux = tmux
         self._config = config_manager
         self._worktree = worktree_service
-        # Fallback working dir (only used if no config/portal/session override)
         self._fallback_working_dir = working_dir or Path.cwd()
         self._on_event = on_event
         self._state = state_service or StateService()
         self._sessions: dict[str, Session] = {}
         self._token_parser = TokenParser()
+        self._commands = SessionCommandBuilder()
+
+        # Initialize persistence handler
+        self._persistence = SessionPersistence(
+            state_service=self._state,
+            tmux_name_func=self._tmux_name,
+            tmux_session_exists_func=self._tmux.session_exists,
+            tmux_is_pane_dead_func=self._tmux.is_pane_dead,
+        )
 
         # Load persisted state on startup
-        self._load_persisted_state()
+        self._sessions = self._persistence.load_persisted_sessions()
 
     @property
     def sessions(self) -> list[Session]:
@@ -72,23 +78,6 @@ class SessionManager:
         prefix = self._get_session_prefix()
         return f"{prefix}-{session_id[:8]}"
 
-    def _validate_command_binary(self, session_type: SessionType) -> str | None:
-        """Check if the required binary exists for the session type.
-
-        Returns error message if binary not found, None if valid.
-        """
-        binary_map = {
-            SessionType.CLAUDE: "claude",
-            SessionType.CODEX: "codex",
-            SessionType.GEMINI: "gemini",
-            SessionType.SHELL: "zsh",
-        }
-
-        binary = binary_map.get(session_type)
-        if binary and not shutil.which(binary):
-            return f"Command '{binary}' not found in PATH"
-        return None
-
     def create_session(
         self,
         name: str,
@@ -96,13 +85,13 @@ class SessionManager:
         features: SessionFeatures | None = None,
         session_type: SessionType = SessionType.CLAUDE,
     ) -> Session:
-        """Create a new session (Claude Code or shell).
+        """Create a new session (Claude Code, Codex, Gemini, or shell).
 
         Args:
             name: Display name for the session
-            prompt: Optional initial prompt for Claude (interactive mode, Claude only)
+            prompt: Optional initial prompt (AI sessions only)
             features: Optional session-level feature overrides
-            session_type: Type of session (CLAUDE or SHELL)
+            session_type: Type of session to create
 
         Returns:
             The created Session
@@ -110,24 +99,20 @@ class SessionManager:
         if len(self._sessions) >= self.MAX_SESSIONS:
             raise SessionLimitError(f"Maximum sessions ({self.MAX_SESSIONS}) reached")
 
-        # Convert SessionFeatures to FeatureSettings for resolution
+        # Resolve features through config tiers
         session_override = None
         if features and features.has_overrides():
             session_override = FeatureSettings(
                 working_dir=features.working_dir,
                 model=features.model if session_type == SessionType.CLAUDE else None,
             )
-
-        # Resolve features through all tiers
         resolved = self._config.resolve_features(session_override)
 
-        # Start with resolved working directory
+        # Determine working directory
         working_dir = resolved.working_dir or self._fallback_working_dir
-
-        # Determine if dangerous mode is enabled
         dangerous_mode = features.dangerously_skip_permissions if features else False
 
-        # Create session model (we'll update worktree info after creation attempt)
+        # Create session model
         session = Session(
             name=name,
             prompt=prompt if session_type == SessionType.CLAUDE else "",
@@ -138,84 +123,32 @@ class SessionManager:
             dangerously_skip_permissions=dangerous_mode,
         )
 
-        # Determine if we should create a worktree
-        use_worktree = self._should_use_worktree(features, resolved.worktree)
-
-        if use_worktree and self._worktree:
-            # Determine branch name
-            branch_name = None
-            if features and features.worktree_branch:
-                branch_name = features.worktree_branch
-            # If no explicit branch, create_worktree will use the worktree name
-
-            # Determine from_branch
-            from_branch = "main"
-            if resolved.worktree and resolved.worktree.default_from_branch:
-                from_branch = resolved.worktree.default_from_branch
-
-            # Determine env files to symlink
-            env_files = None
-            if resolved.worktree and resolved.worktree.env_files:
-                env_files = resolved.worktree.env_files
-
-            # Create worktree
-            worktree_name = f"{name}-{session.id[:8]}"
-            wt_result = self._worktree.create_worktree(
-                name=worktree_name,
-                branch=branch_name,
-                from_branch=from_branch,
-                env_files=env_files,
-            )
-
-            if wt_result.success and wt_result.path:
-                # Use worktree as working directory
-                working_dir = wt_result.path
-                session.worktree_path = wt_result.path
-                session.worktree_branch = wt_result.branch
-                session.resolved_working_dir = working_dir
-            # If worktree creation fails, we fall back to regular working_dir
-            # No error raised - graceful degradation
+        # Handle worktree creation if enabled
+        working_dir = self._setup_worktree_if_needed(session, features, resolved.worktree)
 
         self._sessions[session.id] = session
 
-        # Validate binary exists before attempting to create session
-        binary_error = self._validate_command_binary(session_type)
+        # Validate binary exists
+        binary_error = self._commands.validate_binary(session_type)
         if binary_error:
             session.state = SessionState.FAILED
             session.error_message = binary_error
             self._emit(SessionCreated(session))
-            self._persist_session_change(session, "created")
+            self._persist_change(session, "created")
             return session
 
-        # Build command based on session type
+        # Build and wrap command
         if session_type == SessionType.CLAUDE:
-            # Build claude command - don't specify session ID, let Claude generate it
-            # We'll discover the session ID later for revival
-            command_args = ["claude"]
-            if resolved.model:
-                command_args.extend(["--model", resolved.model.value])
-            if dangerous_mode:
-                command_args.append("--dangerously-skip-permissions")
-            if prompt:
-                command_args.append(prompt)
-            # Clear the pre-generated session ID since we're not using it
-            session.claude_session_id = ""
-        elif session_type == SessionType.CODEX:
-            # Codex session - OpenAI CLI
-            command_args = ["codex", "--cd", str(working_dir)]
-            if prompt:
-                command_args.append(prompt)
-        elif session_type == SessionType.GEMINI:
-            # Gemini session - Google CLI
-            command_args = ["gemini"]
-            if prompt:
-                command_args.extend(["-p", prompt])
-        else:
-            # Shell session - start user's default shell (zsh) with login profile
-            command_args = ["zsh", "-l"]
+            session.claude_session_id = ""  # Will be discovered later
 
-        # Wrap command with banner
-        command = self._wrap_with_banner(command_args, name, session.id)
+        command_args = self._commands.build_create_command(
+            session_type=session_type,
+            working_dir=working_dir,
+            model=resolved.model,
+            prompt=prompt,
+            dangerous_mode=dangerous_mode,
+        )
+        command = self._commands.wrap_with_banner(command_args, name, session.id)
 
         # Create tmux session
         tmux_name = self._tmux_name(session.id)
@@ -225,15 +158,65 @@ class SessionManager:
             working_dir=working_dir,
         )
 
-        if result.success:
-            session.state = SessionState.RUNNING
-        else:
-            session.state = SessionState.FAILED
+        session.state = SessionState.RUNNING if result.success else SessionState.FAILED
+        if not result.success:
             session.error_message = result.error or "Failed to create tmux session"
 
         self._emit(SessionCreated(session))
-        self._persist_session_change(session, "created")
+        self._persist_change(session, "created")
         return session
+
+    def _setup_worktree_if_needed(
+        self,
+        session: Session,
+        features: SessionFeatures | None,
+        worktree_settings: WorktreeSettings | None,
+    ) -> Path:
+        """Set up worktree for session if enabled. Returns working directory."""
+        working_dir = session.resolved_working_dir
+
+        use_worktree = self._should_use_worktree(features, worktree_settings)
+        if not use_worktree or not self._worktree:
+            return working_dir
+
+        # Determine branch and from_branch
+        branch_name = features.worktree_branch if features else None
+        from_branch = "main"
+        if worktree_settings and worktree_settings.default_from_branch:
+            from_branch = worktree_settings.default_from_branch
+
+        env_files = None
+        if worktree_settings and worktree_settings.env_files:
+            env_files = worktree_settings.env_files
+
+        # Create worktree
+        worktree_name = f"{session.name}-{session.id[:8]}"
+        wt_result = self._worktree.create_worktree(
+            name=worktree_name,
+            branch=branch_name,
+            from_branch=from_branch,
+            env_files=env_files,
+        )
+
+        if wt_result.success and wt_result.path:
+            session.worktree_path = wt_result.path
+            session.worktree_branch = wt_result.branch
+            session.resolved_working_dir = wt_result.path
+            return wt_result.path
+
+        return working_dir
+
+    def _should_use_worktree(
+        self,
+        features: SessionFeatures | None,
+        worktree_settings: WorktreeSettings | None,
+    ) -> bool:
+        """Determine if we should create a worktree for this session."""
+        if features and features.use_worktree is not None:
+            return features.use_worktree
+        if worktree_settings:
+            return worktree_settings.enabled
+        return False
 
     def create_session_with_resume(
         self,
@@ -241,24 +224,13 @@ class SessionManager:
         resume_session_id: str,
         working_dir: Path | None = None,
     ) -> Session:
-        """Create a new session that resumes an existing Claude session.
-
-        Args:
-            name: Display name for the session
-            resume_session_id: Claude session ID to resume
-            working_dir: Optional working directory override
-
-        Returns:
-            The created Session
-        """
+        """Create a new session that resumes an existing Claude session."""
         if len(self._sessions) >= self.MAX_SESSIONS:
             raise SessionLimitError(f"Maximum sessions ({self.MAX_SESSIONS}) reached")
 
-        # Resolve working directory
         resolved = self._config.resolve_features()
         effective_working_dir = working_dir or resolved.working_dir or self._fallback_working_dir
 
-        # Create session model
         session = Session(
             name=name,
             claude_session_id=resume_session_id,
@@ -269,15 +241,9 @@ class SessionManager:
 
         self._sessions[session.id] = session
 
-        # Build claude resume command
-        claude_args = ["claude", "--resume", resume_session_id]
-        if resolved.model:
-            claude_args.extend(["--model", resolved.model.value])
+        command_args = self._commands.build_resume_command(resume_session_id, resolved.model)
+        command = self._commands.wrap_with_banner(command_args, name, session.id)
 
-        # Wrap command with banner
-        command = self._wrap_with_banner(claude_args, name, session.id)
-
-        # Create tmux session
         tmux_name = self._tmux_name(session.id)
         result = self._tmux.create_session(
             name=tmux_name,
@@ -285,143 +251,52 @@ class SessionManager:
             working_dir=effective_working_dir,
         )
 
-        if result.success:
-            session.state = SessionState.RUNNING
-        else:
-            session.state = SessionState.FAILED
+        session.state = SessionState.RUNNING if result.success else SessionState.FAILED
 
         self._emit(SessionCreated(session))
-        self._persist_session_change(session, "created")
+        self._persist_change(session, "created")
         return session
 
-    def _should_use_worktree(
-        self,
-        features: SessionFeatures | None,
-        worktree_settings: WorktreeSettings | None,
-    ) -> bool:
-        """Determine if we should create a worktree for this session.
-
-        Session-level use_worktree takes precedence, then config/portal settings.
-        """
-        # Session-level explicit override
-        if features and features.use_worktree is not None:
-            return features.use_worktree
-
-        # Fall back to config/portal settings
-        if worktree_settings:
-            return worktree_settings.enabled
-
-        return False
-
-    def _wrap_with_banner(
-        self,
-        command: list[str],
-        session_name: str,
-        session_id: str,
-    ) -> list[str]:
-        """Wrap a command with a banner print for visual session separation.
-
-        Returns a bash command that prints the banner then execs the original command.
-        """
-        banner_cmd = generate_banner_command(session_name, session_id)
-        # Shell-escape the original command args
-        escaped_cmd = " ".join(shlex.quote(arg) for arg in command)
-        # Create a bash script that prints banner then execs command
-        # Run command and wait on error
-        script = f"{banner_cmd}; {escaped_cmd} || read -p 'Session ended with error. Press enter to close...'"
-        return ["bash", "-c", script]
-
     def revive_session(self, session_id: str) -> bool:
-        """Revive a completed/failed/paused/killed session.
-
-        For Claude sessions:
-        - FAILED sessions start fresh (don't resume the broken session)
-        - COMPLETED/PAUSED sessions use --resume to continue
-        For shell sessions: restarts the shell with original configuration
-
-        Returns True if successful.
-        """
+        """Revive a completed/failed/paused/killed session."""
         session = self._sessions.get(session_id)
-        if not session:
+        if not session or session.state == SessionState.RUNNING:
             return False
 
-        if session.state == SessionState.RUNNING:
-            return False  # Already running
-
-        # Track if this was a failed session - we'll start fresh instead of resuming
         was_failed = session.state == SessionState.FAILED
-
-        # Clear error state
         if was_failed:
             session.error_message = None
+            session.claude_session_id = ""
 
-        # Build command based on session type
-        if session.session_type == SessionType.SHELL:
-            # Shell session - just restart the shell
-            command_args = ["zsh", "-l"]
-        elif session.session_type == SessionType.CODEX:
-            # Codex session - with resume
-            command_args = ["codex", "resume", "--last"]
-        elif session.session_type == SessionType.GEMINI:
-            # Gemini session - with resume
-            command_args = ["gemini", "--resume"]
-        else:
-            # Claude session
-            if was_failed:
-                # Failed session - start fresh, don't resume the broken session
-                # Clear the old session ID so we get a new one
-                session.claude_session_id = ""
-                command_args = ["claude"]
-            else:
-                # Completed/paused session - try to resume
-                claude_session_id = session.claude_session_id
+        # For non-failed Claude sessions, try to discover session ID
+        if session.session_type == SessionType.CLAUDE and not was_failed:
+            if not session.claude_session_id and session.resolved_working_dir:
+                discovery = DiscoveryService(session.resolved_working_dir)
+                sessions = discovery.list_claude_sessions(
+                    project_path=session.resolved_working_dir,
+                    limit=1,
+                )
+                if sessions:
+                    session.claude_session_id = sessions[0].session_id
 
-                # If we don't have a session ID, try to discover it from the project folder
-                if not claude_session_id and session.resolved_working_dir:
-                    discovery = DiscoveryService(session.resolved_working_dir)
-                    sessions = discovery.list_claude_sessions(
-                        project_path=session.resolved_working_dir,
-                        limit=1,
-                    )
-                    if sessions:
-                        claude_session_id = sessions[0].session_id
-                        # Store it for future revivals
-                        session.claude_session_id = claude_session_id
+        command_args = self._commands.build_revive_command(session, was_failed)
+        command = self._commands.wrap_with_banner(command_args, session.name, session.id)
 
-                if claude_session_id:
-                    # Use --resume with the discovered/known session ID
-                    command_args = ["claude", "--resume", claude_session_id]
-                else:
-                    # No session ID found - use --continue to resume most recent
-                    command_args = ["claude", "--continue"]
-
-            if session.resolved_model:
-                command_args.extend(["--model", session.resolved_model.value])
-            if session.dangerously_skip_permissions:
-                command_args.append("--dangerously-skip-permissions")
-
-        # Wrap with banner
-        command = self._wrap_with_banner(command_args, session.name, session.id)
-
-        # Get correct tmux name (handles adopted external sessions)
-        tmux_name = self.get_tmux_session_name(session.id)
+        tmux_name = self.get_tmux_session_name(session_id)
         if not tmux_name:
             return False
 
-        # Clean up old tmux session if it exists (clear history and kill)
+        # Clean up old tmux session if it exists
         if self._tmux.session_exists(tmux_name):
             self._tmux.clear_history(tmux_name)
             self._tmux.kill_session(tmux_name)
 
-        # Determine working directory - fall back if original no longer exists
-        # (e.g., worktree was deleted on kill)
+        # Determine working directory
         working_dir = session.resolved_working_dir
         if not working_dir or not working_dir.exists():
-            # Try config-resolved working dir, then fallback
             resolved = self._config.resolve_features()
             working_dir = resolved.working_dir or self._fallback_working_dir
 
-        # Create new tmux session
         result = self._tmux.create_session(
             name=tmux_name,
             command=command,
@@ -431,21 +306,14 @@ class SessionManager:
         if result.success:
             session.state = SessionState.RUNNING
             session.ended_at = None
-            session.revived_at = datetime.now()  # Grace period for startup
-            self._persist_session_change(session, "revived")
+            session.revived_at = datetime.now()
+            self._persist_change(session, "revived")
             return True
 
         return False
 
     def pause_session(self, session_id: str) -> bool:
-        """Pause a session, preserving its worktree for later.
-
-        This ends the tmux session but keeps the git worktree intact,
-        allowing the user to resume work later via 'w' key.
-
-        Args:
-            session_id: ID of the session to pause
-        """
+        """Pause a session, preserving its worktree for later."""
         session = self._sessions.get(session_id)
         if not session:
             return False
@@ -455,23 +323,15 @@ class SessionManager:
             self._tmux.clear_history(tmux_name)
             self._tmux.kill_session(tmux_name)
 
-        # Mark as paused (worktree preserved)
         session.state = SessionState.PAUSED
         session.ended_at = datetime.now()
 
         self._emit(SessionPaused(session_id))
-        self._persist_session_change(session, "paused")
+        self._persist_change(session, "paused")
         return True
 
     def kill_session(self, session_id: str) -> bool:
-        """Kill a session and remove its worktree.
-
-        This ends the tmux session and removes the git worktree.
-        Use pause_session() if you want to preserve the worktree.
-
-        Args:
-            session_id: ID of the session to kill
-        """
+        """Kill a session and remove its worktree."""
         session = self._sessions.get(session_id)
         if not session:
             return False
@@ -481,7 +341,6 @@ class SessionManager:
             self._tmux.clear_history(tmux_name)
             self._tmux.kill_session(tmux_name)
 
-        # Clean up worktree if it exists
         if session.worktree_path and self._worktree:
             self._worktree.remove_worktree(session.worktree_path, force=True)
 
@@ -489,82 +348,57 @@ class SessionManager:
         session.ended_at = datetime.now()
 
         self._emit(SessionKilled(session_id))
-        self._persist_session_change(session, "killed")
+        self._persist_change(session, "killed")
         return True
 
     def clean_session(self, session_id: str) -> bool:
-        """Clean up a non-active session - remove worktree and session from list.
-
-        Use this to fully clean up ended sessions, removing both
-        the worktree (if any) and the session from the zen portal listing.
-
-        Args:
-            session_id: ID of the session to clean (must not be active)
-        """
+        """Clean up a non-active session - remove worktree and from list."""
         session = self._sessions.get(session_id)
-        if not session:
+        if not session or session.is_active:
             return False
 
-        if session.is_active:
-            return False
-
-        # Remove the worktree if it exists
         if session.worktree_path and self._worktree:
             self._worktree.remove_worktree(session.worktree_path, force=True)
 
-        # Create record before deletion for history
-        record = self._session_to_record(session)
-
-        # Remove session from listing
+        record = self._persistence.session_to_record(session)
         del self._sessions[session_id]
 
         self._emit(SessionCleaned(session_id))
-
-        # Persist state and history
         self.save_state()
         self._state.append_history(record, "cleaned")
         return True
 
     def navigate_to_worktree(self, session_id: str) -> Session | None:
-        """Create a new shell session in a paused session's worktree.
-
-        Args:
-            session_id: ID of the paused session with a preserved worktree
-
-        Returns:
-            New Session if successful, None if not possible
-        """
+        """Create a new shell session in a paused session's worktree."""
         session = self._sessions.get(session_id)
-        if not session:
+        if not session or session.state != SessionState.PAUSED:
             return None
-
-        if session.state != SessionState.PAUSED:
-            return None
-
         if not session.worktree_path or not session.worktree_path.exists():
             return None
 
-        # Create a new shell session in the worktree directory
         new_features = SessionFeatures(working_dir=session.worktree_path)
-        new_session = self.create_session(
+        return self.create_session(
             name=f"{session.name} (resumed)",
             features=new_features,
             session_type=SessionType.SHELL,
         )
 
-        return new_session
-
-    def remove_session(self, session_id: str) -> bool:
-        """Remove a session entirely."""
-        if session_id not in self._sessions:
+    def rename_session(self, session_id: str, new_name: str) -> bool:
+        """Rename a session."""
+        session = self._sessions.get(session_id)
+        if not session:
             return False
 
-        session = self._sessions[session_id]
-        if session.is_active:
-            self.kill_session(session_id)
+        new_name = new_name.strip()
+        if not new_name:
+            return False
 
-        del self._sessions[session_id]
+        session.name = new_name
+        self._persist_change(session, "renamed")
         return True
+
+    def get_session(self, session_id: str) -> Session | None:
+        return self._sessions.get(session_id)
 
     def get_output(self, session_id: str, lines: int = 100) -> str:
         """Get recent output from a session."""
@@ -575,25 +409,15 @@ class SessionManager:
         tmux_name = self.get_tmux_session_name(session_id)
         if not tmux_name:
             return ""
-        result = self._tmux.capture_pane(tmux_name, lines=lines)
 
-        if result.success:
-            return result.output
-        return ""
+        result = self._tmux.capture_pane(tmux_name, lines=lines)
+        return result.output if result.success else ""
 
     def update_session_tokens(self, session_id: str) -> bool:
-        """Update token statistics for a session from Claude JSONL files.
-
-        Returns True if stats were updated.
-        """
+        """Update token statistics for a Claude session."""
         session = self._sessions.get(session_id)
-        if not session:
+        if not session or session.session_type != SessionType.CLAUDE:
             return False
-
-        if session.session_type != SessionType.CLAUDE:
-            return False
-
-        # Need claude_session_id to find stats
         if not session.claude_session_id:
             return False
 
@@ -605,46 +429,30 @@ class SessionManager:
         if stats:
             session.token_stats = stats.total_usage
             return True
-
         return False
 
     def refresh_states(self) -> None:
-        """Update session states based on tmux status.
-
-        Detects:
-        - Session tmux no longer exists -> COMPLETED
-        - Session tmux exists but pane is dead -> COMPLETED
-
-        Note: Recently revived sessions get a 5-second grace period before
-        dead pane detection kicks in, allowing Claude to start up.
-        """
+        """Update session states based on tmux status."""
         for session in self._sessions.values():
             if session.state != SessionState.RUNNING:
                 continue
 
-            # Get the correct tmux name (handles external sessions)
-            tmux_name = self.get_tmux_session_name(session.id)
-            if not tmux_name:
-                tmux_name = self._tmux_name(session.id)
+            tmux_name = self.get_tmux_session_name(session.id) or self._tmux_name(session.id)
 
-            # Check if tmux session exists at all
             if not self._tmux.session_exists(tmux_name):
                 session.state = SessionState.COMPLETED
                 session.ended_at = datetime.now()
                 session.revived_at = None
                 continue
 
-            # Check if pane is dead (process exited but tmux session remains)
-            # Skip this check during the grace period after revive (5 seconds)
+            # Grace period check
             if session.revived_at:
                 grace_elapsed = (datetime.now() - session.revived_at).total_seconds()
                 if grace_elapsed < 5.0:
-                    continue  # Still in grace period, don't check pane_dead
-                else:
-                    session.revived_at = None  # Grace period expired
+                    continue
+                session.revived_at = None
 
             if self._tmux.is_pane_dead(tmux_name):
-                # Check exit status to distinguish normal exit from error
                 exit_status = self._tmux.get_pane_exit_status(tmux_name)
                 if exit_status is not None and exit_status != 0:
                     session.state = SessionState.FAILED
@@ -653,34 +461,8 @@ class SessionManager:
                     session.state = SessionState.COMPLETED
                 session.ended_at = datetime.now()
 
-            # Update token stats for running Claude sessions
             if session.session_type == SessionType.CLAUDE:
                 self.update_session_tokens(session.id)
-
-    def get_session(self, session_id: str) -> Session | None:
-        return self._sessions.get(session_id)
-
-    def rename_session(self, session_id: str, new_name: str) -> bool:
-        """Rename a session.
-
-        Args:
-            session_id: ID of the session to rename
-            new_name: New display name for the session
-
-        Returns:
-            True if successful, False if session not found or name invalid
-        """
-        session = self._sessions.get(session_id)
-        if not session:
-            return False
-
-        new_name = new_name.strip()
-        if not new_name:
-            return False
-
-        session.name = new_name
-        self._persist_session_change(session, "renamed")
-        return True
 
     def count_by_state(self) -> tuple[int, int]:
         """Return (active_count, dead_count)."""
@@ -689,7 +471,7 @@ class SessionManager:
         return active, dead
 
     def kill_all_sessions(self) -> int:
-        """Kill all tmux sessions and remove worktrees. Returns count killed."""
+        """Kill all sessions. Returns count killed."""
         count = 0
         for session_id in list(self._sessions.keys()):
             if self.kill_session(session_id):
@@ -708,13 +490,7 @@ class SessionManager:
         return count
 
     def cleanup_dead_tmux_sessions(self) -> int:
-        """Clean up any orphaned tmux sessions with dead panes.
-
-        This finds tmux sessions matching our prefix that have dead panes
-        and kills them. Useful on exit to clean up stale sessions.
-
-        Returns the number of sessions cleaned up.
-        """
+        """Clean up orphaned tmux sessions with dead panes."""
         prefix = f"{self._get_session_prefix()}-"
         return self._tmux.cleanup_dead_zen_sessions(prefix)
 
@@ -724,47 +500,27 @@ class SessionManager:
         claude_session_id: str | None = None,
         working_dir: Path | None = None,
     ) -> Session:
-        """Adopt an external tmux session into zen-portal management.
-
-        Creates a Session that tracks the external tmux session. The session
-        won't be renamed - it keeps its original tmux name.
-
-        If the external session has a Claude session ID that matches an existing
-        zen-portal session, updates that session to point to the new tmux session
-        instead of creating a duplicate.
-
-        Args:
-            tmux_name: Name of the existing tmux session
-            claude_session_id: Claude session ID if Claude is running
-            working_dir: Working directory of the tmux session
-
-        Returns:
-            The created Session (or existing session if matched)
-        """
+        """Adopt an external tmux session into zen-portal management."""
         if len(self._sessions) >= self.MAX_SESSIONS:
             raise SessionLimitError(f"Maximum sessions ({self.MAX_SESSIONS}) reached")
 
-        # Check if we already track this tmux session by name
+        # Check if already tracking this tmux session
         for existing in self._sessions.values():
             existing_tmux = self.get_tmux_session_name(existing.id)
             if existing_tmux == tmux_name:
-                # If pane is dead, revive the session
                 if self._tmux.session_exists(tmux_name) and self._tmux.is_pane_dead(tmux_name):
                     self.revive_session(existing.id)
                 elif self._tmux.session_exists(tmux_name):
                     existing.state = SessionState.RUNNING
                 return existing
 
-        # Check if we already track this Claude session by claude_session_id
-        # This handles the case where user resumed a Claude session in a new tmux
+        # Check if tracking by claude_session_id
         if claude_session_id:
             for existing in self._sessions.values():
                 if existing.claude_session_id == claude_session_id:
-                    # Found matching Claude session - update to use new tmux session
                     existing._external_tmux_name = tmux_name
                     if working_dir:
                         existing.resolved_working_dir = working_dir
-                    # If pane is dead, revive the session
                     if self._tmux.session_exists(tmux_name) and self._tmux.is_pane_dead(tmux_name):
                         self.revive_session(existing.id)
                     elif self._tmux.session_exists(tmux_name):
@@ -772,26 +528,18 @@ class SessionManager:
                         existing.ended_at = None
                     return existing
 
-        # Determine session type based on Claude detection
+        # Create new session
         session_type = SessionType.CLAUDE if claude_session_id else SessionType.SHELL
-
-        # Create session model
         session = Session(
             name=tmux_name,
             claude_session_id=claude_session_id or "",
             session_type=session_type,
             resolved_working_dir=working_dir,
-            # Mark that this is an adopted session (external tmux name)
-            # We store the external tmux name so we can map back to it
         )
-
-        # Override the ID to match the tmux name for lookup purposes
-        # This is a bit of a hack but keeps the mapping simple
         session._external_tmux_name = tmux_name
 
         self._sessions[session.id] = session
 
-        # Check initial state
         if self._tmux.session_exists(tmux_name):
             if self._tmux.is_pane_dead(tmux_name):
                 session.state = SessionState.COMPLETED
@@ -804,182 +552,33 @@ class SessionManager:
         return session
 
     def get_tmux_session_name(self, session_id: str) -> str | None:
-        """Get the tmux session name for a zen-portal session.
-
-        Handles both managed sessions (zen-xxx) and adopted external sessions.
-        """
+        """Get the tmux session name for a zen-portal session."""
         session = self._sessions.get(session_id)
         if not session:
             return None
-
-        # Check if this is an adopted external session
         if hasattr(session, "_external_tmux_name"):
             return session._external_tmux_name
-
         return self._tmux_name(session_id)
 
+    def remove_session(self, session_id: str) -> bool:
+        """Remove a session entirely."""
+        if session_id not in self._sessions:
+            return False
+        session = self._sessions[session_id]
+        if session.is_active:
+            self.kill_session(session_id)
+        del self._sessions[session_id]
+        return True
+
     # -------------------------------------------------------------------------
-    # State Persistence
+    # Persistence helpers
     # -------------------------------------------------------------------------
-
-    def _load_persisted_state(self) -> None:
-        """Load sessions from persisted state on startup.
-
-        Only restores sessions that still have valid tmux sessions or worktrees.
-        Dead sessions without resources are discarded.
-        """
-        state = self._state.load_state()
-
-        for record in state.sessions:
-            session = self._session_from_record(record)
-            if session:
-                self._sessions[session.id] = session
-
-    def _session_from_record(self, record: SessionRecord) -> Session | None:
-        """Reconstruct a Session from a persisted record.
-
-        Returns None if the session should not be restored (no valid resources).
-        """
-        # Parse state
-        try:
-            state = SessionState(record.state)
-        except ValueError:
-            state = SessionState.COMPLETED
-
-        # Parse session type
-        try:
-            session_type = SessionType(record.session_type)
-        except ValueError:
-            session_type = SessionType.CLAUDE
-
-        # Parse created_at
-        try:
-            created_at = datetime.fromisoformat(record.created_at)
-        except ValueError:
-            created_at = datetime.now()
-
-        # Parse ended_at
-        ended_at = None
-        if record.ended_at:
-            try:
-                ended_at = datetime.fromisoformat(record.ended_at)
-            except ValueError:
-                pass
-
-        # Determine tmux name for this session
-        if record.external_tmux_name:
-            tmux_name = record.external_tmux_name
-        else:
-            tmux_name = self._tmux_name(record.id)
-
-        # Check if tmux session still exists
-        tmux_exists = self._tmux.session_exists(tmux_name)
-        tmux_dead = tmux_exists and self._tmux.is_pane_dead(tmux_name)
-
-        # Check if worktree still exists
-        worktree_exists = (
-            record.worktree_path
-            and Path(record.worktree_path).exists()
-        )
-
-        # Decide whether to restore this session
-        # Restore if: tmux exists (alive or dead) OR worktree exists
-        if not tmux_exists and not worktree_exists:
-            return None
-
-        # Reconstruct session
-        session = Session(
-            name=record.name,
-            claude_session_id=record.claude_session_id,
-            session_type=session_type,
-            created_at=created_at,
-            ended_at=ended_at,
-            resolved_working_dir=Path(record.working_dir) if record.working_dir else None,
-            worktree_path=Path(record.worktree_path) if record.worktree_path else None,
-            worktree_branch=record.worktree_branch,
-        )
-
-        # Override the auto-generated ID with the persisted one
-        session.id = record.id
-
-        # Set external tmux name if applicable
-        if record.external_tmux_name:
-            session._external_tmux_name = record.external_tmux_name
-
-        # Set model if available
-        if record.model:
-            from .config import ClaudeModel
-            try:
-                session.resolved_model = ClaudeModel(record.model)
-            except ValueError:
-                pass
-
-        # Update state based on current tmux status
-        if tmux_exists and not tmux_dead:
-            session.state = SessionState.RUNNING
-        elif state == SessionState.PAUSED:
-            # Keep paused state if worktree exists
-            session.state = SessionState.PAUSED if worktree_exists else SessionState.COMPLETED
-        elif state == SessionState.KILLED:
-            session.state = SessionState.KILLED
-        else:
-            session.state = SessionState.COMPLETED
-
-        return session
-
-    def _session_to_record(self, session: Session) -> SessionRecord:
-        """Convert a Session to a persistable record."""
-        external_name = None
-        if hasattr(session, "_external_tmux_name"):
-            external_name = session._external_tmux_name
-
-        # Extract token stats if available
-        input_tokens = 0
-        output_tokens = 0
-        cache_tokens = 0
-        if session.token_stats:
-            input_tokens = session.token_stats.input_tokens
-            output_tokens = session.token_stats.output_tokens
-            cache_tokens = session.token_stats.cache_tokens
-
-        return SessionRecord(
-            id=session.id,
-            name=session.name,
-            session_type=session.session_type.value,
-            state=session.state.value,
-            created_at=session.created_at.isoformat(),
-            ended_at=session.ended_at.isoformat() if session.ended_at else None,
-            claude_session_id=session.claude_session_id,
-            worktree_path=str(session.worktree_path) if session.worktree_path else None,
-            worktree_branch=session.worktree_branch,
-            working_dir=str(session.resolved_working_dir) if session.resolved_working_dir else None,
-            model=session.resolved_model.value if session.resolved_model else None,
-            external_tmux_name=external_name,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            cache_tokens=cache_tokens,
-        )
 
     def save_state(self) -> bool:
-        """Persist current session state to disk.
+        """Persist current session state to disk."""
+        return self._persistence.save_state(self._sessions)
 
-        Called automatically on session changes. Can also be called
-        explicitly for manual saves.
-
-        Returns True on success.
-        """
-        records = [self._session_to_record(s) for s in self._sessions.values()]
-        state = PortalState(sessions=records)
-        return self._state.save_state(state)
-
-    def _persist_session_change(self, session: Session, event: str = "update") -> None:
-        """Persist state after a session change.
-
-        Saves full state and appends to history log.
-        """
-        # Save full state
+    def _persist_change(self, session: Session, event: str = "update") -> None:
+        """Persist state after a session change."""
         self.save_state()
-
-        # Append to history
-        record = self._session_to_record(session)
-        self._state.append_history(record, event)
+        self._persistence.append_history(session, event)

@@ -30,9 +30,12 @@ zen_portal/
 ├── app.py                 # Main Textual app entry point
 ├── models/
 │   ├── session.py         # Session dataclass + enums (SessionType, SessionState)
-│   └── events.py          # Custom Textual messages
+│   ├── events.py          # Custom Textual messages
+│   └── new_session.py     # Data models for new session modal
 ├── services/              # Business logic (no UI)
 │   ├── session_manager.py # Core lifecycle (create, revive, pause, kill)
+│   ├── session_persistence.py # State loading/saving
+│   ├── session_commands.py # Command building for session types
 │   ├── tmux.py            # Low-level tmux commands
 │   ├── worktree.py        # Git worktree isolation
 │   ├── config.py          # 3-tier config system
@@ -47,15 +50,34 @@ zen_portal/
 │   ├── output_view.py     # Session output display
 │   ├── session_info.py    # Metadata panel
 │   ├── directory_browser.py
+│   ├── session_type_dropdown.py # Collapsible session type selector
+│   ├── path_input.py      # Validated path input
 │   └── status.py
 ├── screens/               # Modal dialogs and full screens
 │   ├── main.py            # Primary interface
+│   ├── main_actions.py    # MainScreen action handlers (mixin)
 │   ├── new_session.py     # Create/attach/resume modal
+│   ├── new_session_lists.py # Attach/resume list builders
+│   ├── attach_session.py  # Attach to external tmux session
+│   ├── rename_modal.py    # Rename session modal
+│   ├── worktrees.py       # Git worktree management
 │   ├── insert_modal.py    # Send keystrokes
 │   ├── config_screen.py   # Configuration UI
+│   ├── exit_modal.py      # Quit confirmation modal
 │   └── help.py            # Keybindings display
 └── tests/                 # pytest + pytest-asyncio
 ```
+
+## Module Organization
+
+Files are kept under ~500 lines for progressive disclosure in AI-assisted development:
+
+| Core Module | Supporting Modules |
+|-------------|-------------------|
+| `session_manager.py` | `session_persistence.py`, `session_commands.py` |
+| `main.py` | `main_actions.py` |
+| `new_session.py` | `new_session_lists.py`, `models/new_session.py` |
+| `config_screen.py` | `widgets/session_type_dropdown.py`, `widgets/path_input.py` |
 
 ## Core Concepts
 
@@ -141,6 +163,7 @@ SessionSelected(session)
 | d | Clean (remove from list) |
 | a | Attach to tmux |
 | v | Revive completed session |
+| e | Rename session |
 | i | Insert mode (send keys) |
 | c | Config screen |
 | ? | Help |
