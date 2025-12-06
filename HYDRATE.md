@@ -229,8 +229,13 @@ Tests use mocked tmux operations. Key test files:
 
 ### Adding a New Session Type
 1. Add to `SessionType` enum in `models/session.py`
-2. Update `SessionManager.create_session()` command building
-3. Add detection logic in `services/discovery.py`
+2. Add to `NewSessionType` enum in `models/new_session.py`
+3. Add binary to `BINARY_MAP` in `services/session_commands.py`
+4. Add create/revive command cases in `session_commands.py`
+5. Add to `ALL_SESSION_TYPES` in `services/config.py`
+6. Add type mapping in `screens/main.py` (`action_new_session`)
+7. Add prefix in `widgets/session_list.py`
+8. Update AI type checks in `screens/new_session.py`
 
 ### Adding a New Keybinding
 1. Add to `BINDINGS` list in `screens/main.py`
