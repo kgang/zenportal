@@ -290,7 +290,7 @@ Recent design pass established consistent visual patterns:
 - Codex: `cx:`
 - Gemini: `gm:`
 
-**Info view:** Compact single-line format for git/tokens/model
+**Info view:** Compact single-line format for git/tokens/model/repo (repo shown for worktree sessions)
 
 ## Session Type Filtering
 
