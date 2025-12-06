@@ -76,144 +76,91 @@ class SessionInfoView(Static):
     SessionInfoView {
         width: 100%;
         height: 100%;
-        border: round $surface-lighten-1;
+        border: none;
+        padding: 0 1;
     }
 
     SessionInfoView .title {
         height: 1;
-        background: $surface;
-        color: $text-muted;
-        text-align: center;
+        color: $text-disabled;
+        text-align: left;
+        margin-bottom: 1;
     }
 
     SessionInfoView .content {
         height: 1fr;
-        padding: 1 2;
+        padding: 0;
     }
 
     SessionInfoView .empty-message {
         content-align: center middle;
-        color: $text-muted;
-        height: 1fr;
-    }
-
-    SessionInfoView .field {
-        height: 1;
-        margin-bottom: 0;
-    }
-
-    SessionInfoView .field-label {
-        color: $text-muted;
-    }
-
-    SessionInfoView .field-value {
-        color: $text;
-    }
-
-    SessionInfoView .section {
-        margin-top: 1;
         color: $text-disabled;
-        text-style: italic;
+        height: 1fr;
     }
     """
 
     def compose(self) -> ComposeResult:
-        yield Static("info", classes="title")
-
         if not self.session:
-            yield Static("\n\n\n\n      ·\n\n   select a session", classes="empty-message")
-        else:
-            yield Static(self._render_info(), classes="content")
+            yield Static("\n\n\n\n      ·\n\n    select a session", classes="empty-message")
+            return
+
+        yield Static("info", classes="title")
+        yield Static(self._render_info(), classes="content")
 
     def _render_info(self) -> str:
-        """Render session metadata as formatted text."""
+        """Render session metadata as minimal formatted text."""
         s = self.session
         if not s:
             return ""
 
         lines = []
 
-        # Identity section
-        lines.append(f"[dim]identity[/dim]")
-        lines.append(f"  name          {s.display_name}")
-        lines.append(f"  id            {s.id[:8]}...")
-        if s.session_type.value == "claude" and s.claude_session_id:
-            lines.append(f"  claude        {s.claude_session_id[:8]}...")
-        lines.append(f"  type          {s.session_type.value}")
-
-        # State section
-        lines.append("")
-        lines.append(f"[dim]state[/dim]")
+        # Core identity - compact single section
         state_display = self._format_state(s.state)
-        lines.append(f"  status        {s.status_glyph} {state_display}")
-        lines.append(f"  created       {s.created_at.strftime('%H:%M:%S')}")
-        lines.append(f"  age           {s.age_display}")
-        if s.ended_at:
-            lines.append(f"  ended         {s.ended_at.strftime('%H:%M:%S')}")
+        lines.append(f"{s.status_glyph} {s.display_name}")
+        lines.append(f"[dim]{s.session_type.value}  {state_display}  {s.age_display}[/dim]")
 
-        # Location section
-        lines.append("")
-        lines.append(f"[dim]location[/dim]")
-        if s.resolved_working_dir:
-            path_str = str(s.resolved_working_dir)
-            if len(path_str) > 40:
-                path_str = "..." + path_str[-37:]
-            lines.append(f"  directory     {path_str}")
-        if s.worktree_path:
-            wt_str = str(s.worktree_path)
-            if len(wt_str) > 40:
-                wt_str = "..." + wt_str[-37:]
-            lines.append(f"  worktree      {wt_str}")
-
-        # Git info section (if in a git repo)
+        # Location - only if meaningful
         working_path = s.worktree_path or s.resolved_working_dir
+        if working_path:
+            lines.append("")
+            path_str = str(working_path)
+            # Show just the last 2 path components for brevity
+            parts = path_str.split("/")
+            if len(parts) > 2:
+                path_str = ".../" + "/".join(parts[-2:])
+            lines.append(f"[dim]dir[/dim]  {path_str}")
+
+        # Git info - single line summary
         if working_path and working_path.exists():
             git_info = _get_git_info(working_path)
             if git_info:
-                lines.append("")
-                lines.append(f"[dim]git[/dim]")
                 branch = git_info["branch"]
-                commit = git_info["commit"]
-                dirty_marker = " [yellow]*[/yellow]" if git_info["dirty"] else ""
-                lines.append(f"  branch        {branch}{dirty_marker}")
-                if commit:
-                    lines.append(f"  commit        {commit}")
+                commit = git_info["commit"][:7] if git_info["commit"] else ""
+                dirty = "*" if git_info["dirty"] else ""
+                lines.append(f"[dim]git[/dim]  {branch}{dirty} {commit}")
 
-            # Env files section (show symlinked env files)
-            env_symlinks = _get_env_symlinks(working_path)
-            if env_symlinks:
-                lines.append("")
-                lines.append(f"[dim]env files[/dim]")
-                lines.append(f"  symlinked     {', '.join(env_symlinks)}")
+        # Model - only for AI sessions with explicit model
+        if s.resolved_model:
+            lines.append(f"[dim]model[/dim]  {s.resolved_model.value}")
 
-        # Config section (if relevant)
-        if s.resolved_model or s.dangerously_skip_permissions:
-            lines.append("")
-            lines.append(f"[dim]config[/dim]")
-            if s.resolved_model:
-                lines.append(f"  model         {s.resolved_model.value}")
-            if s.dangerously_skip_permissions:
-                lines.append(f"  dangerous     yes")
-
-        # Token usage section (Claude sessions only)
+        # Tokens - compact single line for Claude
         if s.session_type.value == "claude" and s.token_stats:
             lines.append("")
-            lines.append(f"[dim]tokens[/dim]")
-            lines.append(f"  input         {s.token_stats.input_tokens:,}")
-            lines.append(f"  output        {s.token_stats.output_tokens:,}")
-            lines.append(f"  total         {s.token_stats.total_tokens:,}")
-            if s.token_stats.cache_tokens > 0:
-                lines.append(f"  cached        {s.token_stats.cache_tokens:,}")
+            total = s.token_stats.total_tokens
+            # Format as K for thousands
+            if total >= 1000:
+                lines.append(f"[dim]tokens[/dim]  {total/1000:.1f}k")
+            else:
+                lines.append(f"[dim]tokens[/dim]  {total:,}")
 
-        # Prompt section (if any)
+        # Prompt preview - truncated
         if s.prompt:
             lines.append("")
-            lines.append(f"[dim]prompt[/dim]")
-            prompt_preview = s.prompt[:60]
-            if len(s.prompt) > 60:
+            prompt_preview = s.prompt[:50].replace("\n", " ")
+            if len(s.prompt) > 50:
                 prompt_preview += "..."
-            # Handle multiline
-            prompt_preview = prompt_preview.replace("\n", " ")
+            lines.append(f"[dim]prompt[/dim]")
             lines.append(f"  {prompt_preview}")
 
         return "\n".join(lines)

@@ -117,9 +117,9 @@ class ConfigScreen(ModalScreen[None]):
     }
 
     ConfigScreen #dialog {
-        width: 70;
+        width: 60;
         height: auto;
-        max-height: 45;
+        max-height: 40;
         padding: 1 2;
         background: $surface;
         border: round $surface-lighten-1;
@@ -127,15 +127,14 @@ class ConfigScreen(ModalScreen[None]):
 
     ConfigScreen #title {
         text-align: center;
-        text-style: bold;
         width: 100%;
         margin-bottom: 1;
+        color: $text-muted;
     }
 
     ConfigScreen .section-title {
-        color: $text-muted;
+        color: $text-disabled;
         margin-top: 1;
-        text-style: bold;
     }
 
     ConfigScreen .section-desc {
@@ -150,9 +149,10 @@ class ConfigScreen(ModalScreen[None]):
     }
 
     ConfigScreen .setting-label {
-        width: 24;
+        width: 20;
         height: 3;
         content-align: left middle;
+        color: $text-muted;
     }
 
     ConfigScreen Select {
@@ -172,7 +172,7 @@ class ConfigScreen(ModalScreen[None]):
     }
 
     ConfigScreen .path-label {
-        color: $text-muted;
+        color: $text-disabled;
         height: 1;
         margin-bottom: 0;
     }
@@ -255,7 +255,7 @@ class ConfigScreen(ModalScreen[None]):
                 yield Button("Save", variant="primary", id="save")
                 yield Button("Cancel", variant="default", id="cancel")
 
-            yield Static("tab sections  j/k nav  enter select  esc cancel", classes="hint")
+            yield Static("tab sections  j/k nav  esc cancel", classes="hint")
 
     def on_mount(self) -> None:
         """Store original theme for cancel."""

@@ -64,37 +64,37 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
     }
 
     NewSessionModal #dialog {
-        width: 75;
+        width: 65;
         height: auto;
-        max-height: 40;
+        max-height: 36;
         padding: 1 2;
         background: $surface;
-        border: thick $primary;
+        border: round $surface-lighten-1;
         overflow-y: auto;
     }
 
     NewSessionModal #title {
         text-align: center;
-        text-style: bold;
         width: 100%;
         margin-bottom: 1;
+        color: $text-muted;
     }
 
     NewSessionModal TabbedContent {
         height: auto;
-        max-height: 30;
+        max-height: 28;
     }
 
     NewSessionModal TabPane {
-        padding: 1;
+        padding: 1 0;
         height: auto;
-        max-height: 28;
+        max-height: 26;
         overflow-y: auto;
     }
 
     NewSessionModal .field-label {
         margin-top: 1;
-        color: $text-muted;
+        color: $text-disabled;
     }
 
     NewSessionModal .field-input {
@@ -114,7 +114,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
 
     NewSessionModal .hint {
         text-align: center;
-        color: $text-muted;
+        color: $text-disabled;
         margin-top: 1;
     }
 
@@ -134,13 +134,12 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
     }
 
     NewSessionModal .list-row.selected {
-        background: $primary-darken-2;
+        background: $surface-lighten-1;
     }
 
     NewSessionModal .empty-list {
         color: $text-disabled;
-        text-style: italic;
-        padding: 1;
+        padding: 2;
         text-align: center;
     }
 
@@ -150,7 +149,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
 
     NewSessionModal #advanced-config CollapsibleTitle {
         padding: 0 1;
-        color: $text-muted;
+        color: $text-disabled;
     }
 
     NewSessionModal #dir-path-row {
@@ -298,7 +297,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
                     yield Static("recent claude sessions", classes="field-label")
                     yield Vertical(id="resume-list", classes="list-container")
 
-            yield Static("^t tabs  tab fields  enter confirm  esc cancel", classes="hint")
+            yield Static("^t tabs  enter confirm  esc cancel", classes="hint")
 
     def on_mount(self) -> None:
         """Focus the name input and load lists."""

@@ -15,38 +15,39 @@ class OutputView(Static):
     OutputView {
         width: 100%;
         height: 100%;
-        border: round $surface-lighten-1;
+        border: none;
+        padding: 0 1;
     }
 
     OutputView .title {
         height: 1;
-        background: $surface;
-        color: $text-muted;
-        text-align: center;
+        color: $text-disabled;
+        text-align: left;
+        margin-bottom: 1;
     }
 
     OutputView .content {
         height: 1fr;
-        padding: 0 1;
+        padding: 0;
     }
 
     OutputView .empty-message {
         content-align: center middle;
-        color: $text-muted;
+        color: $text-disabled;
         height: 1fr;
     }
     """
 
     def compose(self) -> ComposeResult:
+        if not self.output:
+            yield Static("\n\n\n\n      ·\n\n    select a session", classes="empty-message")
+            return
+
         title = self.session_name if self.session_name else "output"
         yield Static(title, classes="title")
-
-        if not self.output:
-            yield Static("\n\n\n\n      ·\n\n   select a session", classes="empty-message")
-        else:
-            log = RichLog(classes="content", highlight=True, markup=True)
-            log.write(self.output)
-            yield log
+        log = RichLog(classes="content", highlight=True, markup=True)
+        log.write(self.output)
+        yield log
 
     def watch_output(self, new_output: str) -> None:
         """Update display when output changes."""

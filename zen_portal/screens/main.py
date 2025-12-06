@@ -52,6 +52,7 @@ class MainScreen(Screen):
     DEFAULT_CSS = """
     MainScreen {
         layout: vertical;
+        padding: 1 2;
     }
 
     MainScreen #content {
@@ -59,22 +60,28 @@ class MainScreen(Screen):
     }
 
     MainScreen #session-list {
-        width: 1fr;
+        width: 2fr;
+        max-width: 50;
     }
 
     MainScreen #output-view {
-        width: 1fr;
+        width: 3fr;
+        border-left: solid $surface-lighten-1;
+        padding-left: 2;
     }
 
     MainScreen #info-view {
-        width: 1fr;
+        width: 3fr;
+        border-left: solid $surface-lighten-1;
+        padding-left: 2;
     }
 
     MainScreen .hint {
         dock: bottom;
         height: 1;
-        color: $text-muted;
+        color: $text-disabled;
         text-align: center;
+        margin-top: 1;
     }
     """
 
@@ -105,7 +112,7 @@ class MainScreen(Screen):
             yield info_view
 
         yield Static(
-            "j/k move · n new · ^i info · ? help · q quit",
+            "j/k nav  n new  a attach  ? help  q quit",
             id="hint",
             classes="hint",
         )
@@ -663,14 +670,14 @@ class MainScreen(Screen):
     def _update_hint(self) -> None:
         """Update hint line based on current modes."""
         hint = self.query_one("#hint", Static)
-        parts = ["j/k move", "n new", "^i info", "? help"]
+        base = "j/k nav  n new  a attach  ? help  q quit"
 
         if self.info_mode:
-            parts.append("◦ info")
+            hint.update(f"{base}  [dim]◦ info[/dim]")
         elif self._streaming:
-            parts.append("◦ streaming")
-
-        hint.update(" · ".join(parts))
+            hint.update(f"{base}  [dim]◦ stream[/dim]")
+        else:
+            hint.update(base)
 
     def action_config(self) -> None:
         """Show config screen."""

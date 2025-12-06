@@ -93,7 +93,7 @@ class InsertModal(ModalScreen[InsertResult | None]):
     }
 
     InsertModal #dialog {
-        width: 60;
+        width: 55;
         height: auto;
         padding: 1 2;
         background: $surface;
@@ -111,17 +111,18 @@ class InsertModal(ModalScreen[InsertResult | None]):
         height: 5;
         padding: 0 1;
         background: $surface-darken-1;
-        border: round $surface-lighten-1;
+        border: none;
     }
 
     InsertModal #buffer {
         width: 100%;
         height: auto;
+        color: $text;
     }
 
     InsertModal .hint {
         text-align: center;
-        color: $text-muted;
+        color: $text-disabled;
         margin-top: 1;
     }
     """
@@ -136,7 +137,7 @@ class InsertModal(ModalScreen[InsertResult | None]):
             yield Static(f"insert  {self._session_name}", classes="title")
             with VerticalScroll(id="buffer-scroll"):
                 yield Static("", id="buffer")
-            yield Static("type keys · arrows/ctrl+c/shift+enter · esc to send", classes="hint")
+            yield Static("type keys  esc send", classes="hint")
 
     def _get_display_text(self) -> str:
         """Get the display representation of the buffer."""

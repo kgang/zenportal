@@ -16,105 +16,100 @@ PAGE_1 = """
 
                               zen portal
 
-               a contemplative space for Claude Code
+              a contemplative space for AI sessions
 
 
-      navigate                        sessions
+      navigation                      sessions
 
-      k / up     move up              n        new session
-      j / down   move down            o        attach existing
+      j / k      up / down            n        new
       r          refresh              p        pause
       s          stream               x        kill
       ^i         info mode            d        clean
                                       v        revive
-      attach                          w        worktree (session)
-                                      W        worktrees (all)
-      a          attach tmux          i        insert
 
-      other
+      attach                          worktrees
 
-      c          config               states
-      ?          help
-      q          quit                 ●  active     ○  complete
-                                      ◐  paused     ·  ended
+      a          attach tmux          w        open worktree
+      o          attach existing      W        view all
 
 
-                            \\[1/3]  n:next  p:prev  q:close"""
+      other                           states
+
+      c          config               ●  active     ○  complete
+      ?          help                 ◐  paused     ·  ended
+      q          quit
+
+
+                              \\[1/3]  n:next  q:close"""
 
 
 # Page 2: Session lifecycle and worktrees
 # Note: Use \[ to escape brackets so Rich doesn't interpret them as markup tags
 PAGE_2 = """
 
-                         session lifecycle
+                           session lifecycle
 
 
-      creating sessions
+      creating
 
-      Press \\[n] to create a new session. Choose:
-        - Claude session: starts Claude Code in a tmux pane
-        - Shell session: starts a plain shell
-
-      Sessions can use git worktrees for isolated development.
+      \\[n]  new session
+           Choose type: Claude, Codex, Gemini, or Shell
+           Sessions can use git worktrees for isolation
 
 
-      ending sessions
+      ending
 
-      \\[p] Pause    Ends tmux but PRESERVES the worktree.
-                   Code changes remain on disk.
-
-      \\[x] Kill     Ends tmux and REMOVES the worktree.
-                   Use when done with the branch.
+      \\[p]  pause     stop session, keep worktree
+      \\[x]  kill      stop session, remove worktree
+      \\[d]  clean     remove from list
 
 
-      working with worktrees
+      continuing
 
-      \\[w]          Opens shell in the selected session's worktree.
-                   Use to continue working on paused code.
-
-      \\[W]          Browse ALL worktrees in your repository.
-                   Open shells or delete worktrees directly.
-
-      \\[v] Revive   Restarts Claude, resuming the conversation.
-
-      \\[d] Clean    Removes session from list and deletes worktree.
+      \\[v]  revive    restart session in same worktree
+      \\[w]  worktree  open shell in session's worktree
 
 
-                            \\[2/3]  n:next  p:prev  q:close"""
+      worktrees
+
+      \\[W]  view all worktrees in repository
+           Create shells or delete from list
+
+
+                              \\[2/3]  n:next  q:close"""
 
 
 # Page 3: Tips and advanced usage
 # Note: Use \[ to escape brackets so Rich doesn't interpret [s] as strikethrough, [i] as italic
 PAGE_3 = """
 
-                         tips & advanced usage
+                             tips & tricks
 
 
-      the new session dialog \\[n]
+      new session \\[n]
 
-      Three tabs for different session creation modes:
-        new      Create fresh Claude or shell session
-        attach   Adopt an existing external tmux session
-        resume   Continue a previous Claude conversation
+      new       create fresh session
+      attach    adopt existing tmux session
+      resume    continue Claude conversation
 
-      Directory browser: press \\[f] to focus, h/j/k/l to navigate.
+      Use ^t to switch tabs, j/k to navigate lists
 
 
       view modes
 
-      \\[r]  Refresh output/info panel
-      \\[s]  Toggle streaming (auto-refresh)
-      \\[^i] Toggle info mode (show session metadata)
+      \\[r]   refresh output
+      \\[s]   toggle auto-refresh (streaming)
+      \\[^i]  toggle info mode
 
 
-      insert & attach
+      interaction
 
-      \\[i] Send keys to active session without attaching.
-      \\[a] Leave zen portal and attach directly to tmux.
-      \\[o] Quick attach - directly opens attach modal.
+      \\[i]   send keys to session (without attaching)
+      \\[a]   attach to tmux directly
+      \\[R]   rename session
 
 
-                            \\[3/3]  n:next  p:prev  q:close"""
+                              \\[3/3]  q:close"""
 
 
 PAGES = [PAGE_1, PAGE_2, PAGE_3]
@@ -129,11 +124,12 @@ class HelpScreen(ModalScreen):
     }
 
     HelpScreen > Static {
-        width: 70;
+        width: 60;
         height: auto;
         padding: 1 2;
         background: $surface;
         border: round $surface-lighten-1;
+        color: $text-muted;
     }
     """
 

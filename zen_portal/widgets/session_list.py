@@ -19,27 +19,23 @@ class SessionListItem(Static):
     }
 
     SessionListItem.selected {
-        background: $primary 30%;
+        background: $surface-lighten-1;
     }
 
-    SessionListItem.growing {
+    SessionListItem.running {
         color: $success;
     }
 
-    SessionListItem.bloomed {
-        color: $text;
-    }
-
-    SessionListItem.wilted {
+    SessionListItem.completed {
         color: $text-muted;
     }
 
     SessionListItem.paused {
-        color: $warning;
+        color: $text;
     }
 
-    SessionListItem.killed {
-        color: $error;
+    SessionListItem.failed, SessionListItem.killed {
+        color: $text-disabled;
     }
     """
 
@@ -52,12 +48,17 @@ class SessionListItem(Static):
 
     def render(self) -> str:
         s = self.session
-        # Minimal, zen-inspired format: glyph  name  age
-        # Status is conveyed through glyph and typography (CSS)
-        # Type indicated subtly: shell sessions get "sh:" prefix
-        type_prefix = "sh: " if s.session_type == SessionType.SHELL else ""
+        # Minimal format: glyph + name + age
+        # Type prefix only for non-Claude sessions
+        type_prefixes = {
+            SessionType.SHELL: "sh:",
+            SessionType.CODEX: "cx:",
+            SessionType.GEMINI: "gm:",
+        }
+        prefix = type_prefixes.get(s.session_type, "")
+        name = f"{prefix}{s.display_name}" if prefix else s.display_name
 
-        return f" {s.status_glyph}  {type_prefix}{s.display_name:<30} {s.age_display:>5}"
+        return f"{s.status_glyph}  {name:<32} {s.age_display:>5}"
 
 
 class SessionList(Static):
@@ -70,30 +71,31 @@ class SessionList(Static):
     SessionList {
         width: 100%;
         height: 100%;
-        border: round $surface-lighten-1;
+        border: none;
+        padding: 0;
     }
 
     SessionList .empty-message {
         content-align: center middle;
-        color: $text-muted;
+        color: $text-disabled;
         height: 100%;
     }
 
     SessionList .title {
         height: 1;
-        background: $surface;
-        color: $text-muted;
-        text-align: center;
+        color: $text-disabled;
+        text-align: left;
+        padding: 0 1;
+        margin-bottom: 1;
     }
     """
 
     def compose(self) -> ComposeResult:
-        yield Static("sessions", classes="title")
-
         if not self.sessions:
-            yield Static("\n\n\n      ○\n\n   empty\n\n   n  new", classes="empty-message")
+            yield Static("\n\n\n\n      ○\n\n    empty\n\n    n  new session", classes="empty-message")
             return
 
+        yield Static("sessions", classes="title")
         for i, session in enumerate(self.sessions):
             yield SessionListItem(session, selected=i == self.selected_index)
 

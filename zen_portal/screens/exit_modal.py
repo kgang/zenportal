@@ -53,23 +53,24 @@ class ExitModal(ModalScreen[ExitResult | None]):
     }
 
     ExitModal #dialog {
-        width: 50;
+        width: 45;
         height: auto;
         padding: 1 2;
         background: $surface;
-        border: thick $warning;
+        border: round $surface-lighten-1;
     }
 
     ExitModal #title {
         text-align: center;
-        text-style: bold;
         width: 100%;
         margin-bottom: 1;
+        color: $text-muted;
     }
 
     ExitModal .status-line {
-        color: $text-muted;
+        color: $text-disabled;
         margin-bottom: 0;
+        text-align: center;
     }
 
     ExitModal .option-btn {
@@ -78,7 +79,7 @@ class ExitModal(ModalScreen[ExitResult | None]):
     }
 
     ExitModal .option-btn.highlighted {
-        border: thick $primary;
+        border: solid $text-muted;
     }
 
     ExitModal #remember-row {
@@ -110,32 +111,27 @@ class ExitModal(ModalScreen[ExitResult | None]):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="dialog"):
-            yield Static("exit zen portal", id="title")
+            yield Static("exit", id="title")
 
-            if self._active_count > 0:
-                yield Static(f"  {self._active_count} active session(s) running", classes="status-line")
-            if self._dead_count > 0:
-                yield Static(f"  {self._dead_count} finished session(s)", classes="status-line")
+            # Compact status
+            if self._active_count > 0 or self._dead_count > 0:
+                parts = []
+                if self._active_count > 0:
+                    parts.append(f"{self._active_count} active")
+                if self._dead_count > 0:
+                    parts.append(f"{self._dead_count} finished")
+                yield Static(" · ".join(parts), classes="status-line")
 
             yield Button(
-                "Kill all sessions",
+                "Kill all",
                 variant="error",
                 id="kill-all",
                 classes="option-btn",
             )
             self._button_ids.append("kill-all")
 
-            if self._dead_count > 0:
-                yield Button(
-                    "Kill dead only",
-                    variant="warning",
-                    id="kill-dead",
-                    classes="option-btn",
-                )
-                self._button_ids.append("kill-dead")
-
             yield Button(
-                "Keep all running",
+                "Keep running",
                 variant="success",
                 id="keep-all",
                 classes="option-btn",
@@ -151,9 +147,9 @@ class ExitModal(ModalScreen[ExitResult | None]):
             self._button_ids.append("cancel")
 
             with Horizontal(id="remember-row"):
-                yield Checkbox("Remember my choice", id="remember")
+                yield Checkbox("Remember choice", id="remember")
 
-            yield Static("j/k nav  enter select  space toggle  esc cancel", classes="hint")
+            yield Static("j/k select  enter confirm  esc cancel", classes="hint")
 
     def on_mount(self) -> None:
         """Highlight the first button."""

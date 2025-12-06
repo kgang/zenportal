@@ -58,18 +58,19 @@ class DirectoryBrowser(Widget, can_focus=True):
     DEFAULT_CSS = """
     DirectoryBrowser {
         height: auto;
-        max-height: 16;
+        max-height: 14;
         border: round $surface-lighten-1;
     }
 
     DirectoryBrowser:focus-within {
-        border: round $primary;
+        border: round $surface-lighten-1;
     }
 
     DirectoryBrowser #path-bar {
         height: 1;
         background: $surface-darken-1;
         padding: 0 1;
+        color: $text-muted;
     }
 
     DirectoryBrowser #path-display {
@@ -96,7 +97,7 @@ class DirectoryBrowser(Widget, can_focus=True):
 
     DirectoryBrowser ListView {
         height: auto;
-        max-height: 12;
+        max-height: 10;
         background: transparent;
     }
 
@@ -110,21 +111,19 @@ class DirectoryBrowser(Widget, can_focus=True):
     }
 
     DirectoryBrowser ListItem.is-dir > Label {
-        color: $primary;
+        color: $text;
     }
 
     DirectoryBrowser .empty {
         color: $text-disabled;
-        text-style: italic;
         padding: 1;
         text-align: center;
     }
 
     DirectoryBrowser #hint {
         height: 1;
-        color: $text-muted;
+        color: $text-disabled;
         text-align: center;
-        background: $surface-darken-1;
     }
     """
 
