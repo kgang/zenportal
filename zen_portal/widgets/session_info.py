@@ -173,15 +173,25 @@ class SessionInfoView(Static):
         if s.resolved_model:
             lines.append(f"[dim]model[/dim]  {s.resolved_model.value}")
 
-        # Tokens - compact single line for Claude
+        # Tokens - detailed breakdown for Claude
         if s.session_type.value == "claude" and s.token_stats:
             lines.append("")
-            total = s.token_stats.total_tokens
-            # Format as K for thousands
-            if total >= 1000:
-                lines.append(f"[dim]tokens[/dim]  {total/1000:.1f}k")
-            else:
-                lines.append(f"[dim]tokens[/dim]  {total:,}")
+            ts = s.token_stats
+            # Format token counts (K for thousands)
+            def fmt(n: int) -> str:
+                return f"{n/1000:.1f}k" if n >= 1000 else str(n)
+
+            # Main line: total with input/output breakdown
+            lines.append(f"[dim]tokens[/dim]  {fmt(ts.total_tokens)}  [dim]({fmt(ts.input_tokens)}↓ {fmt(ts.output_tokens)}↑)[/dim]")
+
+            # Cache line - only if cache tokens exist
+            if ts.cache_tokens > 0:
+                cache_parts = []
+                if ts.cache_read_tokens > 0:
+                    cache_parts.append(f"{fmt(ts.cache_read_tokens)} read")
+                if ts.cache_creation_tokens > 0:
+                    cache_parts.append(f"{fmt(ts.cache_creation_tokens)} write")
+                lines.append(f"[dim]cache[/dim]  {' / '.join(cache_parts)}")
 
         # Prompt preview - truncated
         if s.prompt:
