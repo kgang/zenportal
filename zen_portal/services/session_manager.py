@@ -148,7 +148,13 @@ class SessionManager:
             prompt=prompt,
             dangerous_mode=dangerous_mode,
         )
-        command = self._commands.wrap_with_banner(command_args, name, session.id)
+
+        # Get OpenRouter proxy env vars if enabled for Claude sessions
+        env_vars = None
+        if session_type == SessionType.CLAUDE and resolved.openrouter_proxy:
+            env_vars = self._commands.build_openrouter_env_vars(resolved.openrouter_proxy)
+
+        command = self._commands.wrap_with_banner(command_args, name, session.id, env_vars)
 
         # Create tmux session
         tmux_name = self._tmux_name(session.id)
@@ -251,7 +257,13 @@ class SessionManager:
             return session
 
         command_args = self._commands.build_resume_command(resume_session_id, resolved.model)
-        command = self._commands.wrap_with_banner(command_args, name, session.id)
+
+        # Get OpenRouter proxy env vars if enabled
+        env_vars = None
+        if resolved.openrouter_proxy:
+            env_vars = self._commands.build_openrouter_env_vars(resolved.openrouter_proxy)
+
+        command = self._commands.wrap_with_banner(command_args, name, session.id, env_vars)
 
         tmux_name = self._tmux_name(session.id)
         result = self._tmux.create_session(
@@ -291,7 +303,15 @@ class SessionManager:
                     session.claude_session_id = sessions[0].session_id
 
         command_args = self._commands.build_revive_command(session, was_failed)
-        command = self._commands.wrap_with_banner(command_args, session.name, session.id)
+
+        # Get OpenRouter proxy env vars if enabled for Claude sessions
+        env_vars = None
+        if session.session_type == SessionType.CLAUDE:
+            resolved = self._config.resolve_features()
+            if resolved.openrouter_proxy:
+                env_vars = self._commands.build_openrouter_env_vars(resolved.openrouter_proxy)
+
+        command = self._commands.wrap_with_banner(command_args, session.name, session.id, env_vars)
 
         tmux_name = self.get_tmux_session_name(session_id)
         if not tmux_name:

@@ -45,6 +45,9 @@ def check_dependencies() -> None:
     if not shutil.which("gemini"):
         warnings.append("gemini CLI not found - Gemini CLI sessions won't work")
 
+    if not shutil.which("orchat"):
+        warnings.append("orchat not found - OpenRouter sessions won't work (pip install orchat)")
+
     # Exit with error if critical dependencies missing
     if errors:
         print("Error: Missing required dependencies:\n")

@@ -54,6 +54,7 @@ class SessionListItem(Static):
             SessionType.SHELL: "sh:",
             SessionType.CODEX: "cx:",
             SessionType.GEMINI: "gm:",
+            SessionType.OPENROUTER: "or:",
         }
         prefix = type_prefixes.get(s.session_type, "")
         name = f"{prefix}{s.display_name}" if prefix else s.display_name

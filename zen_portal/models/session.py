@@ -21,6 +21,7 @@ class SessionType(Enum):
     CODEX = "codex"  # OpenAI Codex CLI
     GEMINI = "gemini"  # Google Gemini CLI
     SHELL = "shell"  # Plain shell session
+    OPENROUTER = "openrouter"  # OpenRouter via orchat
 
 
 class SessionState(Enum):

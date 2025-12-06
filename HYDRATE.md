@@ -86,6 +86,7 @@ Files are kept under ~500 lines for progressive disclosure in AI-assisted develo
 - `CODEX` - OpenAI Codex CLI
 - `GEMINI` - Google Gemini CLI
 - `SHELL` - Plain zsh shell
+- `OPENROUTER` - OpenRouter via orchat (400+ AI models)
 
 ### Session States
 - `RUNNING` - Active tmux session
@@ -267,6 +268,14 @@ Token usage is parsed from Claude's JSONL session files at `~/.claude/projects/`
 - `services/state.py` - `SessionRecord.{input_tokens, output_tokens, cache_tokens}`
 - `widgets/session_info.py` - Displays tokens in info panel
 
+**Info panel display format:**
+```
+tokens  12.5k  (8.2k↓ 4.3k↑)
+cache   2.1k read / 0.5k write
+```
+- ↓ = input tokens, ↑ = output tokens
+- Cache line only shown when cache tokens > 0
+
 **Data flow:**
 1. `refresh_states()` calls `update_session_tokens()` for Claude sessions
 2. `TokenParser.get_session_stats()` reads Claude's JSONL files
@@ -312,6 +321,7 @@ Recent design pass established consistent visual patterns:
 - Shell: `sh:`
 - Codex: `cx:`
 - Gemini: `gm:`
+- OpenRouter: `or:`
 
 **Info view:** Compact single-line format for git/tokens/model/repo (repo shown for worktree sessions)
 
@@ -320,10 +330,23 @@ Recent design pass established consistent visual patterns:
 Users can enable/disable session types via settings (`c` key):
 
 - **Config key:** `features.enabled_session_types` (list of strings or null)
-- **Values:** `["claude", "codex", "gemini", "shell"]`
+- **Values:** `["claude", "codex", "gemini", "shell", "openrouter"]`
 - **Default:** `null` (all types enabled)
 - **Effect:** Disabled types hidden from new session modal type selector
 - **UI:** `SessionTypeDropdown` widget in config_screen.py - collapsible with checkboxes
+
+## OpenRouter Proxy
+
+Route Claude Code through OpenRouter for alternative models or cost savings:
+
+- **Config location:** `features.openrouter_proxy` in `~/.config/zen-portal/config.json`
+- **Settings:**
+  - `enabled: bool` - Enable/disable proxy routing
+  - `base_url: str` - Proxy URL (default: `https://openrouter.ai/api/v1`)
+  - `api_key: str` - OpenRouter API key (or set `OPENROUTER_API_KEY` env var)
+- **UI:** Collapsible section in settings (`c` key)
+- **Effect:** Sets `ANTHROPIC_BASE_URL`, `ANTHROPIC_API_KEY`, `ANTHROPIC_CUSTOM_HEADERS` for Claude sessions
+- **Note:** Requires a proxy that translates Anthropic API to OpenRouter (e.g., y-router)
 
 ## Exit Modal
 
@@ -351,9 +374,10 @@ Three-tab modal for session management (new/attach/resume):
 
 **Resume tab features:**
 - Shows all recent Claude sessions from `~/.claude/projects/`
-- Sessions known to zen-portal (via state) tagged with `●` (cyan)
-- Unknown sessions shown with `○`
-- Accepts `known_claude_session_ids` param from caller
+- Zen format: `● project-name                    2h` (project first, compact time)
+- Sessions known to zen-portal tagged with `●` (cyan), unknown with `○` (dim)
+- Validates session file exists before resume; shows error if missing
+- Time format: `now`, `5m`, `2h`, `3d`, `2w`
 
 **Reactivity pattern:**
 - Lists built once on load (`_build_*_list`)

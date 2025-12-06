@@ -32,7 +32,52 @@ class ClaudeModel(Enum):
 
 
 # All available session types for configuration
-ALL_SESSION_TYPES = ["claude", "codex", "gemini", "shell"]
+ALL_SESSION_TYPES = ["claude", "codex", "gemini", "shell", "openrouter"]
+
+
+@dataclass
+class OpenRouterProxySettings:
+    """Settings for routing Claude Code through OpenRouter.
+
+    When enabled, Claude sessions use OpenRouter as the API backend.
+    This allows using Claude Code with alternative models or for cost savings.
+    """
+
+    enabled: bool = False
+    # Proxy URL (e.g., https://cc.yovy.app or self-hosted y-router)
+    base_url: str = "https://openrouter.ai/api/v1"
+    # OpenRouter API key (stored here or via OPENROUTER_API_KEY env var)
+    api_key: str = ""
+    # Default model to use (e.g., "anthropic/claude-sonnet-4")
+    default_model: str = ""
+
+    def to_dict(self) -> dict:
+        result: dict = {"enabled": self.enabled}
+        if self.base_url != "https://openrouter.ai/api/v1":
+            result["base_url"] = self.base_url
+        if self.api_key:
+            result["api_key"] = self.api_key
+        if self.default_model:
+            result["default_model"] = self.default_model
+        return result
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "OpenRouterProxySettings":
+        return cls(
+            enabled=data.get("enabled", False),
+            base_url=data.get("base_url", "https://openrouter.ai/api/v1"),
+            api_key=data.get("api_key", ""),
+            default_model=data.get("default_model", ""),
+        )
+
+    def merge_with(self, override: "OpenRouterProxySettings") -> "OpenRouterProxySettings":
+        """Return new settings with override values taking precedence."""
+        return OpenRouterProxySettings(
+            enabled=override.enabled if override.enabled else self.enabled,
+            base_url=override.base_url if override.base_url != "https://openrouter.ai/api/v1" else self.base_url,
+            api_key=override.api_key if override.api_key else self.api_key,
+            default_model=override.default_model if override.default_model else self.default_model,
+        )
 
 
 @dataclass
@@ -105,6 +150,10 @@ class FeatureSettings:
     # Session types to show in the new session modal
     # None means all types enabled (default), empty list means none
     enabled_session_types: list[str] | None = None
+    # OpenRouter default model for orchat sessions (e.g., "anthropic/claude-3.5-sonnet")
+    openrouter_model: str | None = None
+    # OpenRouter proxy settings for routing Claude Code through OpenRouter
+    openrouter_proxy: OpenRouterProxySettings | None = None
 
     def to_dict(self) -> dict:
         result = {}
@@ -118,6 +167,10 @@ class FeatureSettings:
             result["worktree"] = self.worktree.to_dict()
         if self.enabled_session_types is not None:
             result["enabled_session_types"] = self.enabled_session_types
+        if self.openrouter_model is not None:
+            result["openrouter_model"] = self.openrouter_model
+        if self.openrouter_proxy is not None:
+            result["openrouter_proxy"] = self.openrouter_proxy.to_dict()
         return result
 
     @classmethod
@@ -126,12 +179,15 @@ class FeatureSettings:
         model = ClaudeModel(data["model"]) if data.get("model") else None
         worktree = WorktreeSettings.from_dict(data["worktree"]) if data.get("worktree") else None
         enabled_types = data.get("enabled_session_types")
+        openrouter_proxy = OpenRouterProxySettings.from_dict(data["openrouter_proxy"]) if data.get("openrouter_proxy") else None
         return cls(
             working_dir=working_dir,
             model=model,
             session_prefix=data.get("session_prefix"),
             worktree=worktree,
             enabled_session_types=enabled_types,
+            openrouter_model=data.get("openrouter_model"),
+            openrouter_proxy=openrouter_proxy,
         )
 
     def merge_with(self, override: "FeatureSettings") -> "FeatureSettings":
@@ -144,12 +200,22 @@ class FeatureSettings:
             else:
                 merged_worktree = override.worktree
 
+        # Merge openrouter_proxy settings if both exist
+        merged_openrouter_proxy = self.openrouter_proxy
+        if override.openrouter_proxy is not None:
+            if self.openrouter_proxy is not None:
+                merged_openrouter_proxy = self.openrouter_proxy.merge_with(override.openrouter_proxy)
+            else:
+                merged_openrouter_proxy = override.openrouter_proxy
+
         return FeatureSettings(
             working_dir=override.working_dir if override.working_dir is not None else self.working_dir,
             model=override.model if override.model is not None else self.model,
             session_prefix=override.session_prefix if override.session_prefix is not None else self.session_prefix,
             worktree=merged_worktree,
             enabled_session_types=override.enabled_session_types if override.enabled_session_types is not None else self.enabled_session_types,
+            openrouter_model=override.openrouter_model if override.openrouter_model is not None else self.openrouter_model,
+            openrouter_proxy=merged_openrouter_proxy,
         )
 
 

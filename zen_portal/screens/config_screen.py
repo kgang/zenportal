@@ -4,10 +4,10 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.screen import ModalScreen
 from textual.containers import Vertical, Horizontal
-from textual.widgets import Button, Static, Select, OptionList
+from textual.widgets import Button, Static, Select, OptionList, Checkbox, Input, Collapsible
 from textual.widgets.option_list import Option
 
-from ..services.config import ConfigManager, ExitBehavior, FeatureSettings, ALL_SESSION_TYPES
+from ..services.config import ConfigManager, ExitBehavior, FeatureSettings, OpenRouterProxySettings, ALL_SESSION_TYPES
 from ..services.profile import ProfileManager
 from ..widgets.session_type_dropdown import SessionTypeDropdown
 from ..widgets.path_input import PathInput
@@ -138,6 +138,35 @@ class ConfigScreen(ModalScreen[None]):
     ConfigScreen SessionTypeDropdown {
         margin-bottom: 1;
     }
+
+    ConfigScreen Collapsible {
+        margin-top: 1;
+        padding: 0;
+    }
+
+    ConfigScreen Collapsible CollapsibleTitle {
+        color: $text-disabled;
+        padding: 0 1;
+    }
+
+    ConfigScreen .openrouter-content {
+        padding: 0 1;
+    }
+
+    ConfigScreen .openrouter-row {
+        width: 100%;
+        height: auto;
+        margin-bottom: 1;
+    }
+
+    ConfigScreen .openrouter-label {
+        color: $text-muted;
+        height: 1;
+    }
+
+    ConfigScreen .openrouter-input {
+        width: 100%;
+    }
     """
 
     def __init__(self, config_manager: ConfigManager, profile_manager: ProfileManager | None = None):
@@ -192,6 +221,33 @@ class ConfigScreen(ModalScreen[None]):
                     placeholder="(empty = use global)",
                     id="instance-dir-input",
                 )
+
+            # OpenRouter proxy settings (collapsible)
+            openrouter_proxy = self._config_manager.config.features.openrouter_proxy
+            proxy_enabled = openrouter_proxy.enabled if openrouter_proxy else False
+            proxy_url = openrouter_proxy.base_url if openrouter_proxy else "https://openrouter.ai/api/v1"
+            proxy_key = openrouter_proxy.api_key if openrouter_proxy else ""
+
+            with Collapsible(title="openrouter proxy", id="openrouter-collapsible", collapsed=True):
+                with Vertical(classes="openrouter-content"):
+                    yield Checkbox("Route Claude through OpenRouter", proxy_enabled, id="openrouter-enabled")
+                    with Vertical(classes="openrouter-row"):
+                        yield Static("proxy url", classes="openrouter-label")
+                        yield Input(
+                            value=proxy_url,
+                            placeholder="https://openrouter.ai/api/v1",
+                            id="openrouter-url",
+                            classes="openrouter-input",
+                        )
+                    with Vertical(classes="openrouter-row"):
+                        yield Static("api key (or set OPENROUTER_API_KEY)", classes="openrouter-label")
+                        yield Input(
+                            value=proxy_key,
+                            placeholder="sk-or-...",
+                            password=True,
+                            id="openrouter-key",
+                            classes="openrouter-input",
+                        )
 
             # Theme selection
             yield Static("theme", classes="section-title")
@@ -249,9 +305,24 @@ class ConfigScreen(ModalScreen[None]):
         # Save global directory
         global_input = self.query_one("#global-dir-input", PathInput)
         global_path = global_input.get_path()
+
+        # Save OpenRouter proxy settings
+        openrouter_enabled = self.query_one("#openrouter-enabled", Checkbox).value
+        openrouter_url = self.query_one("#openrouter-url", Input).value.strip()
+        openrouter_key = self.query_one("#openrouter-key", Input).value.strip()
+
+        openrouter_proxy = None
+        if openrouter_enabled or openrouter_key:
+            openrouter_proxy = OpenRouterProxySettings(
+                enabled=openrouter_enabled,
+                base_url=openrouter_url or "https://openrouter.ai/api/v1",
+                api_key=openrouter_key,
+            )
+
         config = self._config_manager.config
         config.features.working_dir = global_path
         config.features.enabled_session_types = enabled_types_to_save
+        config.features.openrouter_proxy = openrouter_proxy
         self._config_manager.save_config(config)
 
         # Save instance directory
@@ -306,6 +377,7 @@ class ConfigScreen(ModalScreen[None]):
             "#exit-behavior",
             "#global-dir-input",
             "#instance-dir-input",
+            "#openrouter-collapsible",
             "#theme-list",
             "#save",
         ]

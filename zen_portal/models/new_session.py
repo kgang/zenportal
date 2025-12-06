@@ -14,6 +14,7 @@ class NewSessionType(Enum):
     CODEX = "codex"
     GEMINI = "gemini"
     SHELL = "shell"
+    OPENROUTER = "openrouter"
 
 
 class ResultType(Enum):

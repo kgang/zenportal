@@ -315,6 +315,7 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, Screen):
                         ScreenSessionType.CODEX: SessionType.CODEX,
                         ScreenSessionType.GEMINI: SessionType.GEMINI,
                         ScreenSessionType.SHELL: SessionType.SHELL,
+                        ScreenSessionType.OPENROUTER: SessionType.OPENROUTER,
                     }
                     session_type = type_mapping.get(result.session_type, SessionType.CLAUDE)
                     session = self._manager.create_session(

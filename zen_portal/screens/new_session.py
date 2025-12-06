@@ -315,7 +315,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
             return
 
         default_type = self._enabled_types[0]
-        is_ai = default_type in (NewSessionType.CLAUDE, NewSessionType.CODEX, NewSessionType.GEMINI)
+        is_ai = default_type in (NewSessionType.CLAUDE, NewSessionType.CODEX, NewSessionType.GEMINI, NewSessionType.OPENROUTER)
         is_claude = default_type == NewSessionType.CLAUDE
         is_shell = default_type == NewSessionType.SHELL
 
@@ -336,7 +336,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         if event.select.id != "type-select":
             return
 
-        is_ai = event.value in (NewSessionType.CLAUDE, NewSessionType.CODEX, NewSessionType.GEMINI)
+        is_ai = event.value in (NewSessionType.CLAUDE, NewSessionType.CODEX, NewSessionType.GEMINI, NewSessionType.OPENROUTER)
         is_claude = event.value == NewSessionType.CLAUDE
         is_shell = event.value == NewSessionType.SHELL
 
@@ -611,6 +611,8 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
             model = model_select.value if model_select.value is not Select.BLANK else None
             worktree_check = self.query_one("#worktree-check", Checkbox)
             use_worktree = worktree_check.value if worktree_check.value else None
+        elif session_type in (NewSessionType.CODEX, NewSessionType.GEMINI, NewSessionType.OPENROUTER):
+            prompt = self.query_one("#prompt-input", Input).value.strip()
         elif session_type == NewSessionType.SHELL:
             shell_worktree = self.query_one("#shell-worktree-check", Checkbox)
             use_worktree = shell_worktree.value if shell_worktree.value else None
