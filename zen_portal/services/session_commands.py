@@ -1,13 +1,26 @@
 """Session command building for different session types."""
 
 import os
+import re
 import shlex
 import shutil
 from pathlib import Path
+from urllib.parse import urlparse
 
 from ..models.session import Session, SessionType
 from .banner import generate_banner_command
-from .config import ClaudeModel, OpenRouterProxySettings
+from .config import ClaudeModel, OpenRouterProxySettings, ProxyAuthType
+
+
+# Validation patterns
+_API_KEY_PATTERN = re.compile(r'^[a-zA-Z0-9_-]+$')
+# OAuth tokens are base64-encoded JWTs: header.payload.signature
+# Allow alphanumeric, dash, underscore, period, equals (padding)
+_OAUTH_TOKEN_PATTERN = re.compile(r'^[a-zA-Z0-9_.\-=]+$')
+_SAFE_URL_SCHEMES = frozenset({'http', 'https'})
+_MAX_API_KEY_LENGTH = 256
+_MAX_OAUTH_TOKEN_LENGTH = 4096  # JWTs can be longer than API keys
+_MAX_URL_LENGTH = 2048
 
 
 class SessionCommandBuilder:
@@ -149,14 +162,95 @@ class SessionCommandBuilder:
             command_args.extend(["--model", model.value])
         return command_args
 
+    def _validate_url(self, url: str) -> str | None:
+        """Validate and sanitize a URL for use as an API base URL.
+
+        Returns the sanitized URL or None if invalid.
+        """
+        if not url or len(url) > _MAX_URL_LENGTH:
+            return None
+
+        try:
+            parsed = urlparse(url)
+            # Only allow http/https schemes
+            if parsed.scheme not in _SAFE_URL_SCHEMES:
+                return None
+            # Must have a host
+            if not parsed.netloc:
+                return None
+            # Reconstruct to normalize (removes potential obfuscation)
+            return f"{parsed.scheme}://{parsed.netloc}{parsed.path}".rstrip("/")
+        except Exception:
+            return None
+
+    def _validate_api_key(self, key: str) -> str | None:
+        """Validate an API key for safe use in environment variables.
+
+        Returns the key if valid, None otherwise.
+        API keys should be alphanumeric with dashes/underscores only.
+        """
+        if not key or len(key) > _MAX_API_KEY_LENGTH:
+            return None
+
+        # Strip whitespace
+        key = key.strip()
+
+        # Check for safe characters only (alphanumeric, dash, underscore)
+        # Most API keys follow this pattern (sk-or-xxx, sk-ant-xxx, etc.)
+        if not _API_KEY_PATTERN.match(key):
+            return None
+
+        return key
+
+    def _validate_model_name(self, model: str) -> str | None:
+        """Validate a model name for safe use.
+
+        Returns the model name if valid, None otherwise.
+        Model names should be alphanumeric with common separators.
+        """
+        if not model or len(model) > 128:
+            return None
+
+        model = model.strip()
+
+        # Allow alphanumeric, dash, underscore, slash, colon, period
+        # e.g., "anthropic/claude-sonnet-4", "openai/gpt-4o:beta"
+        if not re.match(r'^[a-zA-Z0-9/_:.-]+$', model):
+            return None
+
+        return model
+
+    def _validate_oauth_token(self, token: str) -> str | None:
+        """Validate an OAuth token for safe use in environment variables.
+
+        Returns the token if valid, None otherwise.
+        OAuth tokens are typically JWTs (base64-encoded with periods as separators).
+        """
+        if not token or len(token) > _MAX_OAUTH_TOKEN_LENGTH:
+            return None
+
+        token = token.strip()
+
+        # Check for safe characters only (base64 + JWT separators)
+        if not _OAUTH_TOKEN_PATTERN.match(token):
+            return None
+
+        return token
+
     def build_openrouter_env_vars(
         self,
         proxy_settings: OpenRouterProxySettings,
     ) -> dict[str, str]:
-        """Build environment variables for y-router/OpenRouter proxy.
+        """Build environment variables for Claude proxy (y-router, CLIProxyAPI, etc).
+
+        Supports two authentication modes:
+        - API_KEY: OpenRouter-style with x-api-key header
+        - OAUTH: Claude Pro/Max with Authorization: Bearer header
+
+        All values are validated before use to prevent injection attacks.
 
         Args:
-            proxy_settings: OpenRouter proxy configuration
+            proxy_settings: Proxy configuration
 
         Returns:
             Dictionary of environment variables to set
@@ -166,20 +260,38 @@ class SessionCommandBuilder:
 
         env_vars = {}
 
-        # Set base URL for the proxy
+        # Validate and set base URL for the proxy
         if proxy_settings.base_url:
-            env_vars["ANTHROPIC_BASE_URL"] = proxy_settings.base_url
+            validated_url = self._validate_url(proxy_settings.base_url)
+            if validated_url:
+                env_vars["ANTHROPIC_BASE_URL"] = validated_url
 
-        # Get API key from settings or environment
-        api_key = proxy_settings.api_key or os.environ.get("OPENROUTER_API_KEY", "")
-        if api_key:
-            env_vars["ANTHROPIC_API_KEY"] = api_key
-            # y-router needs the key in custom headers
-            env_vars["ANTHROPIC_CUSTOM_HEADERS"] = f"x-api-key: {api_key}"
+        # Handle authentication based on auth_type
+        if proxy_settings.auth_type == ProxyAuthType.OAUTH:
+            # OAuth mode: Use bearer token
+            oauth_token = proxy_settings.oauth_token or os.environ.get("CLAUDE_OAUTH_TOKEN", "")
+            if oauth_token:
+                validated_token = self._validate_oauth_token(oauth_token)
+                if validated_token:
+                    # Set as API key (some proxies still need this field)
+                    env_vars["ANTHROPIC_API_KEY"] = validated_token
+                    # Set Authorization header for OAuth
+                    env_vars["ANTHROPIC_CUSTOM_HEADERS"] = f"Authorization: Bearer {validated_token}"
+        else:
+            # API_KEY mode: Use x-api-key header (OpenRouter style)
+            api_key = proxy_settings.api_key or os.environ.get("OPENROUTER_API_KEY", "")
+            if api_key:
+                validated_key = self._validate_api_key(api_key)
+                if validated_key:
+                    env_vars["ANTHROPIC_API_KEY"] = validated_key
+                    # y-router needs the key in custom headers
+                    env_vars["ANTHROPIC_CUSTOM_HEADERS"] = f"x-api-key: {validated_key}"
 
-        # Set model override if specified
+        # Validate and set model override if specified
         if proxy_settings.default_model:
-            env_vars["ANTHROPIC_MODEL"] = proxy_settings.default_model
+            validated_model = self._validate_model_name(proxy_settings.default_model)
+            if validated_model:
+                env_vars["ANTHROPIC_MODEL"] = validated_model
 
         return env_vars
 

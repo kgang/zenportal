@@ -6,12 +6,46 @@
 3. Session Level (per-session at creation) - Stored in Session dataclass
 
 Each level can override the previous. Resolution order: session > portal > config > defaults
+
+Security notes:
+- Config files may contain API keys; saved with mode 0600
+- Prefer environment variables for sensitive credentials
+- Values are validated before use in shell commands (see SessionCommandBuilder)
 """
 
 import json
+import os
+import stat
 from dataclasses import dataclass, field
 from pathlib import Path
 from enum import Enum
+
+
+def _secure_write_json(path: Path, data: dict) -> None:
+    """Write JSON to file with restricted permissions (0600).
+
+    This ensures config files containing potential secrets
+    are only readable by the owner.
+    """
+    content = json.dumps(data, indent=2)
+    # Write to temp file first, then rename for atomicity
+    temp_path = path.with_suffix(".tmp")
+    try:
+        # Create with restricted permissions from the start
+        fd = os.open(str(temp_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        try:
+            os.write(fd, content.encode())
+        finally:
+            os.close(fd)
+        # Atomic rename
+        temp_path.rename(path)
+    except Exception:
+        # Fallback: write normally then chmod
+        path.write_text(content)
+        try:
+            path.chmod(stat.S_IRUSR | stat.S_IWUSR)  # 0600
+        except OSError:
+            pass  # Best effort on systems that don't support chmod
 
 
 class ExitBehavior(Enum):
@@ -31,42 +65,82 @@ class ClaudeModel(Enum):
     HAIKU = "haiku"
 
 
+class ProxyAuthType(Enum):
+    """Authentication type for Claude proxy."""
+
+    API_KEY = "api_key"  # OpenRouter-style: x-api-key header
+    OAUTH = "oauth"  # Claude Pro/Max: Authorization: Bearer token
+
+
 # All available session types for configuration
 ALL_SESSION_TYPES = ["claude", "codex", "gemini", "shell", "openrouter"]
 
 
 @dataclass
 class OpenRouterProxySettings:
-    """Settings for routing Claude Code through OpenRouter.
+    """Settings for routing Claude Code through a proxy.
 
-    When enabled, Claude sessions use OpenRouter as the API backend.
-    This allows using Claude Code with alternative models or for cost savings.
+    Supports two authentication modes:
+    1. API Key (OpenRouter): Uses x-api-key header, pay-per-token
+    2. OAuth (Claude Pro/Max): Uses Authorization: Bearer, subscription-based
+
+    Security notes:
+    - Credentials stored in plain text; prefer environment variables
+    - Config files saved with 0600 permissions
+    - Values validated in SessionCommandBuilder before shell use
     """
 
     enabled: bool = False
-    # y-router proxy URL (self-hosted default, or use https://cc.yovy.app)
+    # Authentication type
+    auth_type: ProxyAuthType = ProxyAuthType.API_KEY
+    # Proxy URL (y-router default, or CLIProxyAPI, etc.)
     base_url: str = "http://localhost:8787"
-    # OpenRouter API key (stored here or via OPENROUTER_API_KEY env var)
+    # For API_KEY auth: OpenRouter API key (or OPENROUTER_API_KEY env var)
     api_key: str = ""
+    # For OAUTH auth: Bearer token (or CLAUDE_OAUTH_TOKEN env var)
+    # Note: CLIProxyAPI handles tokens automatically; only needed for manual setup
+    oauth_token: str = ""
     # Default model to use (e.g., "anthropic/claude-sonnet-4")
     default_model: str = ""
 
-    def to_dict(self) -> dict:
+    def to_dict(self, redact_secrets: bool = False) -> dict:
+        """Serialize to dict.
+
+        Args:
+            redact_secrets: If True, redact sensitive fields
+        """
         result: dict = {"enabled": self.enabled}
+        if self.auth_type != ProxyAuthType.API_KEY:
+            result["auth_type"] = self.auth_type.value
         if self.base_url != "http://localhost:8787":
             result["base_url"] = self.base_url
         if self.api_key:
-            result["api_key"] = self.api_key
+            if redact_secrets:
+                result["api_key"] = f"***{self.api_key[-4:]}" if len(self.api_key) >= 4 else "***"
+            else:
+                result["api_key"] = self.api_key
+        if self.oauth_token:
+            if redact_secrets:
+                result["oauth_token"] = f"***{self.oauth_token[-4:]}" if len(self.oauth_token) >= 4 else "***"
+            else:
+                result["oauth_token"] = self.oauth_token
         if self.default_model:
             result["default_model"] = self.default_model
         return result
 
     @classmethod
     def from_dict(cls, data: dict) -> "OpenRouterProxySettings":
+        auth_type_str = data.get("auth_type", "api_key")
+        try:
+            auth_type = ProxyAuthType(auth_type_str)
+        except ValueError:
+            auth_type = ProxyAuthType.API_KEY
         return cls(
             enabled=data.get("enabled", False),
+            auth_type=auth_type,
             base_url=data.get("base_url", "http://localhost:8787"),
             api_key=data.get("api_key", ""),
+            oauth_token=data.get("oauth_token", ""),
             default_model=data.get("default_model", ""),
         )
 
@@ -74,10 +148,20 @@ class OpenRouterProxySettings:
         """Return new settings with override values taking precedence."""
         return OpenRouterProxySettings(
             enabled=override.enabled if override.enabled else self.enabled,
+            auth_type=override.auth_type if override.auth_type != ProxyAuthType.API_KEY else self.auth_type,
             base_url=override.base_url if override.base_url != "http://localhost:8787" else self.base_url,
             api_key=override.api_key if override.api_key else self.api_key,
+            oauth_token=override.oauth_token if override.oauth_token else self.oauth_token,
             default_model=override.default_model if override.default_model else self.default_model,
         )
+
+    @property
+    def has_credentials(self) -> bool:
+        """Check if credentials are configured for the selected auth type."""
+        if self.auth_type == ProxyAuthType.API_KEY:
+            return bool(self.api_key or os.environ.get("OPENROUTER_API_KEY"))
+        else:  # OAUTH
+            return bool(self.oauth_token or os.environ.get("CLAUDE_OAUTH_TOKEN"))
 
 
 @dataclass
@@ -304,9 +388,9 @@ class ConfigManager:
         return Config()
 
     def save_config(self, config: Config) -> None:
-        """Save config to disk."""
+        """Save config to disk with secure permissions."""
         self._config_dir.mkdir(parents=True, exist_ok=True)
-        self._config_file.write_text(json.dumps(config.to_dict(), indent=2))
+        _secure_write_json(self._config_file, config.to_dict())
         self._config = config
 
     def update_exit_behavior(self, behavior: ExitBehavior) -> None:
@@ -334,9 +418,9 @@ class ConfigManager:
         return PortalState()
 
     def save_portal(self, state: PortalState) -> None:
-        """Save portal state to disk."""
+        """Save portal state to disk with secure permissions."""
         self._config_dir.mkdir(parents=True, exist_ok=True)
-        self._portal_file.write_text(json.dumps(state.to_dict(), indent=2))
+        _secure_write_json(self._portal_file, state.to_dict())
         self._portal = state
 
     def clear_portal(self) -> None:

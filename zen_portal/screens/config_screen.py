@@ -7,7 +7,7 @@ from textual.containers import Vertical, Horizontal
 from textual.widgets import Button, Static, Select, OptionList, Checkbox, Input, Collapsible
 from textual.widgets.option_list import Option
 
-from ..services.config import ConfigManager, ExitBehavior, FeatureSettings, OpenRouterProxySettings, ALL_SESSION_TYPES
+from ..services.config import ConfigManager, ExitBehavior, FeatureSettings, OpenRouterProxySettings, ProxyAuthType, ALL_SESSION_TYPES
 from ..services.profile import ProfileManager
 from ..widgets.session_type_dropdown import SessionTypeDropdown
 from ..widgets.path_input import PathInput
@@ -222,17 +222,28 @@ class ConfigScreen(ModalScreen[None]):
                     id="instance-dir-input",
                 )
 
-            # y-router proxy settings (collapsible)
+            # Claude proxy settings (collapsible)
             openrouter_proxy = self._config_manager.config.features.openrouter_proxy
             proxy_enabled = openrouter_proxy.enabled if openrouter_proxy else False
+            proxy_auth_type = openrouter_proxy.auth_type if openrouter_proxy else ProxyAuthType.API_KEY
             proxy_url = openrouter_proxy.base_url if openrouter_proxy else "http://localhost:8787"
             proxy_key = openrouter_proxy.api_key if openrouter_proxy else ""
+            proxy_oauth = openrouter_proxy.oauth_token if openrouter_proxy else ""
             proxy_model = openrouter_proxy.default_model if openrouter_proxy else ""
 
-            with Collapsible(title="y-router proxy", id="openrouter-collapsible", collapsed=True):
+            with Collapsible(title="claude proxy", id="openrouter-collapsible", collapsed=True):
                 with Vertical(classes="openrouter-content"):
-                    yield Checkbox("Route Claude through y-router", proxy_enabled, id="openrouter-enabled")
-                    yield Static("docker-compose up -d in y-router dir", classes="openrouter-label")
+                    yield Checkbox("Route Claude through proxy", proxy_enabled, id="openrouter-enabled")
+                    with Vertical(classes="openrouter-row"):
+                        yield Static("auth type", classes="openrouter-label")
+                        yield Select(
+                            [
+                                ("API Key (OpenRouter)", ProxyAuthType.API_KEY.value),
+                                ("OAuth (Claude Pro/Max)", ProxyAuthType.OAUTH.value),
+                            ],
+                            value=proxy_auth_type.value,
+                            id="proxy-auth-type",
+                        )
                     with Vertical(classes="openrouter-row"):
                         yield Static("proxy url", classes="openrouter-label")
                         yield Input(
@@ -241,13 +252,22 @@ class ConfigScreen(ModalScreen[None]):
                             id="openrouter-url",
                             classes="openrouter-input",
                         )
-                    with Vertical(classes="openrouter-row"):
-                        yield Static("api key (or set OPENROUTER_API_KEY)", classes="openrouter-label")
+                    with Vertical(classes="openrouter-row", id="api-key-row"):
+                        yield Static("api key (or OPENROUTER_API_KEY env)", classes="openrouter-label")
                         yield Input(
                             value=proxy_key,
                             placeholder="sk-or-...",
                             password=True,
                             id="openrouter-key",
+                            classes="openrouter-input",
+                        )
+                    with Vertical(classes="openrouter-row", id="oauth-token-row"):
+                        yield Static("oauth token (or CLAUDE_OAUTH_TOKEN env)", classes="openrouter-label")
+                        yield Input(
+                            value=proxy_oauth,
+                            placeholder="eyJ... (leave empty if proxy handles auth)",
+                            password=True,
+                            id="oauth-token",
                             classes="openrouter-input",
                         )
                     with Vertical(classes="openrouter-row"):
@@ -316,18 +336,23 @@ class ConfigScreen(ModalScreen[None]):
         global_input = self.query_one("#global-dir-input", PathInput)
         global_path = global_input.get_path()
 
-        # Save y-router proxy settings
+        # Save Claude proxy settings
         openrouter_enabled = self.query_one("#openrouter-enabled", Checkbox).value
+        auth_type_select = self.query_one("#proxy-auth-type", Select)
+        auth_type = ProxyAuthType(auth_type_select.value) if auth_type_select.value else ProxyAuthType.API_KEY
         openrouter_url = self.query_one("#openrouter-url", Input).value.strip()
         openrouter_key = self.query_one("#openrouter-key", Input).value.strip()
+        oauth_token = self.query_one("#oauth-token", Input).value.strip()
         openrouter_model = self.query_one("#openrouter-model", Input).value.strip()
 
         openrouter_proxy = None
-        if openrouter_enabled or openrouter_key or openrouter_model:
+        if openrouter_enabled or openrouter_key or oauth_token or openrouter_model:
             openrouter_proxy = OpenRouterProxySettings(
                 enabled=openrouter_enabled,
+                auth_type=auth_type,
                 base_url=openrouter_url or "http://localhost:8787",
                 api_key=openrouter_key,
+                oauth_token=oauth_token,
                 default_model=openrouter_model,
             )
 

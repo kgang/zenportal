@@ -340,19 +340,40 @@ Users can enable/disable session types via settings (`c` key):
 - **Effect:** Disabled types hidden from new session modal type selector
 - **UI:** `SessionTypeDropdown` widget in config_screen.py - collapsible with checkboxes
 
-## y-router Proxy
+## Claude Proxy
 
-Route Claude Code through OpenRouter via [y-router](https://github.com/luohy15/y-router) for alternative models:
+Route Claude Code through a proxy for alternative models or subscription-based usage:
 
 - **Config location:** `features.openrouter_proxy` in `~/.config/zen-portal/config.json`
 - **Settings:**
   - `enabled: bool` - Enable/disable proxy routing
+  - `auth_type: str` - `"api_key"` (OpenRouter) or `"oauth"` (Claude Pro/Max)
   - `base_url: str` - Proxy URL (default: `http://localhost:8787`)
-  - `api_key: str` - OpenRouter API key (or set `OPENROUTER_API_KEY` env var)
+  - `api_key: str` - For API_KEY mode: OpenRouter key (or `OPENROUTER_API_KEY` env)
+  - `oauth_token: str` - For OAUTH mode: Bearer token (or `CLAUDE_OAUTH_TOKEN` env)
   - `default_model: str` - Model override (e.g., `anthropic/claude-sonnet-4`)
 - **UI:** Collapsible section in settings (`c` key)
-- **Effect:** Sets `ANTHROPIC_BASE_URL`, `ANTHROPIC_API_KEY`, `ANTHROPIC_CUSTOM_HEADERS`, `ANTHROPIC_MODEL` for Claude sessions
-- **Setup:** Run y-router locally: `git clone https://github.com/luohy15/y-router && cd y-router && docker-compose up -d`
+- **Effect:** Sets `ANTHROPIC_BASE_URL`, `ANTHROPIC_API_KEY`, `ANTHROPIC_CUSTOM_HEADERS`, `ANTHROPIC_MODEL`
+
+**Authentication Modes:**
+
+| Mode | Header | Use Case | Proxy |
+|------|--------|----------|-------|
+| API Key | `x-api-key: {key}` | OpenRouter (pay-per-token) | y-router |
+| OAuth | `Authorization: Bearer {token}` | Claude Pro/Max subscription | CLIProxyAPI |
+
+**Setup:**
+- **y-router (API Key):** `git clone https://github.com/luohy15/y-router && cd y-router && docker-compose up -d`
+- **CLIProxyAPI (OAuth):** Run `./cli-proxy-api --claude-login` to authenticate via browser; proxy handles token refresh
+
+**Security:**
+- All env var values validated before shell injection (see `SessionCommandBuilder`)
+- URLs: Only http/https schemes; normalized to prevent obfuscation
+- API keys: Alphanumeric + dash/underscore only; shell metacharacters rejected
+- OAuth tokens: Base64 charset (alphanumeric + `.`, `-`, `_`, `=`); max 4096 chars
+- Model names: Strict character whitelist; max 128 chars
+- Config files saved with 0600 permissions (owner read/write only)
+- Prefer env vars (`OPENROUTER_API_KEY`, `CLAUDE_OAUTH_TOKEN`) over storing credentials in config
 
 ## Exit Modal
 
