@@ -40,7 +40,7 @@ class MainScreen(Screen):
         Binding("W", "view_worktrees", "Worktrees", show=False),
         ("a", "attach_tmux", "Attach tmux"),
         ("v", "revive", "Revive"),
-        Binding("R", "rename", "Rename", show=False),
+        ("e", "rename", "Rename"),
         Binding("i", "insert", "Insert", show=False),
         Binding("ctrl+i", "toggle_info", "Info", show=False),
         ("r", "refresh_output", "Refresh"),

@@ -26,7 +26,7 @@ PAGE_1 = """
       f          focus / expand       x        kill
       r          refresh              d        clean
       s          stream               v        revive
-      ^i         info mode
+      ^i         info mode            e        rename
 
       attach                          worktrees
 
@@ -107,7 +107,7 @@ PAGE_3 = """
 
       \\[i]   send keys to session (without attaching)
       \\[a]   attach to tmux directly
-      \\[R]   rename session
+      \\[e]   rename session
 
 
                               \\[3/3]  q:close"""
