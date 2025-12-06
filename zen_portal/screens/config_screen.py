@@ -6,6 +6,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.screen import ModalScreen
 from textual.containers import Vertical, Horizontal
+from textual.reactive import reactive
 from textual.widgets import Button, Checkbox, Static, Select, OptionList, Input
 from textual.widgets.option_list import Option
 
@@ -25,6 +26,170 @@ THEMES = [
     ("tokyo-night", "Tokyo Night"),
     ("solarized-light", "Solarized Light"),
 ]
+
+
+class SessionTypeDropdown(Static):
+    """Collapsible dropdown with checkboxes for session types."""
+
+    expanded: reactive[bool] = reactive(False)
+
+    DEFAULT_CSS = """
+    SessionTypeDropdown {
+        width: 100%;
+        height: auto;
+    }
+
+    SessionTypeDropdown .dropdown-header {
+        width: 100%;
+        height: 1;
+        padding: 0 1;
+        background: $surface-darken-1;
+    }
+
+    SessionTypeDropdown .dropdown-header:focus {
+        background: $surface-lighten-1;
+    }
+
+    SessionTypeDropdown .dropdown-header:hover {
+        background: $surface-lighten-1;
+    }
+
+    SessionTypeDropdown .dropdown-content {
+        width: 100%;
+        height: auto;
+        padding: 0 2;
+        background: $surface-darken-1;
+        display: none;
+    }
+
+    SessionTypeDropdown .dropdown-content.expanded {
+        display: block;
+    }
+
+    SessionTypeDropdown .dropdown-content Checkbox {
+        width: 100%;
+        height: 1;
+        padding: 0;
+        margin: 0;
+    }
+
+    SessionTypeDropdown .dropdown-content Checkbox:focus {
+        background: $surface-lighten-1;
+    }
+    """
+
+    BINDINGS = [
+        Binding("f", "toggle_expand", "Expand", show=False),
+        Binding("enter", "toggle_expand", "Expand", show=False),
+        Binding("space", "toggle_expand", "Expand", show=False),
+    ]
+
+    def __init__(self, enabled_types: list[str] | None = None, **kwargs):
+        super().__init__(**kwargs)
+        self._enabled_types = enabled_types
+        self.can_focus = True
+
+    def compose(self) -> ComposeResult:
+        yield Static(self._get_header_text(), id="dropdown-header", classes="dropdown-header")
+        with Vertical(id="dropdown-content", classes="dropdown-content"):
+            for st in ALL_SESSION_TYPES:
+                is_enabled = self._enabled_types is None or st in self._enabled_types
+                yield Checkbox(st, is_enabled, id=f"type-{st}")
+
+    def _get_header_text(self) -> str:
+        """Generate header text showing selection summary."""
+        if self._enabled_types is None:
+            summary = "all"
+        elif len(self._enabled_types) == 0:
+            summary = "none"
+        else:
+            summary = ", ".join(self._enabled_types)
+        arrow = "▼" if self.expanded else "▶"
+        return f"{arrow} session types: {summary}"
+
+    def watch_expanded(self, expanded: bool) -> None:
+        """Update visibility when expanded changes."""
+        try:
+            content = self.query_one("#dropdown-content")
+            header = self.query_one("#dropdown-header", Static)
+            if expanded:
+                content.add_class("expanded")
+                # Focus first checkbox when expanded
+                first_cb = self.query_one(f"#type-{ALL_SESSION_TYPES[0]}", Checkbox)
+                first_cb.focus()
+            else:
+                content.remove_class("expanded")
+            self._update_header()
+        except Exception:
+            pass
+
+    def _update_header(self) -> None:
+        """Update header text based on current selections."""
+        try:
+            enabled = self.get_enabled_types()
+            if set(enabled) == set(ALL_SESSION_TYPES):
+                self._enabled_types = None
+            else:
+                self._enabled_types = enabled
+            header = self.query_one("#dropdown-header", Static)
+            header.update(self._get_header_text())
+        except Exception:
+            pass
+
+    def action_toggle_expand(self) -> None:
+        """Toggle dropdown expansion."""
+        self.expanded = not self.expanded
+
+    def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
+        """Update header when checkbox state changes."""
+        self._update_header()
+        event.stop()
+
+    def get_enabled_types(self) -> list[str]:
+        """Get list of enabled session types."""
+        enabled = []
+        for st in ALL_SESSION_TYPES:
+            try:
+                cb = self.query_one(f"#type-{st}", Checkbox)
+                if cb.value:
+                    enabled.append(st)
+            except Exception:
+                pass
+        return enabled
+
+    def on_focus(self) -> None:
+        """Handle focus on the dropdown."""
+        # Focus the header when dropdown gets focus
+        pass
+
+    def on_key(self, event) -> None:
+        """Handle navigation within dropdown."""
+        if not self.expanded:
+            return
+
+        # h or escape collapses the dropdown
+        if event.key in ("h", "escape"):
+            self.expanded = False
+            self.focus()
+            event.stop()
+            return
+
+        # j/k navigation within checkboxes
+        if event.key in ("j", "k", "down", "up"):
+            checkboxes = [self.query_one(f"#type-{st}", Checkbox) for st in ALL_SESSION_TYPES]
+            focused_idx = None
+            for i, cb in enumerate(checkboxes):
+                if cb.has_focus:
+                    focused_idx = i
+                    break
+
+            if focused_idx is not None:
+                if event.key in ("j", "down"):
+                    next_idx = (focused_idx + 1) % len(checkboxes)
+                else:
+                    next_idx = (focused_idx - 1) % len(checkboxes)
+                checkboxes[next_idx].focus()
+                event.stop()
 
 
 class PathInput(Input):
@@ -108,7 +273,12 @@ class ConfigScreen(ModalScreen[None]):
         ("k", "move_up", "Up"),
         ("down", "move_down", "Down"),
         ("up", "move_up", "Up"),
+        Binding("h", "prev_section", "Prev section", show=False),
+        Binding("l", "next_section", "Next section", show=False),
+        Binding("left", "prev_section", "Prev section", show=False),
+        Binding("right", "next_section", "Next section", show=False),
         Binding("tab", "next_section", "Next section", show=False),
+        Binding("f", "focus_expand", "Expand", show=False),
     ]
 
     DEFAULT_CSS = """
@@ -194,14 +364,8 @@ class ConfigScreen(ModalScreen[None]):
         height: 1;
     }
 
-    ConfigScreen #session-types-row {
-        width: 100%;
-        height: auto;
-        margin-top: 0;
-    }
-
-    ConfigScreen #session-types-row Checkbox {
-        margin-right: 2;
+    ConfigScreen SessionTypeDropdown {
+        margin-bottom: 1;
     }
     """
 
@@ -220,13 +384,8 @@ class ConfigScreen(ModalScreen[None]):
         with Vertical(id="dialog"):
             yield Static("settings", id="title")
 
-            # Session types section
-            yield Static("session types", classes="section-title")
-            with Horizontal(id="session-types-row"):
-                for st in ALL_SESSION_TYPES:
-                    # None means all enabled, otherwise check if in list
-                    is_enabled = enabled_types is None or st in enabled_types
-                    yield Checkbox(st, is_enabled, id=f"type-{st}")
+            # Session types section - collapsible dropdown
+            yield SessionTypeDropdown(enabled_types=enabled_types, id="session-types")
 
             # Exit behavior section
             yield Static("exit behavior", classes="section-title")
@@ -274,7 +433,7 @@ class ConfigScreen(ModalScreen[None]):
                 yield Button("Save", variant="primary", id="save")
                 yield Button("Cancel", variant="default", id="cancel")
 
-            yield Static("tab sections  j/k nav  esc cancel", classes="hint")
+            yield Static("h/l sections  j/k nav  f expand  esc cancel", classes="hint")
 
     def on_mount(self) -> None:
         """Store original theme for cancel."""
@@ -315,12 +474,9 @@ class ConfigScreen(ModalScreen[None]):
         behavior = ExitBehavior(select.value)
         self._config_manager.update_exit_behavior(behavior)
 
-        # Save enabled session types
-        enabled_types = []
-        for st in ALL_SESSION_TYPES:
-            checkbox = self.query_one(f"#type-{st}", Checkbox)
-            if checkbox.value:
-                enabled_types.append(st)
+        # Save enabled session types from dropdown
+        dropdown = self.query_one("#session-types", SessionTypeDropdown)
+        enabled_types = dropdown.get_enabled_types()
         # If all are enabled, store None (default behavior)
         if set(enabled_types) == set(ALL_SESSION_TYPES):
             enabled_types_to_save = None
@@ -381,16 +537,20 @@ class ConfigScreen(ModalScreen[None]):
         except Exception:
             pass
 
-    def action_next_section(self) -> None:
-        """Move focus to next section."""
-        focusables = [
-            "#type-claude",
+    def _get_focusables(self) -> list[str]:
+        """Get list of focusable widget selectors."""
+        return [
+            "#session-types",
             "#exit-behavior",
             "#global-dir-input",
             "#instance-dir-input",
             "#theme-list",
             "#save",
         ]
+
+    def action_next_section(self) -> None:
+        """Move focus to next section (l/right/tab)."""
+        focusables = self._get_focusables()
 
         # Find current focus and move to next
         for i, selector in enumerate(focusables):
@@ -406,6 +566,36 @@ class ConfigScreen(ModalScreen[None]):
         # Default to first focusable
         try:
             self.query_one(focusables[0]).focus()
+        except Exception:
+            pass
+
+    def action_prev_section(self) -> None:
+        """Move focus to previous section (h/left)."""
+        focusables = self._get_focusables()
+
+        # Find current focus and move to previous
+        for i, selector in enumerate(focusables):
+            try:
+                widget = self.query_one(selector)
+                if widget.has_focus:
+                    prev_idx = (i - 1) % len(focusables)
+                    self.query_one(focusables[prev_idx]).focus()
+                    return
+            except Exception:
+                continue
+
+        # Default to first focusable
+        try:
+            self.query_one(focusables[0]).focus()
+        except Exception:
+            pass
+
+    def action_focus_expand(self) -> None:
+        """Expand the session types dropdown if focused."""
+        try:
+            dropdown = self.query_one("#session-types", SessionTypeDropdown)
+            if dropdown.has_focus:
+                dropdown.expanded = not dropdown.expanded
         except Exception:
             pass
 

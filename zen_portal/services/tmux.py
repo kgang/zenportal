@@ -178,6 +178,22 @@ class TmuxService:
             return result.output.strip() == "1"
         return False
 
+    def get_pane_exit_status(self, name: str) -> int | None:
+        """Get the exit status of a dead pane's process.
+
+        Returns the exit code (0 = success, non-zero = error) or None
+        if the pane is still running or doesn't exist.
+        """
+        result = self._run([
+            "display-message", "-t", name, "-p", "#{pane_dead_status}"
+        ])
+        if result.success and result.output.strip():
+            try:
+                return int(result.output.strip())
+            except ValueError:
+                pass
+        return None
+
     def get_pane_pid(self, name: str) -> int | None:
         """Get the PID of the process running in the pane.
 

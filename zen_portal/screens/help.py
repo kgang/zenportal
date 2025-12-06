@@ -22,10 +22,11 @@ PAGE_1 = """
       navigation                      sessions
 
       j / k      up / down            n        new
-      r          refresh              p        pause
-      s          stream               x        kill
-      ^i         info mode            d        clean
-                                      v        revive
+      h / l      left / right         p        pause
+      f          focus / expand       x        kill
+      r          refresh              d        clean
+      s          stream               v        revive
+      ^i         info mode
 
       attach                          worktrees
 

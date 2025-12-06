@@ -26,6 +26,11 @@ class MainScreen(Screen):
         ("k", "move_up", "↑"),
         ("down", "move_down", "↓"),
         ("up", "move_up", "↑"),
+        Binding("h", "focus_list", "←", show=False),
+        Binding("l", "focus_output", "→", show=False),
+        Binding("left", "focus_list", "←", show=False),
+        Binding("right", "focus_output", "→", show=False),
+        Binding("f", "focus_panel", "Focus", show=False),
         ("n", "new_session", "New"),
         Binding("o", "attach_existing", "Attach Existing", show=False),
         ("p", "pause", "Pause"),
@@ -298,6 +303,25 @@ class MainScreen(Screen):
     def action_move_up(self) -> None:
         """Move selection up."""
         self.query_one("#session-list", SessionList).move_up()
+
+    def action_focus_list(self) -> None:
+        """Focus the session list (h/left)."""
+        self.query_one("#session-list", SessionList).focus()
+
+    def action_focus_output(self) -> None:
+        """Focus the output/info view (l/right)."""
+        if self.info_mode:
+            self.query_one("#info-view", SessionInfoView).focus()
+        else:
+            self.query_one("#output-view", OutputView).focus()
+
+    def action_focus_panel(self) -> None:
+        """Toggle focus between panels (f)."""
+        session_list = self.query_one("#session-list", SessionList)
+        if session_list.has_focus:
+            self.action_focus_output()
+        else:
+            self.action_focus_list()
 
     def action_new_session(self) -> None:
         """Open new session modal."""

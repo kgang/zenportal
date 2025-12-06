@@ -79,7 +79,7 @@ class ExitModal(ModalScreen[ExitResult | None]):
     }
 
     ExitModal .option-btn.highlighted {
-        border: solid $text-muted;
+        border: solid $surface-lighten-1;
     }
 
     ExitModal #remember-row {
@@ -123,20 +123,20 @@ class ExitModal(ModalScreen[ExitResult | None]):
                 yield Static(" · ".join(parts), classes="status-line")
 
             yield Button(
-                "Kill all",
-                variant="error",
-                id="kill-all",
-                classes="option-btn",
-            )
-            self._button_ids.append("kill-all")
-
-            yield Button(
                 "Keep running",
                 variant="success",
                 id="keep-all",
                 classes="option-btn",
             )
             self._button_ids.append("keep-all")
+
+            yield Button(
+                "Kill all",
+                variant="error",
+                id="kill-all",
+                classes="option-btn",
+            )
+            self._button_ids.append("kill-all")
 
             yield Button(
                 "Cancel",

@@ -334,7 +334,9 @@ class SessionManager:
     def revive_session(self, session_id: str) -> bool:
         """Revive a completed/failed/paused/killed session.
 
-        For Claude sessions: uses --resume to continue the same session
+        For Claude sessions:
+        - FAILED sessions start fresh (don't resume the broken session)
+        - COMPLETED/PAUSED sessions use --resume to continue
         For shell sessions: restarts the shell with original configuration
 
         Returns True if successful.
@@ -345,6 +347,13 @@ class SessionManager:
 
         if session.state == SessionState.RUNNING:
             return False  # Already running
+
+        # Track if this was a failed session - we'll start fresh instead of resuming
+        was_failed = session.state == SessionState.FAILED
+
+        # Clear error state
+        if was_failed:
+            session.error_message = None
 
         # Build command based on session type
         if session.session_type == SessionType.SHELL:
@@ -357,27 +366,34 @@ class SessionManager:
             # Gemini session - with resume
             command_args = ["gemini", "--resume"]
         else:
-            # Claude session - need to discover or use known session ID
-            claude_session_id = session.claude_session_id
-
-            # If we don't have a session ID, try to discover it from the project folder
-            if not claude_session_id and session.resolved_working_dir:
-                discovery = DiscoveryService(session.resolved_working_dir)
-                sessions = discovery.list_claude_sessions(
-                    project_path=session.resolved_working_dir,
-                    limit=1,
-                )
-                if sessions:
-                    claude_session_id = sessions[0].session_id
-                    # Store it for future revivals
-                    session.claude_session_id = claude_session_id
-
-            if claude_session_id:
-                # Use --resume with the discovered/known session ID
-                command_args = ["claude", "--resume", claude_session_id]
+            # Claude session
+            if was_failed:
+                # Failed session - start fresh, don't resume the broken session
+                # Clear the old session ID so we get a new one
+                session.claude_session_id = ""
+                command_args = ["claude"]
             else:
-                # No session ID found - use --continue to resume most recent
-                command_args = ["claude", "--continue"]
+                # Completed/paused session - try to resume
+                claude_session_id = session.claude_session_id
+
+                # If we don't have a session ID, try to discover it from the project folder
+                if not claude_session_id and session.resolved_working_dir:
+                    discovery = DiscoveryService(session.resolved_working_dir)
+                    sessions = discovery.list_claude_sessions(
+                        project_path=session.resolved_working_dir,
+                        limit=1,
+                    )
+                    if sessions:
+                        claude_session_id = sessions[0].session_id
+                        # Store it for future revivals
+                        session.claude_session_id = claude_session_id
+
+                if claude_session_id:
+                    # Use --resume with the discovered/known session ID
+                    command_args = ["claude", "--resume", claude_session_id]
+                else:
+                    # No session ID found - use --continue to resume most recent
+                    command_args = ["claude", "--continue"]
 
             if session.resolved_model:
                 command_args.extend(["--model", session.resolved_model.value])
@@ -628,7 +644,13 @@ class SessionManager:
                     session.revived_at = None  # Grace period expired
 
             if self._tmux.is_pane_dead(tmux_name):
-                session.state = SessionState.COMPLETED
+                # Check exit status to distinguish normal exit from error
+                exit_status = self._tmux.get_pane_exit_status(tmux_name)
+                if exit_status is not None and exit_status != 0:
+                    session.state = SessionState.FAILED
+                    session.error_message = f"Process exited with code {exit_status}"
+                else:
+                    session.state = SessionState.COMPLETED
                 session.ended_at = datetime.now()
 
             # Update token stats for running Claude sessions

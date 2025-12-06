@@ -105,6 +105,7 @@ Key settings: `exit_behavior`, `working_dir`, `model`, `worktree.*`, `enabled_se
 2. Running → polling detects state
 3. Completion → auto-detected → `SessionStateChanged`
 4. Paused/Killed → user action → cleanup
+5. Revive FAILED → starts fresh (no --resume); Revive COMPLETED → resumes session
 
 ### State Persistence
 - State: `~/.zen_portal/state.json`
@@ -114,6 +115,7 @@ Key settings: `exit_behavior`, `working_dir`, `model`, `worktree.*`, `enabled_se
 ### Polling & Detection
 - Interval: 1 second (`MainScreen._poll_sessions`)
 - Grace period: 5 seconds after revival
+- Exit code detection: Non-zero exit → `FAILED` with error message; zero exit → `COMPLETED`
 
 ### Event System (Textual Messages)
 ```python
@@ -130,7 +132,9 @@ SessionSelected(session)
 
 | Key | Action |
 |-----|--------|
-| j/k | Navigate sessions |
+| j/k | Navigate up/down |
+| h/l | Focus left/right panel |
+| f | Toggle focus between panels |
 | n | New session |
 | p | Pause (preserve worktree) |
 | x | Kill (remove worktree) |
@@ -141,6 +145,30 @@ SessionSelected(session)
 | c | Config screen |
 | ? | Help |
 | q | Quit |
+
+## Keybinding Invariants
+
+These patterns MUST be followed consistently across all screens:
+
+| Key | Semantic | Context |
+|-----|----------|---------|
+| j/k | Vertical navigation (down/up) | Lists, items within containers |
+| h/l | Horizontal navigation (left/right) | Panels, sections, tabs |
+| f | Focus/expand toggle | Dropdowns, collapsibles, panel focus |
+| Enter/Space | Select/toggle | Buttons, checkboxes, options |
+| Esc | Cancel/close/collapse | Modals, dropdowns, cancel actions |
+| Tab | Next section | Form navigation (fallback for h/l) |
+
+**Dropdown/Collapsible behavior:**
+- `f`, `Enter`, or `Space` on header → expand/collapse
+- `h` or `Esc` inside expanded → collapse and return focus to header
+- `j/k` inside expanded → navigate items
+- Checkbox toggle via `Enter` or `Space`
+
+**Panel navigation:**
+- `h` → focus left panel
+- `l` → focus right panel
+- `f` → toggle between panels (if no expandable focused)
 
 ## Important Files to Know
 
