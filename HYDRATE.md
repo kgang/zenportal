@@ -308,3 +308,21 @@ Safe defaults for quit behavior:
 - Default selection is "Keep running" (not "Kill all")
 - Options: Keep running → Kill all → Cancel
 - "Remember choice" checkbox persists to config
+
+## New Session Modal
+
+Three-tab modal for session management (new/attach/resume):
+
+**Keybindings:**
+- `h`/`l` - Navigate between tabs (works everywhere)
+- `^t` - Cycle tabs (works even in input fields)
+- `j`/`k` - Navigate lists in attach/resume tabs
+- `Space`/`f` - Select item in attach/resume tabs
+- `Enter` - Confirm selection
+- `Esc` - Cancel
+
+**Resume tab features:**
+- Shows all recent Claude sessions from `~/.claude/projects/`
+- Sessions known to zen-portal (via state) tagged with `●` (cyan)
+- Unknown sessions shown with `○`
+- Accepts `known_claude_session_ids` param from caller

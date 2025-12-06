@@ -391,6 +391,12 @@ class MainScreen(Screen):
 
         # Get existing session names for unique name generation
         existing_names = {s.name for s in self._manager.sessions}
+        # Get known Claude session IDs for tagging in resume tab
+        known_claude_ids = {
+            s.claude_session_id
+            for s in self._manager.sessions
+            if s.claude_session_id
+        }
         self.app.push_screen(
             NewSessionModal(
                 config_manager=self._config,
@@ -398,6 +404,7 @@ class MainScreen(Screen):
                 tmux_service=self._manager._tmux,
                 existing_names=existing_names,
                 session_prefix=prefix,
+                known_claude_session_ids=known_claude_ids,
             ),
             handle_result,
         )

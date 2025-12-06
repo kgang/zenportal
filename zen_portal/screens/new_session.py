@@ -54,7 +54,6 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
     """Modal for creating, attaching, or resuming sessions."""
 
     BINDINGS = [
-        Binding("ctrl+t", "next_tab", "Next tab", priority=True),  # priority=True to work when Input has focus
         ("escape", "cancel", "Cancel"),
     ]
 
@@ -189,6 +188,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         existing_names: set[str] | None = None,
         session_prefix: str = "zen-",
         initial_working_dir: Path | None = None,
+        known_claude_session_ids: set[str] | None = None,
     ) -> None:
         super().__init__()
         self._config = config_manager
@@ -207,6 +207,8 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         self._claude_selected = 0
         # Enabled session types from config
         self._enabled_types = self._get_enabled_session_types()
+        # Known Claude session IDs from zen-portal state (for tagging)
+        self._known_claude_ids = known_claude_session_ids or set()
 
     def _get_enabled_session_types(self) -> list[SessionType]:
         """Get enabled session types from config."""
@@ -314,7 +316,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
                     yield Static("recent claude sessions", classes="field-label")
                     yield Vertical(id="resume-list", classes="list-container")
 
-            yield Static("^t tabs  enter confirm  esc cancel", classes="hint")
+            yield Static("h/l tabs  j/k select  enter confirm  esc cancel", classes="hint")
 
     def on_mount(self) -> None:
         """Focus the name input and load lists."""
@@ -345,15 +347,15 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
             if not session.is_dead:
                 self._external_sessions.append(session)
 
-        self._refresh_attach_list()
+        self._build_attach_list()
 
     def _load_claude_sessions(self) -> None:
         """Load recent Claude sessions for resume tab."""
         self._claude_sessions = self._discovery.list_claude_sessions(limit=15)
-        self._refresh_resume_list()
+        self._build_resume_list()
 
-    def _refresh_attach_list(self) -> None:
-        """Refresh the attach list display."""
+    def _build_attach_list(self) -> None:
+        """Build the attach list display (called once on load)."""
         attach_list = self.query_one("#attach-list", Vertical)
         attach_list.remove_children()
 
@@ -368,10 +370,28 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
 
             label = f"{glyph} {session.name:<20} {cmd:<10} {cwd_name}"
             classes = "list-row selected" if i == self._external_selected else "list-row"
-            attach_list.mount(Static(label, classes=classes, markup=True))
+            attach_list.mount(Static(label, id=f"attach-row-{i}", classes=classes, markup=True))
 
-    def _refresh_resume_list(self) -> None:
-        """Refresh the resume list display."""
+    def _update_attach_selection(self, old_idx: int, new_idx: int) -> None:
+        """Update selection styling without rebuilding the list."""
+        if old_idx == new_idx:
+            return
+        try:
+            old_row = self.query_one(f"#attach-row-{old_idx}", Static)
+            old_row.remove_class("selected")
+        except Exception:
+            pass
+        try:
+            new_row = self.query_one(f"#attach-row-{new_idx}", Static)
+            new_row.add_class("selected")
+        except Exception:
+            pass
+
+    def _build_resume_list(self) -> None:
+        """Build the resume list display (called once on load).
+
+        Sessions known to zen-portal (via state) are tagged with a glyph.
+        """
         resume_list = self.query_one("#resume-list", Vertical)
         resume_list.remove_children()
 
@@ -384,9 +404,28 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
             project_name = session.project_path.name if session.project_path else "?"
             time_ago = self._format_time_ago(session.modified_at)
 
-            label = f"  {short_id}  {project_name:<25} {time_ago}"
+            # Tag sessions known to zen-portal
+            is_known = session.session_id in self._known_claude_ids
+            glyph = "[cyan]●[/cyan]" if is_known else "○"
+
+            label = f"{glyph} {short_id}  {project_name:<24} {time_ago}"
             classes = "list-row selected" if i == self._claude_selected else "list-row"
-            resume_list.mount(Static(label, classes=classes))
+            resume_list.mount(Static(label, id=f"resume-row-{i}", classes=classes, markup=True))
+
+    def _update_resume_selection(self, old_idx: int, new_idx: int) -> None:
+        """Update selection styling without rebuilding the list."""
+        if old_idx == new_idx:
+            return
+        try:
+            old_row = self.query_one(f"#resume-row-{old_idx}", Static)
+            old_row.remove_class("selected")
+        except Exception:
+            pass
+        try:
+            new_row = self.query_one(f"#resume-row-{new_idx}", Static)
+            new_row.add_class("selected")
+        except Exception:
+            pass
 
     def _format_time_ago(self, dt) -> str:
         """Format a datetime as a human-readable time ago string."""
@@ -474,27 +513,85 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         """Cancel the modal."""
         self.dismiss(None)
 
-    def key_j(self) -> None:
+    def _is_in_new_tab_input(self) -> bool:
+        """Check if focus is in an input field on the new tab."""
+        tab = self._get_active_tab()
+        if tab != "tab-new":
+            return False
+        # Check if any input has focus
+        try:
+            for input_widget in self.query(Input):
+                if input_widget.has_focus:
+                    return True
+        except Exception:
+            pass
+        return False
+
+    def on_key(self, event) -> None:
+        """Handle key events, including those that need to work in Input fields."""
+        # ctrl+t cycles tabs even when Input has focus
+        if event.key == "ctrl+t":
+            event.prevent_default()
+            event.stop()
+            self._next_tab()
+            return
+
+        # h/l for tab navigation (only when not in input)
+        if not self._is_in_new_tab_input():
+            if event.key == "h":
+                event.prevent_default()
+                event.stop()
+                self._prev_tab()
+                return
+            elif event.key == "l":
+                event.prevent_default()
+                event.stop()
+                self._next_tab()
+                return
+            elif event.key == "j":
+                event.prevent_default()
+                event.stop()
+                self._select_next()
+                return
+            elif event.key == "k":
+                event.prevent_default()
+                event.stop()
+                self._select_prev()
+                return
+            elif event.key in ("space", "f"):
+                # space/f to confirm selection on attach/resume tabs
+                tab = self._get_active_tab()
+                if tab in ("tab-attach", "tab-resume"):
+                    event.prevent_default()
+                    event.stop()
+                    self._submit()
+                    return
+
+    def _select_next(self) -> None:
         """Move selection down in attach/resume lists."""
         tab = self._get_active_tab()
         if tab == "tab-attach" and self._external_sessions:
             if self._external_selected < len(self._external_sessions) - 1:
+                old_idx = self._external_selected
                 self._external_selected += 1
-                self._refresh_attach_list()
+                self._update_attach_selection(old_idx, self._external_selected)
         elif tab == "tab-resume" and self._claude_sessions:
             if self._claude_selected < len(self._claude_sessions) - 1:
+                old_idx = self._claude_selected
                 self._claude_selected += 1
-                self._refresh_resume_list()
+                self._update_resume_selection(old_idx, self._claude_selected)
 
-    def key_k(self) -> None:
+    def _select_prev(self) -> None:
         """Move selection up in attach/resume lists."""
         tab = self._get_active_tab()
         if tab == "tab-attach" and self._external_selected > 0:
+            old_idx = self._external_selected
             self._external_selected -= 1
-            self._refresh_attach_list()
+            self._update_attach_selection(old_idx, self._external_selected)
         elif tab == "tab-resume" and self._claude_selected > 0:
+            old_idx = self._claude_selected
             self._claude_selected -= 1
-            self._refresh_resume_list()
+            self._update_resume_selection(old_idx, self._claude_selected)
 
     def key_enter(self) -> None:
         """Submit on enter (unless in directory browser)."""
@@ -510,7 +607,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
 
         self._submit()
 
-    def action_next_tab(self) -> None:
+    def _next_tab(self) -> None:
         """Switch to the next tab."""
         tabs = self.query_one("#tabs", TabbedContent)
         tab_ids = ["tab-new", "tab-attach", "tab-resume"]
@@ -520,6 +617,20 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
             next_idx = (current_idx + 1) % len(tab_ids)
             tabs.active = tab_ids[next_idx]
             self._focus_for_tab(tab_ids[next_idx])
+        except ValueError:
+            tabs.active = "tab-new"
+            self._focus_for_tab("tab-new")
+
+    def _prev_tab(self) -> None:
+        """Switch to the previous tab."""
+        tabs = self.query_one("#tabs", TabbedContent)
+        tab_ids = ["tab-new", "tab-attach", "tab-resume"]
+        current = tabs.active or "tab-new"
+        try:
+            current_idx = tab_ids.index(current)
+            prev_idx = (current_idx - 1) % len(tab_ids)
+            tabs.active = tab_ids[prev_idx]
+            self._focus_for_tab(tab_ids[prev_idx])
         except ValueError:
             tabs.active = "tab-new"
             self._focus_for_tab("tab-new")
