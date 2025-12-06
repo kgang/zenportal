@@ -221,6 +221,7 @@ uv run pytest zen_portal/tests/ --cov=zen_portal
 
 Tests use mocked tmux operations. Key test files:
 - `test_session_manager.py`
+- `test_session_commands.py` - Proxy env var validation (52 tests)
 - `test_config.py`
 - `test_tmux.py`
 - `test_worktree.py`
