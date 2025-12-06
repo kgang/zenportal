@@ -326,3 +326,8 @@ Three-tab modal for session management (new/attach/resume):
 - Sessions known to zen-portal (via state) tagged with `●` (cyan)
 - Unknown sessions shown with `○`
 - Accepts `known_claude_session_ids` param from caller
+
+**Reactivity pattern:**
+- Lists built once on load (`_build_*_list`)
+- Selection uses CSS class toggling (`_update_*_selection`) - O(1) vs O(n) rebuild
+- Each row has unique ID (`attach-row-{i}`, `resume-row-{i}`)
