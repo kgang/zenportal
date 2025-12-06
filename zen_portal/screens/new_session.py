@@ -126,6 +126,14 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         color: $text-disabled;
     }
 
+    NewSessionModal #advanced-config Contents {
+        height: auto;
+    }
+
+    NewSessionModal #default-dir-row {
+        height: auto;
+    }
+
     NewSessionModal #dir-path-row {
         width: 100%;
         height: auto;
@@ -164,7 +172,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
     }
 
     NewSessionModal #billing-section {
-        margin-top: 1;
+        margin-top: 0;
     }
 
     NewSessionModal #billing-section.hidden {
