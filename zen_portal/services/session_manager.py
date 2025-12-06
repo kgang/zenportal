@@ -669,12 +669,6 @@ class SessionManager:
             return "proxy: disabled"
 
         if result.is_ok:
-            from .config import ProxyAuthType
-            auth_type = ProxyAuthType.normalize(resolved.openrouter_proxy.auth_type)
-            auth_desc = {
-                ProxyAuthType.OPENROUTER: "OpenRouter",
-                ProxyAuthType.CLAUDE_ACCOUNT: "Claude Account",
-            }.get(auth_type, "custom")
-            return f"proxy: {auth_desc}"
+            return "proxy: y-router"
 
         return f"proxy: {result.summary}"

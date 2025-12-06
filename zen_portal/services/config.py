@@ -65,45 +65,15 @@ class ClaudeModel(Enum):
     HAIKU = "haiku"
 
 
-class ProxyAuthType(Enum):
-    """Proxy mode for Claude sessions."""
-
-    OPENROUTER = "openrouter"  # y-router: OpenRouter API key, pay-per-token
-    CLAUDE_ACCOUNT = "claude_account"  # CLIProxyAPI: proxy handles auth (Pro/Max)
-    # Legacy values for backwards compatibility
-    API_KEY = "api_key"  # Alias for OPENROUTER
-    PASSTHROUGH = "passthrough"  # Alias for CLAUDE_ACCOUNT
-    OAUTH = "oauth"  # Deprecated: manual token injection
-
-    @classmethod
-    def normalize(cls, value: "ProxyAuthType") -> "ProxyAuthType":
-        """Normalize legacy values to current ones."""
-        if value == cls.API_KEY:
-            return cls.OPENROUTER
-        if value == cls.PASSTHROUGH:
-            return cls.CLAUDE_ACCOUNT
-        return value
-
-    @property
-    def default_port(self) -> int:
-        """Default port for this proxy mode."""
-        normalized = self.normalize(self)
-        if normalized == ProxyAuthType.CLAUDE_ACCOUNT:
-            return 8080
-        return 8787  # OpenRouter/y-router default
-
-
 # All available session types for configuration
 ALL_SESSION_TYPES = ["claude", "codex", "gemini", "shell", "openrouter"]
 
 
 @dataclass
 class ProxySettings:
-    """Settings for routing Claude sessions through a proxy.
+    """Settings for routing Claude sessions through y-router (OpenRouter proxy).
 
-    Two primary modes:
-    1. OpenRouter (y-router): Pay-per-token via OpenRouter API key
-    2. Claude Account (CLIProxyAPI): Use Claude Pro/Max subscription, proxy handles auth
+    Routes Claude Code through y-router for pay-per-token via OpenRouter API.
 
     Security notes:
     - Credentials stored in plain text; prefer environment variables
@@ -112,28 +82,17 @@ class ProxySettings:
     """
 
     enabled: bool = False
-    # Proxy mode
-    auth_type: ProxyAuthType = ProxyAuthType.OPENROUTER
-    # Proxy URL (auto-filled based on mode if empty)
+    # Proxy URL (defaults to http://localhost:8787)
     base_url: str = ""
-    # For OpenRouter: API key (or OPENROUTER_API_KEY env var)
+    # OpenRouter API key (or OPENROUTER_API_KEY env var)
     api_key: str = ""
-    # Deprecated: OAuth token for manual injection
-    oauth_token: str = ""
-    # Model override (e.g., "anthropic/claude-sonnet-4" for OpenRouter)
+    # Model override (e.g., "anthropic/claude-sonnet-4")
     default_model: str = ""
-
-    def __post_init__(self):
-        """Normalize auth_type on creation."""
-        self.auth_type = ProxyAuthType.normalize(self.auth_type)
 
     @property
     def effective_base_url(self) -> str:
-        """Get base URL with mode-appropriate default."""
-        if self.base_url:
-            return self.base_url
-        port = self.auth_type.default_port
-        return f"http://localhost:{port}"
+        """Get base URL with default."""
+        return self.base_url or "http://localhost:8787"
 
     def to_dict(self, redact_secrets: bool = False) -> dict:
         """Serialize to dict.
@@ -142,8 +101,6 @@ class ProxySettings:
             redact_secrets: If True, redact sensitive fields
         """
         result: dict = {"enabled": self.enabled}
-        # Always save auth_type (normalized value)
-        result["auth_type"] = self.auth_type.value
         if self.base_url:
             result["base_url"] = self.base_url
         if self.api_key:
@@ -151,30 +108,16 @@ class ProxySettings:
                 result["api_key"] = f"***{self.api_key[-4:]}" if len(self.api_key) >= 4 else "***"
             else:
                 result["api_key"] = self.api_key
-        if self.oauth_token:
-            if redact_secrets:
-                result["oauth_token"] = f"***{self.oauth_token[-4:]}" if len(self.oauth_token) >= 4 else "***"
-            else:
-                result["oauth_token"] = self.oauth_token
         if self.default_model:
             result["default_model"] = self.default_model
         return result
 
     @classmethod
     def from_dict(cls, data: dict) -> "ProxySettings":
-        auth_type_str = data.get("auth_type", "openrouter")
-        try:
-            auth_type = ProxyAuthType(auth_type_str)
-        except ValueError:
-            auth_type = ProxyAuthType.OPENROUTER
-        # Normalize legacy values
-        auth_type = ProxyAuthType.normalize(auth_type)
         return cls(
             enabled=data.get("enabled", False),
-            auth_type=auth_type,
             base_url=data.get("base_url", ""),
             api_key=data.get("api_key", ""),
-            oauth_token=data.get("oauth_token", ""),
             default_model=data.get("default_model", ""),
         )
 
@@ -182,23 +125,15 @@ class ProxySettings:
         """Return new settings with override values taking precedence."""
         return ProxySettings(
             enabled=override.enabled if override.enabled else self.enabled,
-            auth_type=override.auth_type if override.auth_type != ProxyAuthType.OPENROUTER else self.auth_type,
             base_url=override.base_url if override.base_url else self.base_url,
             api_key=override.api_key if override.api_key else self.api_key,
-            oauth_token=override.oauth_token if override.oauth_token else self.oauth_token,
             default_model=override.default_model if override.default_model else self.default_model,
         )
 
     @property
     def has_credentials(self) -> bool:
-        """Check if credentials are configured for the selected auth type."""
-        normalized = ProxyAuthType.normalize(self.auth_type)
-        if normalized == ProxyAuthType.OPENROUTER:
-            return bool(self.api_key or os.environ.get("OPENROUTER_API_KEY"))
-        elif normalized == ProxyAuthType.CLAUDE_ACCOUNT:
-            return True  # No credentials needed, proxy handles auth
-        else:  # OAUTH (deprecated)
-            return bool(self.oauth_token or os.environ.get("CLAUDE_OAUTH_TOKEN"))
+        """Check if API key is configured."""
+        return bool(self.api_key or os.environ.get("OPENROUTER_API_KEY"))
 
 
 # Backwards compatibility alias

@@ -5,11 +5,11 @@ import pytest
 from unittest.mock import patch
 
 from zen_portal.services.session_commands import SessionCommandBuilder
-from zen_portal.services.config import OpenRouterProxySettings, ProxyAuthType
+from zen_portal.services.config import ProxySettings
 
 
 class TestSessionCommandBuilderURLValidation:
-    """Tests for URL validation in build_openrouter_env_vars."""
+    """Tests for URL validation in build_proxy_env_vars."""
 
     @pytest.fixture
     def builder(self):
@@ -63,10 +63,7 @@ class TestSessionCommandBuilderURLValidation:
 
     def test_url_with_credentials(self, builder):
         """URLs with embedded credentials are normalized (credentials stripped)."""
-        # urlparse puts credentials in netloc, but we reconstruct without them
         result = builder._validate_url("http://user:pass@localhost:8787")
-        # The normalized URL includes the full netloc (with credentials)
-        # This is intentional - we normalize but don't strip credentials
         assert result is not None
         assert "localhost" in result
 
@@ -100,7 +97,6 @@ class TestSessionCommandBuilderAPIKeyValidation:
 
     def test_api_key_with_shell_metacharacters(self, builder):
         """API keys with shell metacharacters are rejected."""
-        # These could be used for command injection
         assert builder._validate_api_key("key; rm -rf /") is None
         assert builder._validate_api_key("key$(whoami)") is None
         assert builder._validate_api_key("key`id`") is None
@@ -173,60 +169,8 @@ class TestSessionCommandBuilderModelValidation:
         assert result is None
 
 
-class TestSessionCommandBuilderOAuthValidation:
-    """Tests for OAuth token validation."""
-
-    @pytest.fixture
-    def builder(self):
-        return SessionCommandBuilder()
-
-    def test_valid_jwt_token(self, builder):
-        """Standard JWT tokens are accepted."""
-        # JWT format: header.payload.signature (base64-encoded)
-        token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"
-        result = builder._validate_oauth_token(token)
-        assert result == token
-
-    def test_valid_simple_token(self, builder):
-        """Simple alphanumeric tokens are accepted."""
-        result = builder._validate_oauth_token("abc123XYZ_token-value")
-        assert result == "abc123XYZ_token-value"
-
-    def test_oauth_token_with_equals_padding(self, builder):
-        """Base64 tokens with padding are accepted."""
-        result = builder._validate_oauth_token("token123==")
-        assert result == "token123=="
-
-    def test_oauth_token_whitespace_stripped(self, builder):
-        """Whitespace is stripped from OAuth tokens."""
-        result = builder._validate_oauth_token("  token123  ")
-        assert result == "token123"
-
-    def test_oauth_token_with_shell_metacharacters(self, builder):
-        """OAuth tokens with shell metacharacters are rejected."""
-        assert builder._validate_oauth_token("token; rm -rf /") is None
-        assert builder._validate_oauth_token("token$(whoami)") is None
-        assert builder._validate_oauth_token("token`id`") is None
-
-    def test_oauth_token_with_spaces(self, builder):
-        """OAuth tokens with spaces are rejected."""
-        result = builder._validate_oauth_token("token with spaces")
-        assert result is None
-
-    def test_oauth_token_too_long(self, builder):
-        """Very long OAuth tokens are rejected."""
-        long_token = "a" * 5000
-        result = builder._validate_oauth_token(long_token)
-        assert result is None
-
-    def test_empty_oauth_token(self, builder):
-        """Empty OAuth tokens return None."""
-        result = builder._validate_oauth_token("")
-        assert result is None
-
-
-class TestBuildOpenRouterEnvVars:
-    """Tests for the full build_openrouter_env_vars method."""
+class TestBuildProxyEnvVars:
+    """Tests for the build_proxy_env_vars method (y-router / OpenRouter)."""
 
     @pytest.fixture
     def builder(self):
@@ -234,269 +178,129 @@ class TestBuildOpenRouterEnvVars:
 
     def test_disabled_returns_empty(self, builder):
         """When proxy is disabled, returns empty dict."""
-        settings = OpenRouterProxySettings(enabled=False)
-        result = builder.build_openrouter_env_vars(settings)
+        settings = ProxySettings(enabled=False)
+        result = builder.build_proxy_env_vars(settings)
         assert result == {}
 
     def test_none_settings_returns_empty(self, builder):
         """When settings is None, returns empty dict."""
-        result = builder.build_openrouter_env_vars(None)
+        result = builder.build_proxy_env_vars(None)
         assert result == {}
 
     def test_enabled_with_valid_url(self, builder):
         """Valid URL is set as ANTHROPIC_BASE_URL."""
-        settings = OpenRouterProxySettings(
+        settings = ProxySettings(
             enabled=True,
             base_url="https://api.openrouter.ai/v1",
         )
-        result = builder.build_openrouter_env_vars(settings)
+        result = builder.build_proxy_env_vars(settings)
         assert result["ANTHROPIC_BASE_URL"] == "https://api.openrouter.ai/v1"
 
     def test_enabled_with_invalid_url_skipped(self, builder):
         """Invalid URL is not included in env vars."""
-        settings = OpenRouterProxySettings(
+        settings = ProxySettings(
             enabled=True,
             base_url="javascript:alert(1)",
         )
-        result = builder.build_openrouter_env_vars(settings)
+        result = builder.build_proxy_env_vars(settings)
         assert "ANTHROPIC_BASE_URL" not in result
 
     def test_enabled_with_valid_api_key(self, builder):
         """Valid API key sets both ANTHROPIC_API_KEY and custom headers."""
-        settings = OpenRouterProxySettings(
+        settings = ProxySettings(
             enabled=True,
-            auth_type=ProxyAuthType.API_KEY,
             api_key="sk-or-v1-test123",
         )
-        result = builder.build_openrouter_env_vars(settings)
+        result = builder.build_proxy_env_vars(settings)
         assert result["ANTHROPIC_API_KEY"] == "sk-or-v1-test123"
         assert result["ANTHROPIC_CUSTOM_HEADERS"] == "x-api-key: sk-or-v1-test123"
 
     def test_enabled_with_invalid_api_key_skipped(self, builder):
         """Invalid API key is not included in env vars."""
-        settings = OpenRouterProxySettings(
+        settings = ProxySettings(
             enabled=True,
             api_key="key; rm -rf /",
         )
-        result = builder.build_openrouter_env_vars(settings)
+        result = builder.build_proxy_env_vars(settings)
         assert "ANTHROPIC_API_KEY" not in result
         assert "ANTHROPIC_CUSTOM_HEADERS" not in result
 
     def test_enabled_with_valid_model(self, builder):
         """Valid model is set as ANTHROPIC_MODEL."""
-        settings = OpenRouterProxySettings(
+        settings = ProxySettings(
             enabled=True,
             default_model="anthropic/claude-sonnet-4",
         )
-        result = builder.build_openrouter_env_vars(settings)
+        result = builder.build_proxy_env_vars(settings)
         assert result["ANTHROPIC_MODEL"] == "anthropic/claude-sonnet-4"
 
     def test_enabled_with_invalid_model_skipped(self, builder):
         """Invalid model is not included in env vars."""
-        settings = OpenRouterProxySettings(
+        settings = ProxySettings(
             enabled=True,
             default_model="$(whoami)",
         )
-        result = builder.build_openrouter_env_vars(settings)
+        result = builder.build_proxy_env_vars(settings)
         assert "ANTHROPIC_MODEL" not in result
 
     def test_api_key_from_environment(self, builder):
         """API key can be read from OPENROUTER_API_KEY environment variable."""
-        settings = OpenRouterProxySettings(
+        settings = ProxySettings(
             enabled=True,
-            auth_type=ProxyAuthType.API_KEY,
             api_key="",  # No key in settings
         )
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-or-env-key"}):
-            result = builder.build_openrouter_env_vars(settings)
+            result = builder.build_proxy_env_vars(settings)
         assert result["ANTHROPIC_API_KEY"] == "sk-or-env-key"
 
     def test_settings_api_key_overrides_env(self, builder):
         """Settings API key takes precedence over environment variable."""
-        settings = OpenRouterProxySettings(
+        settings = ProxySettings(
             enabled=True,
-            auth_type=ProxyAuthType.API_KEY,
             api_key="sk-or-settings-key",
         )
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-or-env-key"}):
-            result = builder.build_openrouter_env_vars(settings)
+            result = builder.build_proxy_env_vars(settings)
         assert result["ANTHROPIC_API_KEY"] == "sk-or-settings-key"
 
     def test_full_valid_config(self, builder):
         """Full valid config sets all expected env vars."""
-        settings = OpenRouterProxySettings(
+        settings = ProxySettings(
             enabled=True,
-            auth_type=ProxyAuthType.API_KEY,
             base_url="https://api.openrouter.ai/v1",
             api_key="sk-or-valid123",
             default_model="anthropic/claude-sonnet-4",
         )
-        result = builder.build_openrouter_env_vars(settings)
+        result = builder.build_proxy_env_vars(settings)
 
         assert result["ANTHROPIC_BASE_URL"] == "https://api.openrouter.ai/v1"
         assert result["ANTHROPIC_API_KEY"] == "sk-or-valid123"
         assert result["ANTHROPIC_CUSTOM_HEADERS"] == "x-api-key: sk-or-valid123"
         assert result["ANTHROPIC_MODEL"] == "anthropic/claude-sonnet-4"
 
+    def test_default_base_url_used_when_empty(self, builder):
+        """Default y-router URL is used when base_url is empty."""
+        settings = ProxySettings(
+            enabled=True,
+            api_key="sk-or-test",
+        )
+        result = builder.build_proxy_env_vars(settings)
+        assert result["ANTHROPIC_BASE_URL"] == "http://localhost:8787"
 
-class TestBuildOpenRouterEnvVarsOAuth:
-    """Tests for OAuth auth mode in build_openrouter_env_vars."""
+
+class TestBuildOpenRouterEnvVarsAlias:
+    """Test backwards compatibility alias."""
 
     @pytest.fixture
     def builder(self):
         return SessionCommandBuilder()
 
-    def test_oauth_mode_with_valid_token(self, builder):
-        """OAuth mode sets Authorization: Bearer header."""
-        settings = OpenRouterProxySettings(
+    def test_alias_calls_build_proxy_env_vars(self, builder):
+        """build_openrouter_env_vars is an alias for build_proxy_env_vars."""
+        settings = ProxySettings(
             enabled=True,
-            auth_type=ProxyAuthType.OAUTH,
-            oauth_token="eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abc123",
+            api_key="sk-or-test",
         )
-        result = builder.build_openrouter_env_vars(settings)
-        assert "Authorization: Bearer" in result["ANTHROPIC_CUSTOM_HEADERS"]
-        assert result["ANTHROPIC_API_KEY"] == "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abc123"
-
-    def test_oauth_mode_with_invalid_token_skipped(self, builder):
-        """Invalid OAuth token is not included in env vars."""
-        settings = OpenRouterProxySettings(
-            enabled=True,
-            auth_type=ProxyAuthType.OAUTH,
-            oauth_token="token; rm -rf /",
-        )
-        result = builder.build_openrouter_env_vars(settings)
-        assert "ANTHROPIC_API_KEY" not in result
-        assert "ANTHROPIC_CUSTOM_HEADERS" not in result
-
-    def test_oauth_token_from_environment(self, builder):
-        """OAuth token can be read from CLAUDE_OAUTH_TOKEN env var."""
-        settings = OpenRouterProxySettings(
-            enabled=True,
-            auth_type=ProxyAuthType.OAUTH,
-            oauth_token="",  # No token in settings
-        )
-        with patch.dict(os.environ, {"CLAUDE_OAUTH_TOKEN": "env-oauth-token123"}):
-            result = builder.build_openrouter_env_vars(settings)
-        assert result["ANTHROPIC_API_KEY"] == "env-oauth-token123"
-        assert "Bearer env-oauth-token123" in result["ANTHROPIC_CUSTOM_HEADERS"]
-
-    def test_settings_oauth_token_overrides_env(self, builder):
-        """Settings OAuth token takes precedence over environment variable."""
-        settings = OpenRouterProxySettings(
-            enabled=True,
-            auth_type=ProxyAuthType.OAUTH,
-            oauth_token="settings-token",
-        )
-        with patch.dict(os.environ, {"CLAUDE_OAUTH_TOKEN": "env-token"}):
-            result = builder.build_openrouter_env_vars(settings)
-        assert result["ANTHROPIC_API_KEY"] == "settings-token"
-
-    def test_oauth_mode_ignores_api_key(self, builder):
-        """In OAuth mode, api_key field is ignored."""
-        settings = OpenRouterProxySettings(
-            enabled=True,
-            auth_type=ProxyAuthType.OAUTH,
-            api_key="should-be-ignored",
-            oauth_token="oauth-token123",
-        )
-        result = builder.build_openrouter_env_vars(settings)
-        assert result["ANTHROPIC_API_KEY"] == "oauth-token123"
-        assert "Bearer oauth-token123" in result["ANTHROPIC_CUSTOM_HEADERS"]
-        assert "x-api-key" not in result["ANTHROPIC_CUSTOM_HEADERS"]
-
-    def test_api_key_mode_ignores_oauth_token(self, builder):
-        """In API_KEY mode, oauth_token field is ignored."""
-        settings = OpenRouterProxySettings(
-            enabled=True,
-            auth_type=ProxyAuthType.API_KEY,
-            api_key="api-key123",
-            oauth_token="should-be-ignored",
-        )
-        result = builder.build_openrouter_env_vars(settings)
-        assert result["ANTHROPIC_API_KEY"] == "api-key123"
-        assert "x-api-key: api-key123" in result["ANTHROPIC_CUSTOM_HEADERS"]
-        assert "Bearer" not in result["ANTHROPIC_CUSTOM_HEADERS"]
-
-    def test_oauth_full_config(self, builder):
-        """Full OAuth config with all options."""
-        settings = OpenRouterProxySettings(
-            enabled=True,
-            auth_type=ProxyAuthType.OAUTH,
-            base_url="http://localhost:5000",
-            oauth_token="my-jwt-token.abc.xyz",
-            default_model="anthropic/claude-sonnet-4",
-        )
-        result = builder.build_openrouter_env_vars(settings)
-
-        assert result["ANTHROPIC_BASE_URL"] == "http://localhost:5000"
-        assert result["ANTHROPIC_API_KEY"] == "my-jwt-token.abc.xyz"
-        # OAuth mode now sets both Authorization and Cookie headers for compatibility
-        assert "Authorization: Bearer my-jwt-token.abc.xyz" in result["ANTHROPIC_CUSTOM_HEADERS"]
-        assert "Cookie: sessionKey=my-jwt-token.abc.xyz" in result["ANTHROPIC_CUSTOM_HEADERS"]
-        assert result["ANTHROPIC_MODEL"] == "anthropic/claude-sonnet-4"
-
-
-class TestBuildOpenRouterEnvVarsPassthrough:
-    """Tests for Passthrough auth mode (CLIProxyAPI) in build_openrouter_env_vars."""
-
-    @pytest.fixture
-    def builder(self):
-        return SessionCommandBuilder()
-
-    def test_passthrough_only_sets_base_url(self, builder):
-        """Passthrough mode only sets ANTHROPIC_BASE_URL, no auth headers."""
-        settings = OpenRouterProxySettings(
-            enabled=True,
-            auth_type=ProxyAuthType.PASSTHROUGH,
-            base_url="http://localhost:8317",
-        )
-        result = builder.build_openrouter_env_vars(settings)
-
-        assert result["ANTHROPIC_BASE_URL"] == "http://localhost:8317"
-        assert "ANTHROPIC_API_KEY" not in result
-        assert "ANTHROPIC_CUSTOM_HEADERS" not in result
-
-    def test_passthrough_ignores_api_key_and_oauth_token(self, builder):
-        """Passthrough mode ignores both api_key and oauth_token fields."""
-        settings = OpenRouterProxySettings(
-            enabled=True,
-            auth_type=ProxyAuthType.PASSTHROUGH,
-            base_url="http://localhost:8317",
-            api_key="should-be-ignored",
-            oauth_token="also-ignored",
-        )
-        result = builder.build_openrouter_env_vars(settings)
-
-        assert result["ANTHROPIC_BASE_URL"] == "http://localhost:8317"
-        assert "ANTHROPIC_API_KEY" not in result
-        assert "ANTHROPIC_CUSTOM_HEADERS" not in result
-
-    def test_passthrough_with_model(self, builder):
-        """Passthrough mode can still set model override."""
-        settings = OpenRouterProxySettings(
-            enabled=True,
-            auth_type=ProxyAuthType.PASSTHROUGH,
-            base_url="http://localhost:8317",
-            default_model="anthropic/claude-sonnet-4",
-        )
-        result = builder.build_openrouter_env_vars(settings)
-
-        assert result["ANTHROPIC_BASE_URL"] == "http://localhost:8317"
-        assert result["ANTHROPIC_MODEL"] == "anthropic/claude-sonnet-4"
-        assert "ANTHROPIC_API_KEY" not in result
-        assert "ANTHROPIC_CUSTOM_HEADERS" not in result
-
-    def test_passthrough_full_config(self, builder):
-        """Full passthrough config for CLIProxyAPI."""
-        settings = OpenRouterProxySettings(
-            enabled=True,
-            auth_type=ProxyAuthType.PASSTHROUGH,
-            base_url="http://localhost:8317",
-            default_model="anthropic/claude-opus-4",
-        )
-        result = builder.build_openrouter_env_vars(settings)
-
-        # Only base URL and model should be set
-        assert len([k for k in result if k.startswith("ANTHROPIC_")]) == 2
-        assert result["ANTHROPIC_BASE_URL"] == "http://localhost:8317"
-        assert result["ANTHROPIC_MODEL"] == "anthropic/claude-opus-4"
+        result1 = builder.build_proxy_env_vars(settings)
+        result2 = builder.build_openrouter_env_vars(settings)
+        assert result1 == result2

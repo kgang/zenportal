@@ -1,4 +1,4 @@
-"""Proxy validation for y-router and CLIProxyAPI integration.
+"""Proxy validation for y-router integration.
 
 Provides connectivity checks and configuration validation to detect
 common gotchas before session creation.
@@ -12,7 +12,7 @@ from enum import Enum
 from typing import Callable
 from urllib.parse import urlparse
 
-from .config import ProxySettings, ProxyAuthType
+from .config import ProxySettings
 
 
 class ProxyStatus(Enum):
@@ -85,17 +85,17 @@ class ProxyValidationResult:
 class ProxyValidator:
     """Validates proxy configuration and connectivity.
 
-    Detects common gotchas:
-    - OpenRouter (y-router): Docker not running, missing API key, wrong key format
-    - Claude Account (CLIProxyAPI): Not running, not logged in
+    Detects common gotchas for y-router:
+    - Docker not running
+    - Missing API key
+    - Wrong key format
     """
 
     # OpenRouter API keys start with this prefix
     OPENROUTER_KEY_PREFIX = "sk-or-"
 
-    # Common proxy ports
+    # Default port for y-router
     YROUTER_DEFAULT_PORT = 8787
-    CLIPROXYAPI_DEFAULT_PORT = 8080
 
     # Connection timeout in seconds
     CONNECTIVITY_TIMEOUT = 2.0
@@ -167,7 +167,6 @@ class ProxyValidator:
         if not settings.enabled:
             return ProxyCheckResult(ProxyStatus.OK, "Proxy disabled")
 
-        # Use effective_base_url which has mode-appropriate defaults
         base_url = settings.effective_base_url
 
         try:
@@ -189,11 +188,11 @@ class ProxyValidator:
                 sock.connect((host, port))
                 return ProxyCheckResult(ProxyStatus.OK, f"Connected to {host}:{port}")
             except socket.timeout:
-                return self._connectivity_error(settings, host, port, "timeout")
+                return self._connectivity_error(host, port, "timeout")
             except ConnectionRefusedError:
-                return self._connectivity_error(settings, host, port, "refused")
+                return self._connectivity_error(host, port, "refused")
             except OSError as e:
-                return self._connectivity_error(settings, host, port, str(e))
+                return self._connectivity_error(host, port, str(e))
             finally:
                 sock.close()
         except Exception as e:
@@ -210,7 +209,6 @@ class ProxyValidator:
         if not settings.enabled:
             return ProxyCheckResult(ProxyStatus.OK, "Proxy disabled")
 
-        # Use effective_base_url which has mode-appropriate defaults
         base_url = settings.effective_base_url
 
         try:
@@ -235,11 +233,11 @@ class ProxyValidator:
                 await writer.wait_closed()
                 return ProxyCheckResult(ProxyStatus.OK, f"Connected to {host}:{port}")
             except asyncio.TimeoutError:
-                return self._connectivity_error(settings, host, port, "timeout")
+                return self._connectivity_error(host, port, "timeout")
             except ConnectionRefusedError:
-                return self._connectivity_error(settings, host, port, "refused")
+                return self._connectivity_error(host, port, "refused")
             except OSError as e:
-                return self._connectivity_error(settings, host, port, str(e))
+                return self._connectivity_error(host, port, str(e))
         except Exception as e:
             return ProxyCheckResult(
                 ProxyStatus.ERROR,
@@ -248,78 +246,42 @@ class ProxyValidator:
 
     def _connectivity_error(
         self,
-        settings: ProxySettings,
         host: str,
         port: int,
         reason: str,
     ) -> ProxyCheckResult:
-        """Generate connectivity error with context-specific hints."""
-        auth_type = ProxyAuthType.normalize(settings.auth_type)
-
-        if auth_type == ProxyAuthType.OPENROUTER:
-            hint = "Is y-router running? Try: docker-compose up -d"
-        elif auth_type == ProxyAuthType.CLAUDE_ACCOUNT:
-            hint = "Is CLIProxyAPI running? Try: ./cli-proxy-api --help"
-        else:
-            hint = f"Check if proxy is running on {host}:{port}"
-
+        """Generate connectivity error with y-router hint."""
         return ProxyCheckResult(
             ProxyStatus.ERROR,
             f"Cannot connect to {host}:{port} ({reason})",
-            hint=hint,
+            hint="Is y-router running? Try: docker-compose up -d",
         )
 
     def _check_credentials(
         self,
         settings: ProxySettings,
     ) -> ProxyCheckResult:
-        """Check if required credentials are configured."""
+        """Check if API key is configured."""
         if not settings.enabled:
             return ProxyCheckResult(ProxyStatus.OK, "Proxy disabled")
 
-        auth_type = ProxyAuthType.normalize(settings.auth_type)
-
-        if auth_type == ProxyAuthType.CLAUDE_ACCOUNT:
-            # Claude Account mode: CLIProxyAPI handles auth internally
-            return ProxyCheckResult(
-                ProxyStatus.OK,
-                "Claude Account mode (proxy handles auth)",
-                hint="Ensure CLIProxyAPI is logged in: ./cli-proxy-api --claude-login",
-            )
-
-        if auth_type == ProxyAuthType.OPENROUTER:
-            # OpenRouter mode: need API key
-            api_key = settings.api_key or os.environ.get("OPENROUTER_API_KEY", "")
-            if not api_key:
-                return ProxyCheckResult(
-                    ProxyStatus.ERROR,
-                    "OpenRouter API key not configured",
-                    hint="Get key from openrouter.ai/keys, set in settings or OPENROUTER_API_KEY env",
-                )
-
-            # Check for OpenRouter key format
-            if not api_key.startswith(self.OPENROUTER_KEY_PREFIX):
-                return ProxyCheckResult(
-                    ProxyStatus.WARNING,
-                    f"API key doesn't start with '{self.OPENROUTER_KEY_PREFIX}'",
-                    hint="OpenRouter keys start with 'sk-or-'. Is this the right key?",
-                )
-
-            return ProxyCheckResult(ProxyStatus.OK, "OpenRouter API key configured")
-
-        # OAuth mode (deprecated): need bearer token
-        token = settings.oauth_token or os.environ.get("CLAUDE_OAUTH_TOKEN", "")
-        if not token:
+        api_key = settings.api_key or os.environ.get("OPENROUTER_API_KEY", "")
+        if not api_key:
             return ProxyCheckResult(
                 ProxyStatus.ERROR,
-                "OAuth token not configured",
-                hint="Consider using Claude Account mode instead",
+                "OpenRouter API key not configured",
+                hint="Get key from openrouter.ai/keys, set in settings or OPENROUTER_API_KEY env",
             )
-        return ProxyCheckResult(
-            ProxyStatus.OK,
-            "OAuth token configured",
-            hint="OAuth mode is deprecated. Consider Claude Account mode.",
-        )
+
+        # Check for OpenRouter key format
+        if not api_key.startswith(self.OPENROUTER_KEY_PREFIX):
+            return ProxyCheckResult(
+                ProxyStatus.WARNING,
+                f"API key doesn't start with '{self.OPENROUTER_KEY_PREFIX}'",
+                hint="OpenRouter keys start with 'sk-or-'. Is this the right key?",
+            )
+
+        return ProxyCheckResult(ProxyStatus.OK, "OpenRouter API key configured")
 
     def _check_configuration(
         self,
@@ -331,29 +293,18 @@ class ProxyValidator:
 
         issues = []
         hints = []
-
-        auth_type = ProxyAuthType.normalize(settings.auth_type)
         has_api_key = bool(settings.api_key or os.environ.get("OPENROUTER_API_KEY"))
 
-        # Check for localhost vs remote URL mismatch with auth type
-        base_url = settings.effective_base_url
-        parsed = urlparse(base_url)
-        is_localhost = parsed.hostname in ("localhost", "127.0.0.1", "::1")
-
-        if not is_localhost and auth_type == ProxyAuthType.CLAUDE_ACCOUNT:
-            issues.append("Claude Account mode with remote URL")
-            hints.append("Claude Account mode is for local CLIProxyAPI; use OpenRouter for remote")
-
         # Check model format for OpenRouter
-        if settings.default_model and auth_type == ProxyAuthType.OPENROUTER:
+        if settings.default_model:
             model = settings.default_model
             if "/" not in model:
                 issues.append(f"Model '{model}' missing provider prefix")
                 hints.append("OpenRouter uses 'provider/model' format (e.g., anthropic/claude-sonnet-4)")
 
-        # Check for credential mismatch
-        if auth_type == ProxyAuthType.OPENROUTER and not has_api_key:
-            issues.append("OpenRouter mode needs API key")
+        # Check for missing API key
+        if not has_api_key:
+            issues.append("API key not configured")
             hints.append("Get key from openrouter.ai/keys")
 
         if issues:
@@ -402,28 +353,6 @@ def get_proxy_status_line(settings: ProxySettings | None) -> str:
     result = validator.validate_sync()
 
     if result.is_ok:
-        auth_type = ProxyAuthType.normalize(settings.auth_type)
-        auth_desc = {
-            ProxyAuthType.OPENROUTER: "OpenRouter",
-            ProxyAuthType.CLAUDE_ACCOUNT: "Claude Account",
-        }.get(auth_type, "custom")
-        return f"proxy: {auth_desc}"
+        return "proxy: y-router"
 
     return f"proxy: {result.summary}"
-
-
-def get_proxy_auth_hint(auth_type: ProxyAuthType) -> str:
-    """Get setup hint for the given auth type.
-
-    Args:
-        auth_type: The authentication type
-
-    Returns:
-        Setup instruction hint
-    """
-    auth_type = ProxyAuthType.normalize(auth_type)
-    hints = {
-        ProxyAuthType.OPENROUTER: "Get key from openrouter.ai/keys",
-        ProxyAuthType.CLAUDE_ACCOUNT: "Run: ./cli-proxy-api --claude-login",
-    }
-    return hints.get(auth_type, "")

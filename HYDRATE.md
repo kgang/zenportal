@@ -205,8 +205,8 @@ These patterns MUST be followed consistently across all screens:
 | `services/proxy_validation.py` | Proxy connectivity/credential checks |
 | `services/token_parser.py` | Parse Claude JSONL for token stats |
 | `screens/main.py` | Primary UI with keybindings |
-| `screens/new_session.py` | Session creation modal |
-| `screens/config_screen.py` | Settings UI with proxy test button |
+| `screens/new_session.py` | Session creation modal + billing settings |
+| `screens/config_screen.py` | Settings UI (theme, exit behavior, session types) |
 | `models/session.py` | Session dataclass + enums |
 
 ## Constraints & Limits
@@ -225,7 +225,7 @@ uv run pytest zen_portal/tests/ --cov=zen_portal
 Tests use mocked tmux operations. Key test files:
 - `test_session_manager.py`
 - `test_session_commands.py` - Proxy env var validation
-- `test_proxy_validation.py` - Proxy connectivity/credential checks (39 tests)
+- `test_proxy_validation.py` - Proxy connectivity/credential checks
 - `test_config.py`
 - `test_tmux.py`
 - `test_worktree.py`
@@ -326,6 +326,18 @@ Recent design pass established consistent visual patterns:
 - Modals: 45-65 char width, centered
 - Consistent padding: 1-2 units
 
+**Elastic modals (IMPORTANT):**
+```css
+#dialog {
+    height: auto;
+    max-height: 90%;      /* viewport-relative, NOT fixed pixels */
+    overflow-y: auto;     /* scroll when content overflows */
+}
+```
+- Never use fixed `max-height` values (like `max-height: 36`) on modal dialogs
+- Child containers should use `height: auto` without restrictive max-heights
+- This prevents content from being cut off when collapsibles expand or content is added
+
 **Session list prefixes:**
 - Claude: no prefix
 - Shell: `sh:`
@@ -345,48 +357,26 @@ Users can enable/disable session types via settings (`c` key):
 - **Effect:** Disabled types hidden from new session modal type selector
 - **UI:** `SessionTypeDropdown` widget in config_screen.py - collapsible with checkboxes
 
-## Session Proxy
+## Session Billing (y-router)
 
-Route Claude sessions through a proxy for OpenRouter models or Claude Pro/Max subscription:
+Choose billing mode for Claude sessions in the new session modal:
 
+- **UI:** New session modal → advanced → billing selector
 - **Config location:** `features.openrouter_proxy` in `~/.config/zen-portal/config.json`
-- **UI:** Collapsible "session proxy" section in settings (`c` key)
 
-**Two Modes:**
+**Billing modes:**
+- `claude account` - Use your Claude subscription (default)
+- `openrouter` - Pay-per-token via y-router proxy
 
-| Mode | Proxy | Default Port | Credentials | Use Case |
-|------|-------|--------------|-------------|----------|
-| **OpenRouter** | y-router | 8787 | API key (`sk-or-*`) | Pay-per-token via OpenRouter |
-| **Claude Account** | CLIProxyAPI | 8080 | None (proxy handles) | Claude Pro/Max subscription |
+**OpenRouter setup:**
+```bash
+git clone https://github.com/luohy15/y-router && cd y-router && docker-compose up -d
+```
 
-**Settings:**
-- `enabled: bool` - Enable/disable proxy routing
-- `auth_type: str` - `"openrouter"` or `"claude_account"`
-- `base_url: str` - Proxy URL (leave empty for mode-appropriate default)
-- `api_key: str` - For OpenRouter: key from openrouter.ai/keys (or `OPENROUTER_API_KEY` env)
-- `default_model: str` - Model override (OpenRouter uses `provider/model` format)
-
-**Setup:**
-- **OpenRouter:** `git clone https://github.com/luohy15/y-router && cd y-router && docker-compose up -d`
-- **Claude Account:** Run `./cli-proxy-api --claude-login` to authenticate
-
-**UI Behavior:**
-- Mode selector auto-updates URL placeholder with correct default port
-- API key field hidden in Claude Account mode (not needed)
-- Model hint updates based on mode (OpenRouter needs `provider/model` format)
-
-**Proxy Validation (`services/proxy_validation.py`):**
-
-Detects common gotchas before session creation:
-
-| Issue | Mode | Detection | Hint |
-|-------|------|-----------|------|
-| y-router not running | OpenRouter | Connection refused on :8787 | "Is y-router running? Try: docker-compose up -d" |
-| CLIProxyAPI not running | Claude Account | Connection refused on :8080 | "Is CLIProxyAPI running?" |
-| Missing API key | OpenRouter | No key configured | "Get key from openrouter.ai/keys" |
-| Wrong key format | OpenRouter | Key doesn't start with `sk-or-` | "OpenRouter keys start with 'sk-or-'" |
-| Remote URL with Claude Account | Claude Account | base_url not localhost | "Claude Account is for local CLIProxyAPI" |
-| Model missing provider | OpenRouter | No "/" in model name | "Use 'provider/model' format" |
+**When OpenRouter selected:**
+- Status shows "● ready" if API key configured (from input or `OPENROUTER_API_KEY` env)
+- API key + optional model inputs inline in advanced section
+- Settings persisted to config on session creation
 
 **Security:**
 - All env var values validated before shell injection

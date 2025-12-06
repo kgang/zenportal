@@ -36,10 +36,11 @@ class WorktreesScreen(ModalScreen[WorktreeAction | None]):
     WorktreesScreen #dialog {
         width: 80;
         height: auto;
-        max-height: 28;
+        max-height: 90%;
         padding: 1 2;
         background: $surface;
         border: round $surface-lighten-1;
+        overflow-y: auto;
     }
 
     WorktreesScreen .title {
@@ -50,7 +51,6 @@ class WorktreesScreen(ModalScreen[WorktreeAction | None]):
 
     WorktreesScreen #worktree-list {
         height: auto;
-        max-height: 18;
         padding: 0;
     }
 

@@ -44,10 +44,11 @@ class AttachSessionModal(ModalScreen[AttachSessionResult | None]):
     AttachSessionModal #dialog {
         width: 70;
         height: auto;
-        max-height: 30;
+        max-height: 90%;
         padding: 1 2;
         background: $surface;
         border: round $surface-lighten-1;
+        overflow-y: auto;
     }
 
     AttachSessionModal .title {
@@ -58,7 +59,6 @@ class AttachSessionModal(ModalScreen[AttachSessionResult | None]):
 
     AttachSessionModal #session-list {
         height: auto;
-        max-height: 20;
         padding: 0;
     }
 

@@ -9,17 +9,13 @@ from urllib.parse import urlparse
 
 from ..models.session import Session, SessionType
 from .banner import generate_banner_command
-from .config import ClaudeModel, ProxySettings, ProxyAuthType
+from .config import ClaudeModel, ProxySettings
 
 
 # Validation patterns
 _API_KEY_PATTERN = re.compile(r'^[a-zA-Z0-9_-]+$')
-# OAuth tokens are base64-encoded JWTs: header.payload.signature
-# Allow alphanumeric, dash, underscore, period, equals (padding)
-_OAUTH_TOKEN_PATTERN = re.compile(r'^[a-zA-Z0-9_.\-=]+$')
 _SAFE_URL_SCHEMES = frozenset({'http', 'https'})
 _MAX_API_KEY_LENGTH = 256
-_MAX_OAUTH_TOKEN_LENGTH = 4096  # JWTs can be longer than API keys
 _MAX_URL_LENGTH = 2048
 
 
@@ -220,33 +216,13 @@ class SessionCommandBuilder:
 
         return model
 
-    def _validate_oauth_token(self, token: str) -> str | None:
-        """Validate an OAuth token for safe use in environment variables.
-
-        Returns the token if valid, None otherwise.
-        OAuth tokens are typically JWTs (base64-encoded with periods as separators).
-        """
-        if not token or len(token) > _MAX_OAUTH_TOKEN_LENGTH:
-            return None
-
-        token = token.strip()
-
-        # Check for safe characters only (base64 + JWT separators)
-        if not _OAUTH_TOKEN_PATTERN.match(token):
-            return None
-
-        return token
-
     def build_proxy_env_vars(
         self,
         proxy_settings: ProxySettings,
     ) -> dict[str, str]:
-        """Build environment variables for Claude proxy (y-router or CLIProxyAPI).
+        """Build environment variables for Claude proxy (y-router).
 
-        Two primary modes:
-        - OPENROUTER: y-router with OpenRouter API key (pay-per-token)
-        - CLAUDE_ACCOUNT: CLIProxyAPI handles auth internally (Pro/Max subscription)
-
+        Routes Claude Code through y-router for pay-per-token via OpenRouter.
         All values are validated before use to prevent injection attacks.
 
         Args:
@@ -260,39 +236,20 @@ class SessionCommandBuilder:
 
         env_vars = {}
 
-        # Use effective_base_url which applies mode-appropriate defaults
+        # Use effective_base_url which applies default
         validated_url = self._validate_url(proxy_settings.effective_base_url)
         if validated_url:
             env_vars["ANTHROPIC_BASE_URL"] = validated_url
 
-        # Normalize auth type for consistent handling
-        auth_type = ProxyAuthType.normalize(proxy_settings.auth_type)
+        # OpenRouter API key for y-router
+        api_key = proxy_settings.api_key or os.environ.get("OPENROUTER_API_KEY", "")
+        if api_key:
+            validated_key = self._validate_api_key(api_key)
+            if validated_key:
+                env_vars["ANTHROPIC_API_KEY"] = validated_key
+                env_vars["ANTHROPIC_CUSTOM_HEADERS"] = f"x-api-key: {validated_key}"
 
-        if auth_type == ProxyAuthType.CLAUDE_ACCOUNT:
-            # Claude Account mode: proxy handles auth internally (CLIProxyAPI)
-            # No credentials needed from us
-            pass
-        elif auth_type == ProxyAuthType.OPENROUTER:
-            # OpenRouter mode: x-api-key header for y-router
-            api_key = proxy_settings.api_key or os.environ.get("OPENROUTER_API_KEY", "")
-            if api_key:
-                validated_key = self._validate_api_key(api_key)
-                if validated_key:
-                    env_vars["ANTHROPIC_API_KEY"] = validated_key
-                    env_vars["ANTHROPIC_CUSTOM_HEADERS"] = f"x-api-key: {validated_key}"
-        else:
-            # OAuth mode (deprecated): manual token injection
-            oauth_token = proxy_settings.oauth_token or os.environ.get("CLAUDE_OAUTH_TOKEN", "")
-            if oauth_token:
-                validated_token = self._validate_oauth_token(oauth_token)
-                if validated_token:
-                    env_vars["ANTHROPIC_API_KEY"] = validated_token
-                    env_vars["ANTHROPIC_CUSTOM_HEADERS"] = (
-                        f"Authorization: Bearer {validated_token}\n"
-                        f"Cookie: sessionKey={validated_token}"
-                    )
-
-        # Model override (primarily for OpenRouter which uses provider/model format)
+        # Model override (OpenRouter uses provider/model format)
         if proxy_settings.default_model:
             validated_model = self._validate_model_name(proxy_settings.default_model)
             if validated_model:
