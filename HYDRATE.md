@@ -300,3 +300,11 @@ Users can enable/disable session types via settings (`c` key):
 - **Values:** `["claude", "codex", "gemini", "shell"]`
 - **Default:** `null` (all types enabled)
 - **Effect:** Disabled types hidden from new session modal type selector
+- **UI:** `SessionTypeDropdown` widget in config_screen.py - collapsible with checkboxes
+
+## Exit Modal
+
+Safe defaults for quit behavior:
+- Default selection is "Keep running" (not "Kill all")
+- Options: Keep running → Kill all → Cancel
+- "Remember choice" checkbox persists to config
