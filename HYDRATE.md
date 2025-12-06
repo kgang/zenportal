@@ -316,10 +316,15 @@ Three-tab modal for session management (new/attach/resume):
 **Keybindings:**
 - `h`/`l` - Navigate between tabs (works everywhere)
 - `^t` - Cycle tabs (works even in input fields)
-- `j`/`k` - Navigate lists in attach/resume tabs
-- `Space`/`f` - Select item in attach/resume tabs
+- `j`/`k` - Navigate lists in attach/resume tabs; cycle type selector when focused
+- `f` - Focus/expand: type dropdown, directory browser toggle, advanced collapsible
+- `Space` - Select item in attach/resume tabs
 - `Enter` - Confirm selection
 - `Esc` - Cancel
+
+**Shell session features:**
+- Shell sessions can use worktrees (separate `#shell-options` checkbox)
+- Worktree checkbox visible when session type is `shell`
 
 **Resume tab features:**
 - Shows all recent Claude sessions from `~/.claude/projects/`

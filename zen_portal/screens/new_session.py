@@ -178,6 +178,15 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
     NewSessionModal Select.hidden {
         display: none;
     }
+
+    NewSessionModal #shell-options {
+        margin-top: 1;
+        height: auto;
+    }
+
+    NewSessionModal #shell-options.hidden {
+        display: none;
+    }
     """
 
     def __init__(
@@ -289,6 +298,10 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
 
                     yield DirectoryBrowser(initial_path=self._initial_dir, id="dir-browser", show_hint=False)
 
+                    # Shell-specific options (shown only for shell sessions)
+                    with Horizontal(id="shell-options", classes="hidden"):
+                        yield Checkbox("worktree", id="shell-worktree-check")
+
                     with Collapsible(title="advanced", id="advanced-config", collapsed=True):
                         yield Static("model", classes="field-label", id="model-label")
                         model_options = [
@@ -316,7 +329,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
                     yield Static("recent claude sessions", classes="field-label")
                     yield Vertical(id="resume-list", classes="list-container")
 
-            yield Static("h/l tabs  j/k select  enter confirm  esc cancel", classes="hint")
+            yield Static("h/l tabs  j/k select  f expand  enter confirm  esc cancel", classes="hint")
 
     def on_mount(self) -> None:
         """Focus the name input and load lists."""
@@ -328,9 +341,16 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
             default_type = self._enabled_types[0]
             is_ai_session = default_type in (SessionType.CLAUDE, SessionType.CODEX, SessionType.GEMINI)
             is_claude = default_type == SessionType.CLAUDE
+            is_shell = default_type == SessionType.SHELL
             self.query_one("#prompt-label", Static).display = is_ai_session
             self.query_one("#prompt-input", Input).display = is_ai_session
             self.query_one("#advanced-config", Collapsible).display = is_claude
+            # Show shell options if default is shell
+            shell_options = self.query_one("#shell-options", Horizontal)
+            if is_shell:
+                shell_options.remove_class("hidden")
+            else:
+                shell_options.add_class("hidden")
 
     def _load_external_sessions(self) -> None:
         """Load all tmux sessions for attach tab.
@@ -456,11 +476,18 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         if event.select.id == "type-select":
             is_ai_session = event.value in (SessionType.CLAUDE, SessionType.CODEX, SessionType.GEMINI)
             is_claude = event.value == SessionType.CLAUDE
+            is_shell = event.value == SessionType.SHELL
             # Toggle visibility of prompt (for AI sessions)
             self.query_one("#prompt-label", Static).display = is_ai_session
             self.query_one("#prompt-input", Input).display = is_ai_session
             # Hide advanced config for non-Claude (it contains Claude-specific options)
             self.query_one("#advanced-config", Collapsible).display = is_claude
+            # Show shell options for shell sessions
+            shell_options = self.query_one("#shell-options", Horizontal)
+            if is_shell:
+                shell_options.remove_class("hidden")
+            else:
+                shell_options.add_class("hidden")
 
             # Update default name based on session type
             name_input = self.query_one("#name-input", Input)
@@ -527,6 +554,36 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
             pass
         return False
 
+    def _cycle_select_value(self, select: Select, forward: bool) -> None:
+        """Cycle through Select options with j/k."""
+        options = select._options
+        if not options:
+            return
+
+        # Find current value index (skip BLANK option at index 0 if present)
+        current_value = select.value
+        current_idx = -1
+        for i, (_, value) in enumerate(options):
+            if value == current_value:
+                current_idx = i
+                break
+
+        if current_idx == -1:
+            # Not found, start from first non-BLANK option
+            current_idx = 1 if len(options) > 1 and options[0][1] == Select.BLANK else 0
+
+        # Calculate next index (skip BLANK option)
+        start_idx = 1 if options[0][1] == Select.BLANK else 0
+        end_idx = len(options) - 1
+
+        if forward:
+            new_idx = current_idx + 1 if current_idx < end_idx else start_idx
+        else:
+            new_idx = current_idx - 1 if current_idx > start_idx else end_idx
+
+        # Set new value
+        select.value = options[new_idx][1]
+
     def on_key(self, event) -> None:
         """Handle key events, including those that need to work in Input fields."""
         # ctrl+t cycles tabs even when Input has focus
@@ -535,6 +592,20 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
             event.stop()
             self._next_tab()
             return
+
+        # Handle j/k in type-select dropdown (when it has focus)
+        type_select = self.query_one("#type-select", Select)
+        if type_select.has_focus:
+            if event.key == "j":
+                event.prevent_default()
+                event.stop()
+                self._cycle_select_value(type_select, forward=True)
+                return
+            elif event.key == "k":
+                event.prevent_default()
+                event.stop()
+                self._cycle_select_value(type_select, forward=False)
+                return
 
         # h/l for tab navigation (only when not in input)
         if not self._is_in_new_tab_input():
@@ -558,14 +629,56 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
                 event.stop()
                 self._select_prev()
                 return
-            elif event.key in ("space", "f"):
-                # space/f to confirm selection on attach/resume tabs
+            elif event.key == "f":
+                # f to focus/expand elements
+                event.prevent_default()
+                event.stop()
+                self._handle_focus_expand()
+                return
+            elif event.key == "space":
+                # space to confirm selection on attach/resume tabs
                 tab = self._get_active_tab()
                 if tab in ("tab-attach", "tab-resume"):
                     event.prevent_default()
                     event.stop()
                     self._submit()
                     return
+
+    def _handle_focus_expand(self) -> None:
+        """Handle f key to focus/expand appropriate element."""
+        tab = self._get_active_tab()
+        if tab != "tab-new":
+            # On attach/resume tabs, f submits like space
+            self._submit()
+            return
+
+        # Check what's focused and toggle accordingly
+        type_select = self.query_one("#type-select", Select)
+        dir_browser = self.query_one("#dir-browser", DirectoryBrowser)
+        browse_btn = self.query_one("#browse-btn", Button)
+        dir_input = self.query_one("#dir-path-input", Input)
+        advanced = self.query_one("#advanced-config", Collapsible)
+
+        # If type select has focus, expand it
+        if type_select.has_focus:
+            if type_select.expanded:
+                type_select.action_dismiss()
+            else:
+                type_select.action_show_overlay()
+            return
+
+        # If browse button or dir input has focus, toggle directory browser
+        if browse_btn.has_focus or dir_input.has_focus:
+            self._toggle_directory_browser()
+            return
+
+        # If advanced collapsible or its children have focus, toggle it
+        if advanced.has_focus:
+            advanced.collapsed = not advanced.collapsed
+            return
+
+        # Default: toggle directory browser as most common action
+        self._toggle_directory_browser()
 
     def _select_next(self) -> None:
         """Move selection down in attach/resume lists."""
@@ -667,6 +780,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         type_select = self.query_one("#type-select", Select)
         model_select = self.query_one("#model-select", Select)
         worktree_check = self.query_one("#worktree-check", Checkbox)
+        shell_worktree_check = self.query_one("#shell-worktree-check", Checkbox)
         dangerous_check = self.query_one("#dangerous-check", Checkbox)
         set_default_check = self.query_one("#set-default-dir-check", Checkbox)
 
@@ -681,10 +795,14 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
 
         prompt = ""
         model = None
+        use_worktree = None
 
         if session_type == SessionType.CLAUDE:
             prompt = prompt_input.value.strip()
             model = model_select.value if model_select.value is not Select.BLANK else None
+            use_worktree = worktree_check.value if worktree_check.value else None
+        elif session_type == SessionType.SHELL:
+            use_worktree = shell_worktree_check.value if shell_worktree_check.value else None
 
         # Get working directory from path input
         path_str = dir_path_input.value.strip()
@@ -705,7 +823,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         features = SessionFeatures(
             working_dir=working_dir,
             model=model,
-            use_worktree=worktree_check.value if worktree_check.value else None,
+            use_worktree=use_worktree,
             dangerously_skip_permissions=dangerous_check.value,
         )
 

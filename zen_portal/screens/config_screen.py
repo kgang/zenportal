@@ -68,7 +68,7 @@ class SessionTypeDropdown(Static):
 
     SessionTypeDropdown .dropdown-content Checkbox {
         width: 100%;
-        height: 1;
+        height: auto;
         padding: 0;
         margin: 0;
     }
