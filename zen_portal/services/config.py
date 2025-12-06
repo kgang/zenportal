@@ -69,7 +69,8 @@ class ProxyAuthType(Enum):
     """Authentication type for Claude proxy."""
 
     API_KEY = "api_key"  # OpenRouter-style: x-api-key header
-    OAUTH = "oauth"  # Claude Pro/Max: Authorization: Bearer token
+    OAUTH = "oauth"  # Claude Pro/Max: Authorization: Bearer token (manual)
+    PASSTHROUGH = "passthrough"  # Proxy handles auth internally (CLIProxyAPI)
 
 
 # All available session types for configuration
@@ -80,9 +81,10 @@ ALL_SESSION_TYPES = ["claude", "codex", "gemini", "shell", "openrouter"]
 class OpenRouterProxySettings:
     """Settings for routing Claude Code through a proxy.
 
-    Supports two authentication modes:
+    Supports three authentication modes:
     1. API Key (OpenRouter): Uses x-api-key header, pay-per-token
-    2. OAuth (Claude Pro/Max): Uses Authorization: Bearer, subscription-based
+    2. OAuth (manual): Uses Authorization: Bearer, for manual token injection
+    3. Passthrough (CLIProxyAPI): Only sets base URL, proxy handles auth internally
 
     Security notes:
     - Credentials stored in plain text; prefer environment variables

@@ -239,7 +239,8 @@ class ConfigScreen(ModalScreen[None]):
                         yield Select(
                             [
                                 ("API Key (OpenRouter)", ProxyAuthType.API_KEY.value),
-                                ("OAuth (Claude Pro/Max)", ProxyAuthType.OAUTH.value),
+                                ("Passthrough (CLIProxyAPI)", ProxyAuthType.PASSTHROUGH.value),
+                                ("OAuth (manual token)", ProxyAuthType.OAUTH.value),
                             ],
                             value=proxy_auth_type.value,
                             id="proxy-auth-type",

@@ -361,11 +361,12 @@ Route Claude Code through a proxy for alternative models or subscription-based u
 | Mode | Header | Use Case | Proxy |
 |------|--------|----------|-------|
 | API Key | `x-api-key: {key}` | OpenRouter (pay-per-token) | y-router |
-| OAuth | `Authorization: Bearer {token}` | Claude Pro/Max subscription | CLIProxyAPI |
+| Passthrough | *(none - proxy handles)* | Claude Pro/Max (proxy-managed) | CLIProxyAPI |
+| OAuth | `Authorization: Bearer {token}` | Manual token injection | Custom proxies |
 
 **Setup:**
 - **y-router (API Key):** `git clone https://github.com/luohy15/y-router && cd y-router && docker-compose up -d`
-- **CLIProxyAPI (OAuth):** Run `./cli-proxy-api --claude-login` to authenticate via browser; proxy handles token refresh
+- **CLIProxyAPI (Passthrough):** Run `./cli-proxy-api --claude-login` to authenticate; use Passthrough mode (proxy handles auth internally)
 
 **Security:**
 - All env var values validated before shell injection (see `SessionCommandBuilder`)

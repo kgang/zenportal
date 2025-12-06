@@ -432,3 +432,69 @@ class TestBuildOpenRouterEnvVarsOAuth:
         assert result["ANTHROPIC_API_KEY"] == "my-jwt-token.abc.xyz"
         assert result["ANTHROPIC_CUSTOM_HEADERS"] == "Authorization: Bearer my-jwt-token.abc.xyz"
         assert result["ANTHROPIC_MODEL"] == "anthropic/claude-sonnet-4"
+
+
+class TestBuildOpenRouterEnvVarsPassthrough:
+    """Tests for Passthrough auth mode (CLIProxyAPI) in build_openrouter_env_vars."""
+
+    @pytest.fixture
+    def builder(self):
+        return SessionCommandBuilder()
+
+    def test_passthrough_only_sets_base_url(self, builder):
+        """Passthrough mode only sets ANTHROPIC_BASE_URL, no auth headers."""
+        settings = OpenRouterProxySettings(
+            enabled=True,
+            auth_type=ProxyAuthType.PASSTHROUGH,
+            base_url="http://localhost:8317",
+        )
+        result = builder.build_openrouter_env_vars(settings)
+
+        assert result["ANTHROPIC_BASE_URL"] == "http://localhost:8317"
+        assert "ANTHROPIC_API_KEY" not in result
+        assert "ANTHROPIC_CUSTOM_HEADERS" not in result
+
+    def test_passthrough_ignores_api_key_and_oauth_token(self, builder):
+        """Passthrough mode ignores both api_key and oauth_token fields."""
+        settings = OpenRouterProxySettings(
+            enabled=True,
+            auth_type=ProxyAuthType.PASSTHROUGH,
+            base_url="http://localhost:8317",
+            api_key="should-be-ignored",
+            oauth_token="also-ignored",
+        )
+        result = builder.build_openrouter_env_vars(settings)
+
+        assert result["ANTHROPIC_BASE_URL"] == "http://localhost:8317"
+        assert "ANTHROPIC_API_KEY" not in result
+        assert "ANTHROPIC_CUSTOM_HEADERS" not in result
+
+    def test_passthrough_with_model(self, builder):
+        """Passthrough mode can still set model override."""
+        settings = OpenRouterProxySettings(
+            enabled=True,
+            auth_type=ProxyAuthType.PASSTHROUGH,
+            base_url="http://localhost:8317",
+            default_model="anthropic/claude-sonnet-4",
+        )
+        result = builder.build_openrouter_env_vars(settings)
+
+        assert result["ANTHROPIC_BASE_URL"] == "http://localhost:8317"
+        assert result["ANTHROPIC_MODEL"] == "anthropic/claude-sonnet-4"
+        assert "ANTHROPIC_API_KEY" not in result
+        assert "ANTHROPIC_CUSTOM_HEADERS" not in result
+
+    def test_passthrough_full_config(self, builder):
+        """Full passthrough config for CLIProxyAPI."""
+        settings = OpenRouterProxySettings(
+            enabled=True,
+            auth_type=ProxyAuthType.PASSTHROUGH,
+            base_url="http://localhost:8317",
+            default_model="anthropic/claude-opus-4",
+        )
+        result = builder.build_openrouter_env_vars(settings)
+
+        # Only base URL and model should be set
+        assert len([k for k in result if k.startswith("ANTHROPIC_")]) == 2
+        assert result["ANTHROPIC_BASE_URL"] == "http://localhost:8317"
+        assert result["ANTHROPIC_MODEL"] == "anthropic/claude-opus-4"

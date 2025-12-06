@@ -243,9 +243,10 @@ class SessionCommandBuilder:
     ) -> dict[str, str]:
         """Build environment variables for Claude proxy (y-router, CLIProxyAPI, etc).
 
-        Supports two authentication modes:
+        Supports three authentication modes:
         - API_KEY: OpenRouter-style with x-api-key header
-        - OAUTH: Claude Pro/Max with Authorization: Bearer header
+        - OAUTH: Claude Pro/Max with Authorization: Bearer header (manual token)
+        - PASSTHROUGH: Only set base URL, proxy handles auth internally (CLIProxyAPI)
 
         All values are validated before use to prevent injection attacks.
 
@@ -267,8 +268,12 @@ class SessionCommandBuilder:
                 env_vars["ANTHROPIC_BASE_URL"] = validated_url
 
         # Handle authentication based on auth_type
-        if proxy_settings.auth_type == ProxyAuthType.OAUTH:
-            # OAuth mode: Use bearer token
+        if proxy_settings.auth_type == ProxyAuthType.PASSTHROUGH:
+            # Passthrough mode: Only set base URL, proxy handles auth internally
+            # Used for CLIProxyAPI which manages OAuth tokens automatically
+            pass
+        elif proxy_settings.auth_type == ProxyAuthType.OAUTH:
+            # OAuth mode: Use bearer token (manual token injection)
             oauth_token = proxy_settings.oauth_token or os.environ.get("CLAUDE_OAUTH_TOKEN", "")
             if oauth_token:
                 validated_token = self._validate_oauth_token(oauth_token)
