@@ -691,9 +691,11 @@ Native AI integration for quick queries without leaving context.
 - `widgets/zen_ai_dropdown.py` - Config screen settings widget
 - `widgets/zen_mirror.py` - Optional context sidebar (future)
 
-**Loading Indicator:**
-- Title changes to `· · ·` while query executes
-- Uses `run_worker()` for non-blocking queries
+**Loading Animation:**
+- Zen breathing animation: dots expand/contract (`· · ·` → `· · · ·` → `· · ·` → `· ·`)
+- 0.66s interval for contemplative pace
+- Uses `set_interval()` timer, stopped on completion/error
+- `run_worker()` for non-blocking queries
 - `on_worker_state_changed()` handles completion/error
 
 **Backends:**

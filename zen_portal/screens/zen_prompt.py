@@ -4,8 +4,6 @@ Provides a minimal modal for asking AI questions without leaving context.
 Supports @output, @error, @git, @session context references.
 """
 
-import asyncio
-
 from textual.app import ComposeResult
 from textual.containers import Vertical, VerticalScroll
 from textual.screen import ModalScreen
@@ -17,6 +15,15 @@ from ..services.config import ZenAIConfig, ZenAIProvider
 from ..services.zen_ai import ZenAI
 from ..services.context_parser import parse_context_refs, gather_context, strip_refs_from_prompt
 from ..models.session import Session
+
+# Zen breathing animation frames - minimalist dot pattern
+# Creates a gentle "breathing" effect: expand → contract
+ZEN_FRAMES = [
+    "· · ·",
+    "· · · ·",
+    "· · ·",
+    "· ·",
+]
 
 
 class ZenPromptModal(ModalScreen[str | None]):
@@ -58,6 +65,9 @@ class ZenPromptModal(ModalScreen[str | None]):
     # Track response state
     has_response: reactive[bool] = reactive(False)
 
+    # Animation interval (seconds) - slow, contemplative pace
+    ANIMATION_INTERVAL = 0.66
+
     def __init__(
         self,
         zen_ai: ZenAI,
@@ -69,6 +79,8 @@ class ZenPromptModal(ModalScreen[str | None]):
         self._session = session
         self._session_manager = session_manager
         self._is_querying = False
+        self._animation_frame = 0
+        self._animation_timer = None
 
     def compose(self) -> ComposeResult:
         self.add_class("modal-base", "modal-md")
@@ -99,6 +111,29 @@ class ZenPromptModal(ModalScreen[str | None]):
         else:
             response_scroll.add_class("hidden")
 
+    def _start_animation(self) -> None:
+        """Start the zen breathing animation."""
+        self._animation_frame = 0
+        self._animation_timer = self.set_interval(
+            self.ANIMATION_INTERVAL,
+            self._animate_frame,
+            name="zen_animation",
+        )
+
+    def _stop_animation(self) -> None:
+        """Stop the animation and reset title."""
+        if self._animation_timer:
+            self._animation_timer.stop()
+            self._animation_timer = None
+        title = self.query_one(".dialog-title", Static)
+        title.update("/")
+
+    def _animate_frame(self) -> None:
+        """Advance to the next animation frame."""
+        title = self.query_one(".dialog-title", Static)
+        title.update(ZEN_FRAMES[self._animation_frame])
+        self._animation_frame = (self._animation_frame + 1) % len(ZEN_FRAMES)
+
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         """Handle prompt submission."""
         if event.input.id != "prompt-input":
@@ -120,12 +155,11 @@ class ZenPromptModal(ModalScreen[str | None]):
         self.has_response = False
 
         # Get UI elements
-        title = self.query_one(".dialog-title", Static)
         response_log = self.query_one("#response", RichLog)
         response_log.clear()
 
-        # Show loading state
-        title.update("· · ·")
+        # Start zen breathing animation
+        self._start_animation()
 
         # Parse context references (sync, fast)
         refs = parse_context_refs(prompt)
@@ -158,12 +192,11 @@ class ZenPromptModal(ModalScreen[str | None]):
         if event.worker.name != "zen_ai_query":
             return
 
-        title = self.query_one(".dialog-title", Static)
         response_log = self.query_one("#response", RichLog)
 
         if event.state == WorkerState.SUCCESS:
             self._is_querying = False
-            title.update("/")
+            self._stop_animation()
             self.has_response = True
 
             if event.worker.result:
@@ -175,14 +208,14 @@ class ZenPromptModal(ModalScreen[str | None]):
 
         elif event.state == WorkerState.ERROR:
             self._is_querying = False
-            title.update("/")
+            self._stop_animation()
             self.has_response = True
             error = event.worker.error
             response_log.write(f"[red]error: {str(error)[:100]}[/red]")
 
         elif event.state == WorkerState.CANCELLED:
             self._is_querying = False
-            title.update("/")
+            self._stop_animation()
             self.has_response = True
             response_log.write("[dim]cancelled[/dim]")
 
