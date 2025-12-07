@@ -1,7 +1,7 @@
 # HYDRATE.md - Claude Code Context Document
 
 > Quick context for future Claude Code sessions working on this codebase.
-> Last updated: 2025-12-06 (v0.3.6) - Textual 6.x upgrade with trap_focus, flat buttons.
+> Last updated: 2025-12-06 (v0.3.7) - Focus architecture fix: visibility AND focusability must be controlled together.
 
 ## What is Zenportal?
 
@@ -296,6 +296,17 @@ These patterns MUST be followed consistently across all screens:
 - All widgets are non-focusable (`can_focus=False`)
 - All keybindings are handled by MainScreen and delegate to widgets
 - This simplifies UX - no focus switching between panels needed
+
+**Focus architecture rules (CRITICAL):**
+- Hidden widgets can still steal focus - CSS `display:none` alone is NOT enough
+- Any child widget with `can_focus=True` inside a `can_focus=False` parent is a focus leak
+- Rule: **visibility AND focusability must be controlled together**
+- Pattern for conditional focusable elements (e.g., search input):
+  1. Create with `can_focus=False` initially
+  2. Set `can_focus=True` only when showing/activating
+  3. Set `can_focus=False` before hiding/deactivating
+  4. Always call `blur()` before disabling focus
+- Modals use `trap_focus=True` to prevent focus escaping to background
 
 ## Important Files to Know
 

@@ -234,12 +234,7 @@ Button.flat:focus {
 
 # Scrollbar visibility - cleaner UI
 SCROLLBAR_CSS = """
-/* Auto-hide scrollbars when not needed */
-.auto-scrollbar {
-    scrollbar-visibility: auto;
-}
-
-/* Always hide scrollbars */
+/* Hide scrollbars for cleaner appearance */
 .no-scrollbar {
     scrollbar-visibility: hidden;
 }
