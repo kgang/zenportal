@@ -131,7 +131,7 @@ def gather_context(
         session_state=session.state.value,
         session_age=session.age_display,
         model=session.resolved_model.value if session.resolved_model else "",
-        working_dir=str(session.working_dir) if session.working_dir else "",
+        working_dir=str(session.resolved_working_dir) if session.resolved_working_dir else "",
     )
 
     # Gather output if requested
@@ -148,7 +148,7 @@ def gather_context(
 
     # Gather git info if requested
     if "git" in refs or "all" in refs:
-        working_dir = session.effective_working_dir
+        working_dir = session.resolved_working_dir
         if working_dir and working_dir.exists():
             context.git_branch = _get_git_branch(working_dir)
             context.git_status = _get_git_status(working_dir)
