@@ -14,6 +14,7 @@ class ExitChoice(Enum):
     KILL_ALL = "kill_all"
     KILL_DEAD = "kill_dead"
     KEEP_ALL = "keep_all"
+    RESTART = "restart"
 
 
 @dataclass
@@ -109,6 +110,14 @@ class ExitModal(ModalScreen[ExitResult | None]):
             self._button_ids.append("kill-all")
 
             yield Button(
+                "Restart app",
+                variant="primary",
+                id="restart",
+                classes="option-btn",
+            )
+            self._button_ids.append("restart")
+
+            yield Button(
                 "Cancel",
                 variant="default",
                 id="cancel",
@@ -185,3 +194,5 @@ class ExitModal(ModalScreen[ExitResult | None]):
             self.dismiss(ExitResult(ExitChoice.KILL_DEAD, remember))
         elif btn_id == "keep-all":
             self.dismiss(ExitResult(ExitChoice.KEEP_ALL, remember))
+        elif btn_id == "restart":
+            self.dismiss(ExitResult(ExitChoice.RESTART, remember))

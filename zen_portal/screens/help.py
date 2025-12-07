@@ -40,6 +40,7 @@ PAGE_1 = """
       c          config               ●  active     ○  complete
       ?          help                 ◐  paused     ·  ended
       q          quit
+      R          restart app
 
 
                               \\[1/3]  n:next  q:close"""
