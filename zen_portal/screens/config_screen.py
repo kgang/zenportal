@@ -11,6 +11,7 @@ from ..services.config import ConfigManager, ExitBehavior, FeatureSettings, ALL_
 from ..services.profile import ProfileManager
 from ..widgets.session_type_dropdown import SessionTypeDropdown
 from ..widgets.path_input import PathInput
+from ..widgets.zen_ai_dropdown import ZenAIDropdown
 
 
 # Available themes
@@ -113,6 +114,10 @@ class ConfigScreen(ModalScreen[None]):
     ConfigScreen SessionTypeDropdown {
         margin-bottom: 1;
     }
+
+    ConfigScreen ZenAIDropdown {
+        margin-bottom: 1;
+    }
     """
 
     def __init__(self, config_manager: ConfigManager, profile_manager: ProfileManager | None = None):
@@ -127,12 +132,16 @@ class ConfigScreen(ModalScreen[None]):
         global_dir = self._config_manager.config.features.working_dir
         instance_dir = self._config_manager.portal.features.working_dir
         enabled_types = self._config_manager.config.features.enabled_session_types
+        zen_ai_config = self._config_manager.config.features.zen_ai
 
         with Vertical(id="dialog"):
             yield Static("settings", classes="dialog-title")
 
             # Session types section
             yield SessionTypeDropdown(enabled_types=enabled_types, id="session-types")
+
+            # Zen AI section
+            yield ZenAIDropdown(zen_ai_config=zen_ai_config, id="zen-ai")
 
             # Exit behavior section
             yield Static("exit behavior", classes="section-title")
@@ -223,6 +232,10 @@ class ConfigScreen(ModalScreen[None]):
         enabled_types = dropdown.get_enabled_types()
         enabled_types_to_save = None if set(enabled_types) == set(ALL_SESSION_TYPES) else enabled_types
 
+        # Save Zen AI settings
+        zen_ai_dropdown = self.query_one("#zen-ai", ZenAIDropdown)
+        zen_ai_config = zen_ai_dropdown.get_config()
+
         # Save global directory
         global_input = self.query_one("#global-dir-input", PathInput)
         global_path = global_input.get_path()
@@ -230,6 +243,7 @@ class ConfigScreen(ModalScreen[None]):
         config = self._config_manager.config
         config.features.working_dir = global_path
         config.features.enabled_session_types = enabled_types_to_save
+        config.features.zen_ai = zen_ai_config
         self._config_manager.save_config(config)
 
         # Save instance directory
@@ -281,6 +295,7 @@ class ConfigScreen(ModalScreen[None]):
         """Get list of focusable widget selectors."""
         return [
             "#session-types",
+            "#zen-ai",
             "#exit-behavior",
             "#global-dir-input",
             "#instance-dir-input",
@@ -323,11 +338,18 @@ class ConfigScreen(ModalScreen[None]):
             pass
 
     def action_focus_expand(self) -> None:
-        """Expand the session types dropdown if focused."""
+        """Expand the focused dropdown."""
         try:
             dropdown = self.query_one("#session-types", SessionTypeDropdown)
             if dropdown.has_focus:
                 dropdown.expanded = not dropdown.expanded
+                return
+        except Exception:
+            pass
+        try:
+            zen_ai = self.query_one("#zen-ai", ZenAIDropdown)
+            if zen_ai.has_focus:
+                zen_ai.expanded = not zen_ai.expanded
         except Exception:
             pass
 
