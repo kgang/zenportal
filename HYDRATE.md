@@ -1,6 +1,6 @@
 # HYDRATE.md
 
-> Quick context for Claude Code sessions. Last updated: 2025-12-07 (v0.5.0 - zen simplification)
+> Quick context for Claude Code sessions. Last updated: 2025-12-07 (v0.5.1 - post-simplification)
 
 ## Essence
 
@@ -28,7 +28,7 @@ zen_portal/
 │   ├── core/                 # worktree, token, state, detection
 │   ├── git/                  # GitService
 │   ├── openrouter/           # proxy validation, billing, models
-│   └── ...                   # tmux, config, state, persistence
+│   └── state.py              # persistence dataclasses only
 ├── widgets/                  # reusable UI components
 ├── screens/                  # modals and full screens
 └── tests/
@@ -74,7 +74,7 @@ q       quit
 
 **Lifecycle**: create → running → completed/paused/killed → revive or clean
 
-**Polling**: 1s interval, 5s grace after revival, exit code determines final state
+**Polling**: 1s interval, exit code determines final state
 
 **Events**: `SessionCreated`, `SessionStateChanged`, `SessionPaused`, `SessionKilled`
 
@@ -84,7 +84,7 @@ q       quit
 
 ---
 
-## Architecture Patterns (v0.4.13)
+## Architecture Patterns
 
 **Pipelines** (`services/pipelines/`): Multi-step operations as composable steps.
 - Each step: `T → StepResult[U]`
@@ -105,9 +105,7 @@ q       quit
 
 ## Token Tracking
 
-Parsed from Claude's JSONL at `~/.claude/projects/`. Format: `tokens  12.5k  (8.2k↓ 4.3k↑)`
-
-**Token drains** (research): Leverage unused token capacity for background tasks (session reflection, code review, docs). See `research/TOKEN_DRAINS.md`.
+Parsed from Claude's JSONL at `~/.claude/projects/`. Claude AI sessions only (provider check).
 
 ---
 
