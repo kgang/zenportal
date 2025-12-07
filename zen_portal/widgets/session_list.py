@@ -23,8 +23,7 @@ class SessionListItem(Static):
     }
 
     SessionListItem.grabbed {
-        border: round $primary;
-        background: $surface-lighten-2;
+        background: $primary-darken-3;
     }
 
     SessionListItem.running {

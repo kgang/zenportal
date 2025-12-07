@@ -5,7 +5,6 @@ from textual.binding import Binding
 from textual.containers import Horizontal
 from textual.events import MouseScrollDown, MouseScrollUp
 from textual.reactive import reactive
-from textual.screen import Screen
 from textual.widgets import Header, Static
 
 from ..models.events import SessionSelected
@@ -13,15 +12,14 @@ from ..models.session import Session, SessionState, SessionType
 from ..services.session_manager import SessionManager, SessionLimitError
 from ..services.config import ConfigManager
 from ..services.profile import ProfileManager
-from ..services.notification import NotificationRequest
 from ..widgets.session_list import SessionList
 from ..widgets.output_view import OutputView
 from ..widgets.session_info import SessionInfoView
-from ..widgets.notification import ZenNotificationRack
+from .base import ZenScreen
 from .main_actions import MainScreenActionsMixin, MainScreenExitMixin
 
 
-class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, Screen):
+class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, ZenScreen):
     """Main application screen with session list and output preview."""
 
     BINDINGS = [
@@ -62,6 +60,7 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, Screen):
     MainScreen {
         layout: vertical;
         padding: 1 2;
+        layers: base notification;
     }
 
     MainScreen #content {
@@ -93,6 +92,12 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, Screen):
         text-align: center;
         margin-top: 1;
     }
+
+    MainScreen #notifications {
+        dock: bottom;
+        layer: notification;
+        margin-bottom: 2;
+    }
     """
 
     def __init__(
@@ -119,8 +124,9 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, Screen):
             info_view = SessionInfoView(id="info-view")
             info_view.display = False
             yield info_view
-        yield ZenNotificationRack(id="notifications")
         yield Static("j/k nav  n new  a attach  ? help  q quit", id="hint", classes="hint")
+        # Notification rack from ZenScreen base - must be last for layer ordering
+        yield from super().compose()
 
     def on_mount(self) -> None:
         """Initialize and start polling."""
@@ -474,11 +480,6 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, Screen):
 
     def on_mouse_scroll_up(self, event: MouseScrollUp) -> None:
         event.stop()
-
-    def on_notification_request(self, event: NotificationRequest) -> None:
-        """Handle notification requests from anywhere in the app."""
-        rack = self.query_one("#notifications", ZenNotificationRack)
-        rack.show(event.message, event.severity, event.timeout)
 
     def zen_notify(self, message: str, severity: str = "success") -> None:
         """Helper method for sending zen-styled notifications."""

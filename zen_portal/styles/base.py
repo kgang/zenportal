@@ -112,22 +112,21 @@ COMMON_CSS = """
 
 # Notification styles - zen minimalism
 NOTIFICATION_CSS = """
-/* Notification rack positioning */
+/* Notification rack - full width container, content aligned right */
 ZenNotificationRack {
-    dock: bottom;
-    align: right bottom;
     height: auto;
-    max-height: 3;
-    layer: notification;
-    margin: 0 2 2 0;
-    width: auto;
-    max-width: 50%;
+    width: 100%;
+    align-horizontal: right;
 }
 
 /* Base notification styling */
 ZenNotification {
-    height: 1;
+    width: auto;
+    height: 3;
     padding: 0 2;
+    margin-right: 1;
+    content-align: center middle;
+    text-align: center;
     background: $surface;
     border: round $surface-lighten-1;
     color: $text-muted;

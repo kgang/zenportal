@@ -61,6 +61,7 @@ zen_portal/
 │   ├── path_input.py      # Validated path input
 │   └── status.py
 ├── screens/               # Modal dialogs and full screens
+│   ├── base.py            # ZenScreen base class with notification support
 │   ├── main.py            # Primary interface
 │   ├── main_actions.py    # MainScreen action handlers (mixin)
 │   ├── new_session.py     # Create/attach/resume modal
@@ -303,6 +304,7 @@ Tests use mocked tmux operations. Test files:
 - **Screens** are full views or modals
 - **Models** are pure data structures
 - State is managed reactively via Textual's reactive properties
+- **NEVER use `_notifications` as attribute name** - Textual's App uses it internally for toast rack
 
 ## Token Tracking
 
@@ -347,12 +349,20 @@ Failed sessions now capture and display error reasons:
 
 ## Notification System
 
-Custom zen-styled notifications with centralized service:
+Custom zen-styled notifications with centralized service via `ZenScreen` base class.
 
 **Components:**
 - `services/notification.py` - `NotificationService` + `NotificationRequest` message
 - `widgets/notification.py` - `ZenNotification` + `ZenNotificationRack`
+- `screens/base.py` - `ZenScreen` base class with notification rack
 - CSS in `styles/base.py` - `NOTIFICATION_CSS`
+
+**Architecture:**
+- `ZenScreen` base class provides `#notifications` rack via `compose()`
+- Screens inherit from `ZenScreen` and call `yield from super().compose()` at end
+- Uses `layer: notification` to float above screen content
+- `ZenScreen.on_notification_request()` handles events for the screen
+- Screens use `zen_notify()` helper which posts `NotificationRequest` message
 
 **Severity levels:**
 | Severity | Timeout | Border Color | Text Color |

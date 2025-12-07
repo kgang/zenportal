@@ -16,8 +16,7 @@ from zen_portal.services.session_manager import SessionManager
 from zen_portal.services.config import ConfigManager
 from zen_portal.services.worktree import WorktreeService
 from zen_portal.services.profile import ProfileManager
-from zen_portal.services.notification import NotificationService, NotificationRequest
-from zen_portal.widgets.notification import ZenNotificationRack
+from zen_portal.services.notification import NotificationService
 from zen_portal.styles import BASE_CSS
 
 
@@ -128,7 +127,7 @@ class ZenPortalApp(App):
         # Config manager must be created first (SessionManager depends on it)
         self._config = config_manager or ConfigManager()
         self._profile = profile_manager or ProfileManager()
-        self._notifications = NotificationService()
+        self._notification_service = NotificationService()
         self._focus_tmux_session = focus_tmux_session
 
         # Use provided session manager or create one
@@ -162,24 +161,8 @@ class ZenPortalApp(App):
     @property
     def notification_service(self) -> NotificationService:
         """Access notification service."""
-        return self._notifications
+        return self._notification_service
 
-    def on_notification_request(self, event: NotificationRequest) -> None:
-        """Handle notification requests from anywhere in the app."""
-        # Find the MainScreen's notification rack (always mounted)
-        try:
-            main_screen = self.get_screen("_default")
-        except Exception:
-            main_screen = None
-
-        # Try to find notification rack in any screen
-        for screen in self.screen_stack:
-            try:
-                rack = screen.query_one("#notifications", ZenNotificationRack)
-                rack.show(event.message, event.severity, event.timeout)
-                return
-            except Exception:
-                continue
 
 def main():
     """Run the Zen Portal application."""
