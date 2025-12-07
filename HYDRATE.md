@@ -252,6 +252,7 @@ uv run pytest zen_portal/tests/ --cov=zen_portal
 ```
 
 Tests use mocked tmux operations. Test files:
+- `test_app.py` - App import/instantiation smoke tests
 - `test_session_manager.py` - Session lifecycle
 - `test_session_commands.py` - Command building, proxy env vars
 - `test_proxy_validation.py` - Proxy connectivity/credential checks
@@ -368,7 +369,7 @@ self.zen_notify("no session selected", "warning")
 self.zen_notify("could not revive", "error")
 
 # Modals use post_message
-self.post_message(self.app.notifications.warning("enter a name"))
+self.post_message(self.app.notification_service.warning("enter a name"))
 ```
 
 **Message format:**
