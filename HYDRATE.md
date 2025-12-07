@@ -1,7 +1,7 @@
 # HYDRATE.md - Claude Code Context Document
 
 > Quick context for future Claude Code sessions working on this codebase.
-> Last updated: 2025-12-07 (v0.4.4) - Removed app restart functionality.
+> Last updated: 2025-12-07 (v0.4.5) - Removed command palette, fixed tmux scrollback.
 
 ## What is Zenportal?
 
@@ -29,8 +29,6 @@ uv run pytest zen_portal/tests/ -v
 ```
 zen_portal/
 ├── app.py                 # Main Textual app entry point
-├── commands/
-│   └── zen_commands.py    # Command palette provider (Ctrl+P)
 ├── styles/
 │   └── base.py            # Shared CSS tokens and modal base styles
 ├── models/
@@ -96,7 +94,6 @@ zen_portal/
 | Flat Cancel Buttons | `exit_modal.py`, `config_screen.py` | `.flat` CSS class |
 | Output Search | `output_view.py` | `Ctrl+F` |
 | Token Sparklines | `session_info.py`, `token_parser.py` | `Ctrl+I` (info mode) |
-| Command Palette | `commands/zen_commands.py` | `Ctrl+P` |
 | Proxy Monitoring | `proxy_monitor.py`, `billing_tracker.py` | `P` (dashboard) |
 
 See feature-specific sections below for details.
@@ -174,11 +171,13 @@ Key settings: `exit_behavior`, `working_dir`, `model`, `worktree.*`, `enabled_se
 - Exit code detection: Non-zero exit → `FAILED` with error message; zero exit → `COMPLETED`
 
 ### tmux Scrollback
-- History limit: 50,000 lines (set via `history-limit` on session creation)
+- History limit: 50,000 lines (set via global `history-limit` BEFORE session creation)
+- **Critical**: history-limit is fixed at pane creation time, cannot be changed after
 - Standard tmux scrolling works: `Ctrl+B [` enters copy mode, then j/k/PgUp/PgDn
 - The 100-line `capture_pane` is only for zen-portal's output view widget, not the actual scrollback
 - Scrollback preserved when attaching via `a` key or external `tmux attach`
 - Sessions use `bash -l -c` (login shell) for proper terminal environment with TUI apps
+- Adopted sessions get `remain-on-exit` configured but inherit existing scrollback limit
 
 ### Event System (Textual Messages)
 ```python
@@ -210,7 +209,6 @@ All interactions happen through the session list - no panel focus switching need
 | i | Insert mode (send keys) |
 | c | Config screen |
 | P | Proxy dashboard |
-| Ctrl+P | Command palette |
 | Ctrl+F | Search output |
 | Ctrl+I | Toggle info mode |
 | / | Zen AI prompt |
@@ -236,22 +234,6 @@ Allows reordering sessions in the list. Order is persisted.
 - Order stored in `~/.zen_portal/state.json` as `session_order` array
 - New sessions appear at top (not in saved order yet)
 - Polling is paused during grab mode to prevent overwriting user's reordering
-
-## Command Palette
-
-Fuzzy-search command palette for quick action access (`Ctrl+P`).
-
-**Components:**
-- `commands/zen_commands.py` - `ZenCommandProvider` class
-- Enabled via `ENABLE_COMMAND_PALETTE = True` in `app.py`
-
-**Available commands:**
-- Static: new session, config, help, quit, toggle grab mode, toggle info, refresh
-- Context-aware (based on selected session):
-  - Active sessions: pause, kill, attach tmux, send keys, rename
-  - Inactive sessions: revive, clean, rename, open worktree (if available)
-
-**Zen design:** Commands lowercase, fuzzy matching, minimal visual chrome.
 
 ## Output Search
 

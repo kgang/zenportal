@@ -5,10 +5,11 @@ and gathers the referenced context from the current session.
 """
 
 import re
-import subprocess
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+from .git import GitService
 
 if TYPE_CHECKING:
     from ..models.session import Session
@@ -150,9 +151,9 @@ def gather_context(
     if "git" in refs or "all" in refs:
         working_dir = session.resolved_working_dir
         if working_dir and working_dir.exists():
-            context.git_branch = _get_git_branch(working_dir)
-            context.git_status = _get_git_status(working_dir)
-            context.git_recent_commits = _get_git_log(working_dir)
+            context.git_branch = GitService.get_branch(working_dir) or ""
+            context.git_status = GitService.get_status(working_dir) or ""
+            context.git_recent_commits = GitService.get_log(working_dir) or ""
 
     return context
 
@@ -175,57 +176,3 @@ def strip_refs_from_prompt(prompt: str) -> str:
     return cleaned
 
 
-def _get_git_branch(working_dir: Path) -> str:
-    """Get current git branch name."""
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            cwd=working_dir,
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode == 0:
-            return result.stdout.strip()
-    except Exception:
-        pass
-    return ""
-
-
-def _get_git_status(working_dir: Path) -> str:
-    """Get git status --short output."""
-    try:
-        result = subprocess.run(
-            ["git", "status", "--short"],
-            cwd=working_dir,
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode == 0:
-            status = result.stdout.strip()
-            # Limit to first 20 lines
-            lines = status.split("\n")[:20]
-            if len(lines) == 20:
-                lines.append("...")
-            return "\n".join(lines)
-    except Exception:
-        pass
-    return ""
-
-
-def _get_git_log(working_dir: Path, count: int = 5) -> str:
-    """Get recent git commits."""
-    try:
-        result = subprocess.run(
-            ["git", "log", "--oneline", f"-{count}"],
-            cwd=working_dir,
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode == 0:
-            return result.stdout.strip()
-    except Exception:
-        pass
-    return ""

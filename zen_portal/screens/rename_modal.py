@@ -2,15 +2,15 @@
 
 from textual.app import ComposeResult
 from textual.containers import Vertical
-from textual.screen import ModalScreen
 from textual.widgets import Input, Static
 
+from .base import ZenModalScreen
 
-class RenameModal(ModalScreen[str | None]):
+
+class RenameModal(ZenModalScreen[str | None]):
     """Modal for renaming a session."""
 
     DEFAULT_CSS = """
-    /* Component-specific overrides only */
     RenameModal #dialog {
         border: round $primary;
     }
@@ -37,7 +37,7 @@ class RenameModal(ModalScreen[str | None]):
 
     def on_mount(self) -> None:
         """Focus input and select all text."""
-        self.trap_focus = True
+        super().on_mount()  # Sets trap_focus
         input_widget = self.query_one("#name-input", Input)
         input_widget.focus()
         input_widget.selection = (0, len(self._current_name))
@@ -49,10 +49,3 @@ class RenameModal(ModalScreen[str | None]):
             self.dismiss(name)
         else:
             self.post_message(self.app.notification_service.warning("name cannot be empty"))
-
-    def on_key(self, event) -> None:
-        """Handle escape to cancel."""
-        if event.key == "escape":
-            self.dismiss(None)
-            event.prevent_default()
-            event.stop()

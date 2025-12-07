@@ -71,7 +71,12 @@ class TmuxService:
         command: list[str],
         working_dir: Path,
     ) -> TmuxResult:
-        """Create a new detached tmux session running a command."""
+        """Create a new detached tmux session running a command.
+
+        Sets history-limit BEFORE session creation to ensure scrollback works
+        properly. The history-limit is fixed at pane creation time and cannot
+        be changed for existing panes.
+        """
         # Validate working directory exists
         if not working_dir.exists():
             return TmuxResult(
@@ -79,7 +84,12 @@ class TmuxService:
                 error=f"Working directory does not exist: {working_dir}",
             )
 
+        # Use chained commands to set history-limit before creating session.
+        # This is critical: history-limit is fixed at pane creation time.
+        # Format: tmux set -g history-limit N \; new-session ...
         args = [
+            "set-option", "-g", "history-limit", str(self._history_limit),
+            ";",  # Chain next command
             "new-session",
             "-d",  # Detached
             "-s", name,
@@ -92,10 +102,16 @@ class TmuxService:
         if result.success:
             # Keep session alive after command exits (for viewing output)
             self._run(["set-option", "-t", name, "remain-on-exit", "on"])
-            # Set scrollback history limit for full conversation preservation
-            self._run(["set-option", "-t", name, "history-limit", str(self._history_limit)])
 
         return result
+
+    def configure_session(self, name: str) -> TmuxResult:
+        """Configure session options for zen-portal management.
+
+        Sets remain-on-exit for viewing output after process exits.
+        Note: history-limit cannot be changed for existing panes.
+        """
+        return self._run(["set-option", "-t", name, "remain-on-exit", "on"])
 
     def kill_session(self, name: str) -> TmuxResult:
         """Kill a tmux session."""

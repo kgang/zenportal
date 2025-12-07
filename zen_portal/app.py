@@ -18,7 +18,6 @@ from zen_portal.services.worktree import WorktreeService
 from zen_portal.services.profile import ProfileManager
 from zen_portal.services.notification import NotificationService
 from zen_portal.styles import BASE_CSS
-from zen_portal.commands import ZenCommandProvider
 
 
 def check_dependencies() -> None:
@@ -105,10 +104,6 @@ class ZenPortalApp(App):
         background: $background;
     }
     """
-
-    # Enable command palette with zen-styled provider
-    ENABLE_COMMAND_PALETTE = True
-    COMMANDS = App.COMMANDS | {ZenCommandProvider}
 
     BINDINGS = [
         Binding("ctrl+k", "keys", "Keys", show=False),

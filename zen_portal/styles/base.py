@@ -189,34 +189,6 @@ ZenNotification.-dismissing {
 }
 """
 
-# Command palette - zen styling
-COMMAND_PALETTE_CSS = """
-/* Zen command palette - minimal chrome */
-CommandPalette {
-    background: $surface;
-    border: round $surface-lighten-1;
-}
-
-CommandPalette > Input {
-    background: $surface;
-    border: none;
-    padding: 0 1;
-}
-
-CommandPalette > Vertical > OptionList {
-    background: $surface;
-    border: none;
-}
-
-CommandPalette > Vertical > OptionList > .option-list--option-highlighted {
-    background: $surface-lighten-1;
-}
-
-CommandPalette > Vertical > OptionList > .option-list--option {
-    padding: 0 1;
-}
-"""
-
 # Flat button styling - zen aesthetic for secondary actions
 FLAT_BUTTON_CSS = """
 /* Flat button variant - minimal chrome for secondary actions */
@@ -246,4 +218,4 @@ SCROLLBAR_CSS = """
 """
 
 # Combined base CSS for import
-BASE_CSS = MODAL_CSS + CONTAINER_CSS + COMMON_CSS + NOTIFICATION_CSS + COMMAND_PALETTE_CSS + FLAT_BUTTON_CSS + SCROLLBAR_CSS
+BASE_CSS = MODAL_CSS + CONTAINER_CSS + COMMON_CSS + NOTIFICATION_CSS + FLAT_BUTTON_CSS + SCROLLBAR_CSS

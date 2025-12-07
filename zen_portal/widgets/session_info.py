@@ -1,78 +1,14 @@
 """SessionInfoView widget for displaying session metadata."""
 
-import subprocess
 from pathlib import Path
 
 from textual.app import ComposeResult
-from textual.containers import Vertical
 from textual.reactive import reactive
 from textual.widgets import Static, Sparkline
 
 from ..models.session import Session, SessionState
+from ..services.git import GitService
 from ..services.proxy_monitor import ProxyMonitor
-
-
-def _get_git_info(working_dir: Path) -> dict | None:
-    """Get git info for a directory (branch, commit, dirty state)."""
-    try:
-        # Get current branch
-        result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            cwd=working_dir,
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode != 0:
-            return None
-        branch = result.stdout.strip()
-
-        # Get short commit hash
-        result = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
-            cwd=working_dir,
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        commit = result.stdout.strip() if result.returncode == 0 else ""
-
-        # Check if dirty (uncommitted changes)
-        result = subprocess.run(
-            ["git", "status", "--porcelain"],
-            cwd=working_dir,
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        is_dirty = bool(result.stdout.strip()) if result.returncode == 0 else False
-
-        return {"branch": branch, "commit": commit, "dirty": is_dirty}
-    except Exception:
-        return None
-
-
-def _get_git_repo_name(working_dir: Path) -> str | None:
-    """Get git repo name from remote URL."""
-    try:
-        result = subprocess.run(
-            ["git", "remote", "get-url", "origin"],
-            cwd=working_dir,
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode != 0:
-            return None
-        url = result.stdout.strip()
-        # Extract repo name from URL (handles both HTTPS and SSH formats)
-        # e.g., "git@github.com:user/repo.git" or "https://github.com/user/repo.git"
-        name = url.rstrip("/").rsplit("/", 1)[-1].rsplit(":", 1)[-1]
-        if name.endswith(".git"):
-            name = name[:-4]
-        return name or None
-    except Exception:
-        return None
 
 
 def _get_env_symlinks(working_dir: Path) -> list[str]:
@@ -191,16 +127,13 @@ class SessionInfoView(Static, can_focus=False):
 
         # Git info - single line summary
         if working_path and working_path.exists():
-            git_info = _get_git_info(working_path)
+            git_info = GitService.get_info(working_path)
             if git_info:
-                branch = git_info["branch"]
-                commit = git_info["commit"][:7] if git_info["commit"] else ""
-                dirty = "*" if git_info["dirty"] else ""
-                lines.append(f"[dim]git[/dim]  {branch}{dirty} {commit}")
+                lines.append(f"[dim]git[/dim]  {git_info.display}")
 
             # Repo name - only for worktree sessions
             if s.worktree_path:
-                repo_name = _get_git_repo_name(working_path)
+                repo_name = GitService.get_repo_name(working_path)
                 if repo_name:
                     lines.append(f"[dim]repo[/dim]  {repo_name}")
 

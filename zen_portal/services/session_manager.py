@@ -15,6 +15,7 @@ from .token_parser import TokenParser
 from .session_persistence import SessionPersistence
 from .session_commands import SessionCommandBuilder
 from .proxy_validation import ProxyValidator, ProxyValidationResult
+from .core import WorktreeManager, TokenManager, StateRefresher
 
 
 class SessionLimitError(Exception):
@@ -49,8 +50,20 @@ class SessionManager:
         self._state = state_service or StateService()
         self._sessions: dict[str, Session] = {}
         self._session_order: list[str] = []  # Custom display order
-        self._token_parser = TokenParser()
         self._commands = SessionCommandBuilder()
+
+        # Initialize extracted managers
+        self._worktree_mgr = WorktreeManager(worktree_service)
+        self._token_mgr = TokenManager()
+        self._state_refresher = StateRefresher(
+            tmux=tmux,
+            get_tmux_name=self.get_tmux_session_name,
+            on_token_update=lambda s: self._token_mgr.update_session(s),
+        )
+
+        # Public access for screens that need direct manager access
+        self.worktree = self._worktree_mgr
+        self.tokens = self._token_mgr
 
         # Initialize persistence handler
         self._persistence = SessionPersistence(
@@ -159,7 +172,7 @@ class SessionManager:
         )
 
         # Handle worktree creation if enabled
-        working_dir = self._setup_worktree_if_needed(session, features, resolved.worktree)
+        working_dir = self._worktree_mgr.setup_for_session(session, features, resolved.worktree)
 
         self._sessions[session.id] = session
 
@@ -213,58 +226,6 @@ class SessionManager:
         self._emit(SessionCreated(session))
         self._persist_change(session, "created")
         return session
-
-    def _setup_worktree_if_needed(
-        self,
-        session: Session,
-        features: SessionFeatures | None,
-        worktree_settings: WorktreeSettings | None,
-    ) -> Path:
-        """Set up worktree for session if enabled. Returns working directory."""
-        working_dir = session.resolved_working_dir
-
-        use_worktree = self._should_use_worktree(features, worktree_settings)
-        if not use_worktree or not self._worktree:
-            return working_dir
-
-        # Determine branch and from_branch
-        branch_name = features.worktree_branch if features else None
-        from_branch = "main"
-        if worktree_settings and worktree_settings.default_from_branch:
-            from_branch = worktree_settings.default_from_branch
-
-        env_files = None
-        if worktree_settings and worktree_settings.env_files:
-            env_files = worktree_settings.env_files
-
-        # Create worktree
-        worktree_name = f"{session.name}-{session.id[:8]}"
-        wt_result = self._worktree.create_worktree(
-            name=worktree_name,
-            branch=branch_name,
-            from_branch=from_branch,
-            env_files=env_files,
-        )
-
-        if wt_result.success and wt_result.path:
-            session.worktree_path = wt_result.path
-            session.worktree_branch = wt_result.branch
-            session.resolved_working_dir = wt_result.path
-            return wt_result.path
-
-        return working_dir
-
-    def _should_use_worktree(
-        self,
-        features: SessionFeatures | None,
-        worktree_settings: WorktreeSettings | None,
-    ) -> bool:
-        """Determine if we should create a worktree for this session."""
-        if features and features.use_worktree is not None:
-            return features.use_worktree
-        if worktree_settings:
-            return worktree_settings.enabled
-        return False
 
     def create_session_with_resume(
         self,
@@ -414,8 +375,7 @@ class SessionManager:
             self._tmux.clear_history(tmux_name)
             self._tmux.kill_session(tmux_name)
 
-        if session.worktree_path and self._worktree:
-            self._worktree.remove_worktree(session.worktree_path, force=True)
+        self._worktree_mgr.cleanup(session)
 
         session.state = SessionState.KILLED
         session.ended_at = datetime.now()
@@ -430,8 +390,7 @@ class SessionManager:
         if not session or session.is_active:
             return False
 
-        if session.worktree_path and self._worktree:
-            self._worktree.remove_worktree(session.worktree_path, force=True)
+        self._worktree_mgr.cleanup(session)
 
         record = self._persistence.session_to_record(session)
         del self._sessions[session_id]
@@ -444,12 +403,14 @@ class SessionManager:
     def navigate_to_worktree(self, session_id: str) -> Session | None:
         """Create a new shell session in a paused session's worktree."""
         session = self._sessions.get(session_id)
-        if not session or session.state != SessionState.PAUSED:
-            return None
-        if not session.worktree_path or not session.worktree_path.exists():
+        if not session or not self._worktree_mgr.can_navigate(session):
             return None
 
-        new_features = SessionFeatures(working_dir=session.worktree_path)
+        worktree_path = self._worktree_mgr.get_worktree_path(session)
+        if not worktree_path:
+            return None
+
+        new_features = SessionFeatures(working_dir=worktree_path)
         return self.create_session(
             name=f"{session.name} (resumed)",
             features=new_features,
@@ -489,61 +450,13 @@ class SessionManager:
     def update_session_tokens(self, session_id: str) -> bool:
         """Update token statistics and history for a Claude session."""
         session = self._sessions.get(session_id)
-        if not session or session.session_type != SessionType.CLAUDE:
+        if not session:
             return False
-        if not session.claude_session_id:
-            return False
-
-        stats = self._token_parser.get_session_stats(
-            claude_session_id=session.claude_session_id,
-            working_dir=session.resolved_working_dir,
-        )
-
-        if stats:
-            session.token_stats = stats.total_usage
-
-        # Update token history for sparkline
-        history = self._token_parser.get_token_history(
-            claude_session_id=session.claude_session_id,
-            working_dir=session.resolved_working_dir,
-        )
-        if history:
-            session.token_history = history
-
-        return bool(stats or history)
+        return self._token_mgr.update_session(session)
 
     def refresh_states(self) -> None:
         """Update session states based on tmux status."""
-        for session in self._sessions.values():
-            if session.state != SessionState.RUNNING:
-                continue
-
-            tmux_name = self.get_tmux_session_name(session.id) or self._tmux_name(session.id)
-
-            if not self._tmux.session_exists(tmux_name):
-                session.state = SessionState.COMPLETED
-                session.ended_at = datetime.now()
-                session.revived_at = None
-                continue
-
-            # Grace period check
-            if session.revived_at:
-                grace_elapsed = (datetime.now() - session.revived_at).total_seconds()
-                if grace_elapsed < 5.0:
-                    continue
-                session.revived_at = None
-
-            if self._tmux.is_pane_dead(tmux_name):
-                exit_status = self._tmux.get_pane_exit_status(tmux_name)
-                if exit_status is not None and exit_status != 0:
-                    session.state = SessionState.FAILED
-                    session.error_message = f"Process exited with code {exit_status}"
-                else:
-                    session.state = SessionState.COMPLETED
-                session.ended_at = datetime.now()
-
-            if session.session_type == SessionType.CLAUDE:
-                self.update_session_tokens(session.id)
+        self._state_refresher.refresh(self._sessions)
 
     def count_by_state(self) -> tuple[int, int]:
         """Return (active_count, dead_count)."""
@@ -622,6 +535,9 @@ class SessionManager:
         self._sessions[session.id] = session
 
         if self._tmux.session_exists(tmux_name):
+            # Configure the session for zen-portal management
+            self._tmux.configure_session(tmux_name)
+
             if self._tmux.is_pane_dead(tmux_name):
                 session.state = SessionState.COMPLETED
             else:

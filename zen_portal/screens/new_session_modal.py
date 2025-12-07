@@ -1,6 +1,5 @@
 """NewSessionModal: Create, attach, or resume sessions."""
 
-import os
 from pathlib import Path
 
 from textual.app import ComposeResult
@@ -10,23 +9,17 @@ from textual.widgets import Button, Checkbox, Collapsible, Input, Select, Static
 
 from ..models.session import SessionFeatures
 from ..models.new_session import NewSessionType, ResultType, NewSessionResult
-from ..services.config import ConfigManager, ClaudeModel, ProxySettings, ALL_SESSION_TYPES
+from ..services.config import ConfigManager, ClaudeModel, ALL_SESSION_TYPES
 from ..services.discovery import DiscoveryService
 from ..services.openrouter_models import OpenRouterModelsService
 from ..services.tmux import TmuxService
-from ..services.proxy_validation import ProxyValidator, ProxyStatus
 from ..widgets.directory_browser import DirectoryBrowser
-from ..widgets.model_selector import ModelSelector
 from .new_session_lists import AttachListBuilder, ResumeListBuilder, update_list_selection
+from .new_session.css import NEW_SESSION_CSS
+from .new_session.billing_widget import BillingWidget, BillingMode
 
 # Re-export for backwards compatibility
 SessionType = NewSessionType
-
-
-class BillingMode:
-    """Billing mode for Claude sessions."""
-    CLAUDE = "claude"  # Use Claude account (default)
-    OPENROUTER = "openrouter"  # Pay-per-token via y-router
 
 
 class NewSessionModal(ModalScreen[NewSessionResult | None]):
@@ -36,177 +29,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         ("escape", "cancel", "Cancel"),
     ]
 
-    DEFAULT_CSS = """
-    /* Component-specific: tabs and form layout */
-    NewSessionModal TabbedContent {
-        height: auto;
-        min-height: 0;
-    }
-
-    NewSessionModal TabPane {
-        padding: 1 0;
-        height: auto;
-        min-height: 0;
-    }
-
-    NewSessionModal .field-input {
-        width: 100%;
-        margin-bottom: 0;
-    }
-
-    NewSessionModal #type-select, #model-select {
-        width: 100%;
-    }
-
-    NewSessionModal #options-row {
-        width: 100%;
-        height: auto;
-        margin-top: 1;
-    }
-
-    NewSessionModal .list-container {
-        height: auto;
-        max-height: 30vh;
-        min-height: 8;
-        padding: 0;
-        overflow-y: auto;
-    }
-
-    NewSessionModal #advanced-config {
-        margin-top: 1;
-        height: auto;
-    }
-
-    NewSessionModal #advanced-config CollapsibleTitle {
-        padding: 0 1;
-        color: $text-disabled;
-    }
-
-    NewSessionModal #advanced-config Contents {
-        height: auto;
-        min-height: 0;
-        padding: 0;
-    }
-
-    NewSessionModal #advanced-config Vertical {
-        height: auto;
-        min-height: 0;
-    }
-
-    NewSessionModal #default-dir-row {
-        height: auto;
-    }
-
-    NewSessionModal #dir-path-row {
-        width: 100%;
-        height: auto;
-    }
-
-    NewSessionModal #dir-path-input {
-        width: 1fr;
-    }
-
-    NewSessionModal #browse-btn {
-        width: auto;
-        min-width: 8;
-        margin-left: 1;
-    }
-
-    NewSessionModal #dir-browser {
-        display: none;
-        margin-top: 1;
-    }
-
-    NewSessionModal #dir-browser.visible {
-        display: block;
-    }
-
-    NewSessionModal Select.hidden {
-        display: none;
-    }
-
-    NewSessionModal #shell-options {
-        margin-top: 1;
-        height: auto;
-    }
-
-    NewSessionModal #shell-options.hidden {
-        display: none;
-    }
-
-    NewSessionModal #billing-section {
-        margin-top: 0;
-        height: auto;
-        min-height: 0;
-    }
-
-    NewSessionModal #billing-section.hidden {
-        display: none;
-    }
-
-    NewSessionModal #proxy-config {
-        height: auto;
-        min-height: 0;
-        margin-top: 1;
-    }
-
-    NewSessionModal #proxy-config.hidden {
-        display: none;
-        height: 0;
-    }
-
-    NewSessionModal .proxy-row {
-        width: 100%;
-        height: auto;
-        min-height: 0;
-        margin-bottom: 1;
-    }
-
-    NewSessionModal .proxy-label {
-        color: $text-muted;
-        height: 1;
-    }
-
-    NewSessionModal .proxy-input {
-        width: 100%;
-    }
-
-    NewSessionModal .proxy-status {
-        height: 1;
-        margin-top: 1;
-    }
-
-    NewSessionModal .proxy-status-ok {
-        color: $success;
-    }
-
-    NewSessionModal .proxy-status-warning {
-        color: $warning;
-    }
-
-    NewSessionModal .proxy-status-error {
-        color: $error;
-    }
-
-    NewSessionModal .proxy-hint {
-        color: $text-disabled;
-        height: auto;
-    }
-
-    NewSessionModal ModelSelector {
-        width: 100%;
-        margin-bottom: 0;
-    }
-
-    NewSessionModal ModelSelector #model-input {
-        border: tall $surface-lighten-1;
-    }
-
-    NewSessionModal ModelSelector #dropdown {
-        border: round $surface-lighten-1;
-        background: $surface;
-    }
-    """
+    DEFAULT_CSS = NEW_SESSION_CSS
 
     def __init__(
         self,
@@ -349,62 +172,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
                 yield Checkbox("set as default dir", id="set-default-dir-check")
 
             # Billing mode selector (Claude only)
-            yield from self._compose_billing_section(resolved)
-
-    def _compose_billing_section(self, resolved) -> ComposeResult:
-        """Compose the billing mode section for Claude sessions."""
-        # Get current proxy settings
-        proxy = resolved.openrouter_proxy
-        proxy_enabled = proxy.enabled if proxy else False
-        proxy_key = proxy.api_key if proxy else ""
-        proxy_model = proxy.default_model if proxy else ""
-
-        # Determine initial billing mode
-        initial_billing = BillingMode.OPENROUTER if proxy_enabled else BillingMode.CLAUDE
-
-        with Vertical(id="billing-section"):
-            yield Static("billing", classes="field-label")
-            yield Select(
-                [
-                    ("claude account", BillingMode.CLAUDE),
-                    ("openrouter", BillingMode.OPENROUTER),
-                ],
-                value=initial_billing,
-                id="billing-select",
-            )
-
-            # Proxy config (shown when openrouter selected)
-            with Vertical(id="proxy-config"):
-                # Check if API key is available (from env or config)
-                has_env_key = bool(os.environ.get("OPENROUTER_API_KEY"))
-                has_config_key = bool(proxy_key)
-                has_key = has_env_key or has_config_key
-
-                if has_key:
-                    yield Static("● ready", id="proxy-status", classes="proxy-status proxy-status-ok")
-                    yield Static("", id="proxy-hint", classes="proxy-hint")
-                else:
-                    yield Static("● needs api key", id="proxy-status", classes="proxy-status proxy-status-warning")
-                    yield Static("get key from openrouter.ai/keys", id="proxy-hint", classes="proxy-hint")
-
-                with Vertical(classes="proxy-row"):
-                    yield Static("api key (or set OPENROUTER_API_KEY env)", classes="proxy-label")
-                    yield Input(
-                        value=proxy_key,
-                        placeholder="sk-or-...",
-                        password=True,
-                        id="proxy-key-input",
-                        classes="proxy-input",
-                    )
-
-                with Vertical(classes="proxy-row"):
-                    yield Static("model (optional)", classes="proxy-label")
-                    yield ModelSelector(
-                        models_service=self._models_service,
-                        initial_value=proxy_model,
-                        placeholder="anthropic/claude-sonnet-4",
-                        id="proxy-model-selector",
-                    )
+            yield BillingWidget(self._config, self._models_service, id="billing-widget")
 
     def on_mount(self) -> None:
         """Focus the name input and load lists."""
@@ -438,14 +206,6 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         shell_options = self.query_one("#shell-options", Horizontal)
         shell_options.remove_class("hidden") if is_shell else shell_options.add_class("hidden")
 
-        # Set initial proxy config visibility based on billing mode
-        try:
-            billing_select = self.query_one("#billing-select", Select)
-            proxy_config = self.query_one("#proxy-config", Vertical)
-            proxy_config.display = (billing_select.value == BillingMode.OPENROUTER)
-        except Exception:
-            pass
-
     def _get_active_tab(self) -> str:
         """Get the currently active tab ID."""
         tabs = self.query_one("#tabs", TabbedContent)
@@ -455,8 +215,6 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         """Handle select changes."""
         if event.select.id == "type-select":
             self._handle_type_change(event.value)
-        elif event.select.id == "billing-select":
-            self._handle_billing_change(event.value)
 
     def _handle_type_change(self, value) -> None:
         """Handle session type changes."""
@@ -475,45 +233,6 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         name_input = self.query_one("#name-input", Input)
         if name_input.value.startswith("session") or name_input.value.startswith(self._initial_dir.name):
             name_input.value = self._get_default_name(value)
-
-    def _handle_billing_change(self, value) -> None:
-        """Handle billing mode changes."""
-        try:
-            proxy_config = self.query_one("#proxy-config", Vertical)
-            show = (value == BillingMode.OPENROUTER)
-            proxy_config.display = show
-            if show:
-                self._update_proxy_status()
-        except Exception:
-            pass
-
-    def _update_proxy_status(self) -> None:
-        """Update proxy status display based on current input."""
-        try:
-            status_widget = self.query_one("#proxy-status", Static)
-            hint_widget = self.query_one("#proxy-hint", Static)
-
-            # Check for API key from input or env
-            api_key_input = self.query_one("#proxy-key-input", Input).value.strip()
-            has_key = bool(api_key_input or os.environ.get("OPENROUTER_API_KEY"))
-
-            status_widget.remove_class("proxy-status-ok", "proxy-status-warning", "proxy-status-error")
-
-            if has_key:
-                status_widget.update("● ready")
-                status_widget.add_class("proxy-status-ok")
-                hint_widget.update("")
-            else:
-                status_widget.update("● needs api key")
-                status_widget.add_class("proxy-status-warning")
-                hint_widget.update("get key from openrouter.ai/keys")
-        except Exception:
-            pass
-
-    def on_input_changed(self, event: Input.Changed) -> None:
-        """Handle input changes."""
-        if event.input.id == "proxy-key-input":
-            self._update_proxy_status()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "browse-btn":
@@ -776,7 +495,10 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
             use_worktree = worktree_check.value if worktree_check.value else None
 
             # Handle billing mode / proxy settings
-            self._save_billing_settings()
+            try:
+                self.query_one("#billing-widget", BillingWidget).save_settings()
+            except Exception:
+                pass
 
         elif session_type in (NewSessionType.CODEX, NewSessionType.GEMINI, NewSessionType.OPENROUTER):
             prompt = self.query_one("#prompt-input", Input).value.strip()
@@ -815,38 +537,6 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
             features=features,
             session_type=session_type,
         ))
-
-    def _save_billing_settings(self) -> None:
-        """Save billing/proxy settings to config."""
-        try:
-            billing_select = self.query_one("#billing-select", Select)
-            billing_mode = billing_select.value
-
-            if billing_mode == BillingMode.OPENROUTER:
-                # Get proxy settings from form
-                api_key = self.query_one("#proxy-key-input", Input).value.strip()
-                model_selector = self.query_one("#proxy-model-selector", ModelSelector)
-                model = model_selector.get_value().strip()
-
-                # Create proxy settings (enabled)
-                proxy_settings = ProxySettings(
-                    enabled=True,
-                    api_key=api_key,
-                    default_model=model,
-                )
-
-                # Save to config
-                config = self._config.config
-                config.features.openrouter_proxy = proxy_settings
-                self._config.save_config(config)
-            else:
-                # Disable proxy if switching to Claude account
-                config = self._config.config
-                if config.features.openrouter_proxy:
-                    config.features.openrouter_proxy.enabled = False
-                    self._config.save_config(config)
-        except Exception:
-            pass  # Non-critical - continue with session creation
 
     def _submit_attach(self) -> None:
         """Attach to external tmux session."""
