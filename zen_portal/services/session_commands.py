@@ -294,5 +294,7 @@ class SessionCommandBuilder:
         escaped_cmd = " ".join(shlex.quote(arg) for arg in command)
         # Create a bash script that prints banner then execs command
         # Run command and wait on error
+        # Use login shell (-l) for proper terminal environment setup
+        # This fixes scrollback issues with TUI apps like Claude Code
         script = f"{banner_cmd}; {env_exports}{escaped_cmd} || read -p 'Session ended with error. Press enter to close...'"
-        return ["bash", "-c", script]
+        return ["bash", "-l", "-c", script]
