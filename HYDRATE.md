@@ -1,7 +1,7 @@
 # HYDRATE.md - Claude Code Context Document
 
 > Quick context for future Claude Code sessions working on this codebase.
-> Last updated: 2025-12-07 (v0.4.1) - Zen AI config screen integration with ZenAIDropdown widget.
+> Last updated: 2025-12-07 (v0.4.2) - Zen AI prompt uses Textual workers for non-blocking queries.
 
 ## What is Zenportal?
 
@@ -687,9 +687,14 @@ Native AI integration for quick queries without leaving context.
 **Architecture:**
 - `services/zen_ai.py` - Core AI invocation (claude -p / OpenRouter API)
 - `services/context_parser.py` - @ref parsing and context gathering
-- `screens/zen_prompt.py` - Quick query modal with streaming response
+- `screens/zen_prompt.py` - Quick query modal using Textual workers
 - `widgets/zen_ai_dropdown.py` - Config screen settings widget
 - `widgets/zen_mirror.py` - Optional context sidebar (future)
+
+**Loading Indicator:**
+- Title changes to `· · ·` while query executes
+- Uses `run_worker()` for non-blocking queries
+- `on_worker_state_changed()` handles completion/error
 
 **Backends:**
 - **Claude Provider**: Uses `claude -p` subprocess (pipe mode)
