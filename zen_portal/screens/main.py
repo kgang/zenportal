@@ -242,7 +242,7 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, ZenScreen):
             lines.append(f"  {state_desc}")
 
         if session.state == SessionState.FAILED and session.error_message:
-            lines.append(f"  [red]{session.error_message}[/red]")
+            lines.append(f"  error: {session.error_message}")
 
         lines.append("")
 
@@ -272,30 +272,30 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, ZenScreen):
 
         if session.state == SessionState.PAUSED and session.worktree_path:
             lines.extend([
-                "    [bold]w[/bold]  open shell in worktree",
-                "        (work on code without reviving session)",
-                "    [bold]v[/bold]  revive session",
-                "        (resume Claude conversation)",
-                "    [bold]d[/bold]  clean up",
-                "        (delete worktree and remove from list)",
+                "    w  open shell in worktree",
+                "       (work on code without reviving session)",
+                "    v  revive session",
+                "       (resume Claude conversation)",
+                "    d  clean up",
+                "       (delete worktree and remove from list)",
             ])
         elif session.state == SessionState.PAUSED:
             lines.extend([
-                "    [bold]v[/bold]  revive session",
-                "    [bold]d[/bold]  clean up (remove from list)",
+                "    v  revive session",
+                "    d  clean up (remove from list)",
             ])
         elif session.state in (SessionState.COMPLETED, SessionState.FAILED):
             if session.worktree_path:
-                lines.append("    [bold]w[/bold]  open shell in worktree")
-            lines.append("    [bold]v[/bold]  revive session")
+                lines.append("    w  open shell in worktree")
+            lines.append("    v  revive session")
             if session.worktree_path:
-                lines.append("    [bold]d[/bold]  clean up (delete worktree)")
+                lines.append("    d  clean up (delete worktree)")
             else:
-                lines.append("    [bold]d[/bold]  clean up (remove from list)")
+                lines.append("    d  clean up (remove from list)")
         else:
             lines.extend([
-                "    [bold]v[/bold]  revive session",
-                "    [bold]d[/bold]  clean up",
+                "    v  revive session",
+                "    d  clean up",
             ])
 
         return "\n".join(lines)
