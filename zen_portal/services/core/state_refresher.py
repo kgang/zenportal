@@ -1,22 +1,26 @@
 """StateRefresher: Session state polling and updates.
 
 Extracted from SessionManager to provide focused state refresh operations.
+Uses the detection module for pure state detection logic.
 """
 
 from datetime import datetime
 from typing import Callable
 
 from ..tmux import TmuxService
+from .detection import detect_session_state
 from ...models.session import Session, SessionState, SessionType
 
 
 class StateRefresher:
     """Polls tmux and updates session states.
 
-    Provides:
-    - State detection (running → completed/failed)
-    - Exit code handling
+    Orchestrates:
+    - Polling of sessions
     - Grace period after revival
+    - Token updates for Claude sessions
+
+    Detection logic is delegated to the detection module.
     """
 
     # Grace period after revival before checking state (seconds)
@@ -70,13 +74,6 @@ class StateRefresher:
         if not tmux_name:
             return False
 
-        # Check if tmux session still exists
-        if not self._tmux.session_exists(tmux_name):
-            session.state = SessionState.COMPLETED
-            session.ended_at = datetime.now()
-            session.revived_at = None
-            return True
-
         # Grace period check after revival
         if session.revived_at:
             grace_elapsed = (datetime.now() - session.revived_at).total_seconds()
@@ -84,20 +81,19 @@ class StateRefresher:
                 return False
             session.revived_at = None
 
-        # Check if pane is dead (process exited)
-        if self._tmux.is_pane_dead(tmux_name):
-            exit_status = self._tmux.get_pane_exit_status(tmux_name)
-            if exit_status is not None and exit_status != 0:
-                session.state = SessionState.FAILED
-                session.error_message = f"Process exited with code {exit_status}"
-            else:
-                session.state = SessionState.COMPLETED
-            session.ended_at = datetime.now()
+        # Use pure detection function
+        result = detect_session_state(self._tmux, tmux_name)
+
+        if result.state != session.state:
+            session.state = result.state
+            session.ended_at = datetime.now() if result.state != SessionState.RUNNING else None
+            session.error_message = result.error_message or ""
             return True
 
         # Update tokens for running Claude sessions
-        if session.session_type == SessionType.CLAUDE and self._on_token_update:
-            self._on_token_update(session)
+        if session.state == SessionState.RUNNING and session.session_type == SessionType.CLAUDE:
+            if self._on_token_update:
+                self._on_token_update(session)
 
         return False
 
@@ -114,7 +110,5 @@ class StateRefresher:
         if not tmux_name:
             return False
 
-        if not self._tmux.session_exists(tmux_name):
-            return False
-
-        return not self._tmux.is_pane_dead(tmux_name)
+        result = detect_session_state(self._tmux, tmux_name)
+        return result.state == SessionState.RUNNING

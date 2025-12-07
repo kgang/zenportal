@@ -16,6 +16,7 @@ from .session_persistence import SessionPersistence
 from .session_commands import SessionCommandBuilder
 from .proxy_validation import ProxyValidator, ProxyValidationResult
 from .core import WorktreeManager, TokenManager, StateRefresher
+from .pipelines import CreateContext, CreateSessionPipeline
 
 
 class SessionLimitError(Exception):
@@ -125,7 +126,7 @@ class SessionManager:
         features: SessionFeatures | None = None,
         session_type: SessionType = SessionType.CLAUDE,
     ) -> Session:
-        """Create a new session (Claude Code, Codex, Gemini, or shell).
+        """Create a new session via pipeline.
 
         Args:
             name: Display name for the session
@@ -136,94 +137,43 @@ class SessionManager:
         Returns:
             The created Session
         """
-        if len(self._sessions) >= self.MAX_SESSIONS:
-            raise SessionLimitError(f"Maximum sessions ({self.MAX_SESSIONS}) reached")
-
-        # Resolve features through config tiers
-        session_override = None
-        if features and features.has_overrides():
-            session_override = FeatureSettings(
-                working_dir=features.working_dir,
-                model=features.model if session_type == SessionType.CLAUDE else None,
-            )
-        resolved = self._config.resolve_features(session_override)
-
-        # Determine working directory
-        working_dir = resolved.working_dir or self._fallback_working_dir
-        dangerous_mode = features.dangerously_skip_permissions if features else False
-
-        # Determine if using proxy billing
-        uses_proxy = bool(
-            session_type == SessionType.CLAUDE
-            and resolved.openrouter_proxy
-            and resolved.openrouter_proxy.enabled
-        )
-
-        # Create session model
-        session = Session(
+        ctx = CreateContext(
             name=name,
-            prompt=prompt if session_type == SessionType.CLAUDE else "",
+            prompt=prompt,
             session_type=session_type,
-            features=features or SessionFeatures(),
-            resolved_working_dir=working_dir,
-            resolved_model=resolved.model if session_type == SessionType.CLAUDE else None,
-            dangerously_skip_permissions=dangerous_mode,
-            uses_proxy=uses_proxy,
+            features=features,
         )
 
-        # Handle worktree creation if enabled
-        working_dir = self._worktree_mgr.setup_for_session(session, features, resolved.worktree)
+        pipeline = CreateSessionPipeline(
+            tmux=self._tmux,
+            config_manager=self._config,
+            commands=self._commands,
+            worktree_mgr=self._worktree_mgr,
+            tmux_name_func=self._tmux_name,
+            max_sessions=self.MAX_SESSIONS,
+            current_count=len(self._sessions),
+            fallback_dir=self._fallback_working_dir,
+        )
 
-        self._sessions[session.id] = session
+        result = pipeline.invoke(ctx)
 
-        # Validate binary exists
-        binary_error = self._commands.validate_binary(session_type)
-        if binary_error:
-            session.state = SessionState.FAILED
-            session.error_message = binary_error
+        if not result.ok:
+            if "Maximum sessions" in result.error:
+                raise SessionLimitError(result.error)
+            # Create a failed session for other errors
+            session = Session(
+                name=name,
+                state=SessionState.FAILED,
+                error_message=result.error,
+                session_type=session_type,
+            )
+            self._sessions[session.id] = session
             self._emit(SessionCreated(session))
             self._persist_change(session, "created")
             return session
 
-        # Validate proxy settings for Claude sessions
-        if session_type == SessionType.CLAUDE and resolved.openrouter_proxy:
-            proxy_result = self.validate_proxy(resolved.openrouter_proxy)
-            if proxy_result and proxy_result.has_errors:
-                # Store warning but don't fail - proxy issues shouldn't block session start
-                session.proxy_warning = proxy_result.summary
-
-        # Build and wrap command
-        if session_type == SessionType.CLAUDE:
-            session.claude_session_id = ""  # Will be discovered later
-
-        command_args = self._commands.build_create_command(
-            session_type=session_type,
-            working_dir=working_dir,
-            model=resolved.model,
-            prompt=prompt,
-            dangerous_mode=dangerous_mode,
-        )
-
-        # Get OpenRouter proxy env vars if enabled for Claude sessions
-        env_vars = None
-        if session_type == SessionType.CLAUDE and resolved.openrouter_proxy:
-            env_vars = self._commands.build_openrouter_env_vars(resolved.openrouter_proxy)
-
-        command = self._commands.wrap_with_banner(command_args, name, session.id, env_vars)
-
-        # Create tmux session
-        tmux_name = self._tmux_name(session.id)
-        session.tmux_name = tmux_name
-        result = self._tmux.create_session(
-            name=tmux_name,
-            command=command,
-            working_dir=working_dir,
-        )
-
-        session.state = SessionState.RUNNING if result.success else SessionState.FAILED
-        if not result.success:
-            session.error_message = result.error or "Failed to create tmux session"
-
+        session = result.value
+        self._sessions[session.id] = session
         self._emit(SessionCreated(session))
         self._persist_change(session, "created")
         return session

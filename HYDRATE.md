@@ -1,6 +1,6 @@
 # HYDRATE.md
 
-> Quick context for Claude Code sessions. Last updated: 2025-12-07 (v0.4.12)
+> Quick context for Claude Code sessions. Last updated: 2025-12-07 (v0.4.13)
 
 ## Essence
 
@@ -23,7 +23,9 @@ zen_portal/
 ├── models/                   # data: Session, events, enums
 ├── services/                 # business logic (no UI)
 │   ├── session_manager.py    # core lifecycle
-│   ├── core/                 # worktree, token, state managers
+│   ├── pipelines/            # composable multi-step operations
+│   ├── conflict.py           # pre-creation conflict detection
+│   ├── core/                 # worktree, token, state, detection
 │   ├── git/                  # GitService
 │   ├── openrouter/           # proxy validation, billing, models
 │   └── ...                   # tmux, config, state, persistence
@@ -81,19 +83,28 @@ i       insert            /    zen ai
 
 ---
 
+## Architecture Patterns (v0.4.13)
+
+**Pipelines** (`services/pipelines/`): Multi-step operations as composable steps.
+- Each step: `T → StepResult[U]`
+- `CreateSessionPipeline` orchestrates session creation
+- Steps: ValidateLimit, ResolveConfig, SetupWorktree, ValidateBinary, SpawnTmux
+
+**Detection** (`services/core/detection.py`): Pure state detection function.
+- `detect_session_state(tmux, name) → DetectionResult`
+- No side effects, just facts about current state
+- `StateRefresher` handles polling, calls detection
+
+**Conflicts** (`services/conflict.py`): Pre-creation warnings.
+- `detect_conflicts(name, type, existing, max) → list[SessionConflict]`
+- Severities: INFO, WARNING, ERROR
+- New session modal shows warnings before creation
+
+---
+
 ## Token Tracking
 
-Parsed from Claude's JSONL at `~/.claude/projects/`.
-
-Display format:
-```
-tokens  12.5k  (8.2k↓ 4.3k↑)
-activity  12 turns · ~1.0k/turn · 15m
-cache  2.1k read / 0.5k write (45% hit)
-cost  ~$0.32  api
-```
-
-Formatting: `1234` → `12.5k` → `1.2M`
+Parsed from Claude's JSONL at `~/.claude/projects/`. Format: `tokens  12.5k  (8.2k↓ 4.3k↑)`
 
 ---
 
@@ -127,20 +138,10 @@ Example: `why is @error happening?`
 
 ---
 
-## Eye Strain Reduction (v0.4.12)
+## Eye Strain Reduction
 
-Output view echoes selection to minimize horizontal eye movement:
-
-```
-● session-name  ·  active  ·  2h     ← title with glyph/state/age
-claude  ·  main ✓  ·  .../project    ← context bar
-[output content...]
-```
-
-**Key changes**:
-- `OutputView.update_session()` - accepts full session context
-- Notifications: bottom-left (near session list, was bottom-right)
-- Quick modals: `.modal-left` class (rename, insert, zen AI)
+Output view echoes selection: `● session-name  ·  active  ·  2h` in header.
+Notifications bottom-left. Quick modals use `.modal-left` class.
 
 ---
 

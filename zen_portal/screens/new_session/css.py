@@ -170,4 +170,18 @@ NewSessionModal ModelSelector #dropdown {
     border: round $surface-lighten-1;
     background: $surface;
 }
+
+NewSessionModal #conflict-hint {
+    height: 1;
+    color: $text-disabled;
+    margin-top: 0;
+}
+
+NewSessionModal #conflict-hint.warning {
+    color: $warning;
+}
+
+NewSessionModal #conflict-hint.error {
+    color: $error;
+}
 """

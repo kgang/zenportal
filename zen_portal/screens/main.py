@@ -447,6 +447,8 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, ZenScreen):
                 existing_names=existing_names,
                 session_prefix=prefix,
                 known_claude_session_ids=known_claude_ids,
+                max_sessions=self._manager.MAX_SESSIONS,
+                existing_sessions=list(self._manager.sessions),
             ),
             handle_result,
         )

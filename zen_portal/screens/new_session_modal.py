@@ -10,6 +10,7 @@ from textual.widgets import Button, Checkbox, Collapsible, Input, Select, Static
 from ..models.session import SessionFeatures
 from ..models.new_session import NewSessionType, ResultType, NewSessionResult
 from ..services.config import ConfigManager, ClaudeModel, ALL_SESSION_TYPES
+from ..services.conflict import detect_conflicts, has_blocking_conflict, ConflictSeverity
 from ..services.discovery import DiscoveryService
 from ..services.openrouter_models import OpenRouterModelsService
 from ..services.tmux import TmuxService
@@ -41,6 +42,8 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         initial_working_dir: Path | None = None,
         known_claude_session_ids: set[str] | None = None,
         models_service: OpenRouterModelsService | None = None,
+        max_sessions: int = 10,
+        existing_sessions: list | None = None,
     ) -> None:
         super().__init__()
         self._config = config_manager
@@ -49,6 +52,8 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         self._models_service = models_service or OpenRouterModelsService()
         self._existing_names = existing_names or set()
         self._prefix = session_prefix
+        self._max_sessions = max_sessions
+        self._existing_sessions = existing_sessions or []
 
         # Resolve initial working directory
         resolved = self._config.resolve_features()
@@ -148,6 +153,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
             id="name-input",
             classes="field-input",
         )
+        yield Static("", id="conflict-hint")
 
         yield Static("prompt", classes="field-label", id="prompt-label")
         yield Input(placeholder="initial prompt for claude", id="prompt-input", classes="field-input")
@@ -194,6 +200,57 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         self.query_one("#name-input", Input).focus()
         self._load_lists()
         self._set_initial_visibility()
+        self._check_conflicts()
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        """Check for conflicts when name changes."""
+        if event.input.id == "name-input":
+            self._check_conflicts()
+
+    def _check_conflicts(self) -> None:
+        """Check for conflicts and update hint."""
+        name = self.query_one("#name-input", Input).value.strip()
+        type_select = self.query_one("#type-select", Select)
+        session_type = type_select.value if type_select.value is not Select.BLANK else NewSessionType.CLAUDE
+
+        # Convert NewSessionType to SessionType for conflict detection
+        from ..models.session import SessionType
+        session_type_map = {
+            NewSessionType.CLAUDE: SessionType.CLAUDE,
+            NewSessionType.CODEX: SessionType.CODEX,
+            NewSessionType.GEMINI: SessionType.GEMINI,
+            NewSessionType.SHELL: SessionType.SHELL,
+            NewSessionType.OPENROUTER: SessionType.OPENROUTER,
+        }
+
+        conflicts = detect_conflicts(
+            name=name,
+            session_type=session_type_map.get(session_type, SessionType.CLAUDE),
+            existing=self._existing_sessions,
+            max_sessions=self._max_sessions,
+        )
+
+        self._update_conflict_display(conflicts)
+
+    def _update_conflict_display(self, conflicts: list) -> None:
+        """Update the conflict hint display."""
+        hint = self.query_one("#conflict-hint", Static)
+        hint.remove_class("warning", "error")
+
+        if not conflicts:
+            hint.update("")
+            return
+
+        # Show highest priority conflict
+        for severity in (ConflictSeverity.ERROR, ConflictSeverity.WARNING, ConflictSeverity.INFO):
+            for c in conflicts:
+                if c.severity == severity:
+                    hint.update(c.message)
+                    if severity == ConflictSeverity.WARNING:
+                        hint.add_class("warning")
+                    elif severity == ConflictSeverity.ERROR:
+                        hint.add_class("error")
+                    return
 
     def _load_lists(self) -> None:
         """Load attach and resume lists."""
