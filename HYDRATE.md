@@ -447,8 +447,10 @@ def compose(self) -> ComposeResult:
 - `border: none` or subtle dividers for main screen panels
 
 **Elastic modals:**
-- `height: auto; max-height: 90%; overflow-y: auto`
+- Dialog: `height: auto; max-height: 90%; overflow-y: auto`
+- Inner containers: `height: auto; min-height: 0` (critical for shrinking)
 - Never use fixed max-height values on dialogs
+- Collapsible contents inherit elastic sizing from `CONTAINER_CSS`
 
 **Session list prefixes:**
 - Claude: no prefix
