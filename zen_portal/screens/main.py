@@ -49,6 +49,7 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, ZenScreen):
         Binding("ctrl+i", "toggle_info", "Info", show=False),
         ("r", "refresh_output", "Refresh"),
         Binding("s", "toggle_streaming", "Stream", show=False),
+        Binding("ctrl+f", "search_output", "Search", show=False),
         ("c", "config", "Config"),
         Binding("P", "proxy_dashboard", "Proxy Dashboard", show=False),
         ("?", "show_help", "Help"),
@@ -457,6 +458,15 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, ZenScreen):
         self._streaming = not self._streaming
         self.zen_notify(f"output mode: {'streaming' if self._streaming else 'snapshot'}")
         self._update_hint()
+
+    def action_search_output(self) -> None:
+        """Activate search in output view (only when not in info mode)."""
+        if not self.info_mode:
+            try:
+                output_view = self.query_one("#output-view", OutputView)
+                output_view.action_toggle_search()
+            except Exception:
+                pass
 
     def action_toggle_info(self) -> None:
         self.info_mode = not self.info_mode

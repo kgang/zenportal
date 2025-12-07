@@ -126,6 +126,20 @@ class SessionInfoView(Static):
         color: $text-disabled;
         height: 1fr;
     }
+
+    SessionInfoView #token-sparkline {
+        height: 2;
+        width: 100%;
+        margin-top: 1;
+    }
+
+    SessionInfoView #token-sparkline > .sparkline--max-color {
+        color: $text-muted;
+    }
+
+    SessionInfoView #token-sparkline > .sparkline--min-color {
+        color: $surface-lighten-1;
+    }
     """
 
     def compose(self) -> ComposeResult:
@@ -135,6 +149,19 @@ class SessionInfoView(Static):
 
         yield Static("info", classes="title")
         yield Static(self._render_info(), classes="content")
+
+        # Sparkline for Claude sessions with token history
+        if (
+            self.session
+            and self.session.session_type.value == "claude"
+            and self.session.token_history
+            and len(self.session.token_history) > 1
+        ):
+            yield Sparkline(
+                self.session.token_history,
+                summary_function=max,
+                id="token-sparkline",
+            )
 
     def _render_info(self) -> str:
         """Render session metadata as minimal formatted text."""

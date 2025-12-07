@@ -1,7 +1,7 @@
 # HYDRATE.md - Claude Code Context Document
 
 > Quick context for future Claude Code sessions working on this codebase.
-> Last updated: 2025-12-06 (v0.3.2) - Enhanced OpenRouter proxy integration with real-time monitoring, billing tracking, and comprehensive dashboard.
+> Last updated: 2025-12-06 (v0.3.3) - Enhanced output view with search functionality and token history visualization via Sparklines.
 
 ## What is Zenportal?
 
@@ -80,7 +80,24 @@ zen_portal/
 └── tests/                 # pytest + pytest-asyncio
 ```
 
-## Recent Enhancements (v0.3.2)
+## Recent Enhancements (v0.3.3)
+
+### Output View Search & Token Visualization
+- **Output Search** - Real-time search filtering in session output with `Ctrl+F`
+- **Token Sparklines** - Visual token usage history for Claude sessions using Textual's Sparkline widget
+- **Enhanced Session Monitoring** - Improved token tracking with historical data visualization
+
+**Key Features:**
+- Live output filtering with case-insensitive search
+- Keyboard shortcuts: `Ctrl+F` to open search, `Esc` to close
+- Token usage sparklines showing historical patterns for Claude sessions
+- Real-time search results with "no matches" feedback
+- Sparkline integration in session info panel
+
+**Integration Points:**
+- Main screen `Ctrl+F` binding delegates to output view
+- Session info view conditionally renders sparklines for Claude sessions with token history
+- Search state managed through reactive properties for real-time updates
 
 ### Enhanced Proxy Monitoring System
 - **`proxy_monitor.py`** - Real-time proxy health monitoring with performance metrics
@@ -186,6 +203,26 @@ Key settings: `exit_behavior`, `working_dir`, `model`, `worktree.*`, `enabled_se
 - The 100-line `capture_pane` is only for zen-portal's output view widget, not the actual scrollback
 - Scrollback preserved when attaching via `a` key or external `tmux attach`
 
+### Output View Search
+Real-time search functionality within session output:
+
+**Features:**
+- Live filtering of output lines containing search query (case-insensitive)
+- No matches feedback when search yields no results
+- Search input with placeholder text and auto-focus
+- Non-destructive filtering - original output preserved
+
+**Keybindings:**
+- `Ctrl+F` - Toggle search input visibility and focus
+- `Esc` - Close search and clear filter
+- Typing in search input automatically filters output in real-time
+
+**Implementation:**
+- `OutputView` widget manages search state via reactive properties
+- `search_active` controls search input visibility
+- `search_query` triggers output filtering via `_get_filtered_output()`
+- Main screen delegates `Ctrl+F` to output view when not in info mode
+
 ### Event System (Textual Messages)
 ```python
 SessionCreated(session)
@@ -216,6 +253,8 @@ SessionSelected(session)
 | i | Insert mode (send keys) |
 | c | Config screen |
 | P | Proxy dashboard |
+| Ctrl+P | Command palette |
+| Ctrl+F | Search output (when output view focused) |
 | ? | Help |
 | q | Quit |
 
@@ -238,6 +277,47 @@ Allows reordering sessions in the list. Order is persisted.
 - Order stored in `~/.zen_portal/state.json` as `session_order` array
 - New sessions appear at top (not in saved order yet)
 - Polling is paused during grab mode to prevent overwriting user's reordering
+
+## Command Palette
+
+Fuzzy-search command palette for quick action access (`Ctrl+P`).
+
+**Components:**
+- `commands/zen_commands.py` - `ZenCommandProvider` class
+- Enabled via `ENABLE_COMMAND_PALETTE = True` in `app.py`
+
+**Available commands:**
+- Static: new session, config, help, quit, toggle grab mode, toggle info, refresh
+- Context-aware (based on selected session):
+  - Active sessions: pause, kill, attach tmux, send keys, rename
+  - Inactive sessions: revive, clean, rename, open worktree (if available)
+
+**Zen design:** Commands lowercase, fuzzy matching, minimal visual chrome.
+
+## Output Search
+
+Filter-based search within session output (`Ctrl+F`).
+
+**Usage:**
+- `Ctrl+F` toggles search input
+- Type to filter lines containing query (case-insensitive)
+- `Escape` closes search and restores full output
+
+**Implementation:** `widgets/output_view.py` - filter-based (shows matching lines).
+
+## Token Sparkline
+
+Minimal sparkline visualization of token usage over time.
+
+**Components:**
+- `Session.token_history` - cumulative token totals at each API call
+- `services/token_parser.py` - `get_token_history()` method
+- `widgets/session_info.py` - Sparkline widget (Textual built-in)
+
+**Display:**
+- 2-line height, muted colors
+- Only shows for Claude sessions with >1 history points
+- Appears below token stats in info mode (`Ctrl+I`)
 
 ## Keybinding Invariants
 
@@ -278,7 +358,8 @@ These patterns MUST be followed consistently across all screens:
 | `screens/main.py` | Primary UI with keybindings + proxy monitoring |
 | `screens/new_session.py` | Session creation modal + billing settings |
 | `screens/config_screen.py` | Settings UI (theme, exit behavior, session types) |
-| `widgets/session_info.py` | Session metadata with enhanced proxy status |
+| `widgets/session_info.py` | Session metadata with enhanced proxy status + token sparklines |
+| `widgets/output_view.py` | Session output display with search functionality |
 | `widgets/proxy_status.py` | Real-time proxy monitoring widget |
 | `widgets/model_selector.py` | Autocomplete model selector for OpenRouter |
 | `models/session.py` | Session dataclass + enums |
@@ -366,10 +447,18 @@ Token usage is parsed from Claude's JSONL session files at `~/.claude/projects/`
 tokens  12.5k  (8.2k↓ 4.3k↑)
 cache   2.1k read / 0.5k write
 cost    ~$0.32  openrouter        # Only for proxy billing
+[sparkline visualization]           # Token history for Claude sessions
 ```
 - ↓ = input tokens, ↑ = output tokens
 - Cache line: shown when >1k tokens
 - Cost line: shown when `uses_proxy=True`
+- Sparkline: Visual token usage history for Claude sessions with 2+ data points
+
+**Token History Visualization:**
+- Sparkline widget displays token usage trends over time
+- Only shown for Claude sessions with `session.token_history` data
+- 2-line height with max/min color highlighting
+- Automatically rendered below token information in session info view
 
 **Token formatting:** `1234` (raw) → `12.5k` (thousands) → `1.2M` (millions)
 
