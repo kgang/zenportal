@@ -12,9 +12,11 @@ from ..models.session import SessionFeatures
 from ..models.new_session import NewSessionType, ResultType, NewSessionResult
 from ..services.config import ConfigManager, ClaudeModel, ProxySettings, ALL_SESSION_TYPES
 from ..services.discovery import DiscoveryService
+from ..services.openrouter_models import OpenRouterModelsService
 from ..services.tmux import TmuxService
 from ..services.proxy_validation import ProxyValidator, ProxyStatus
 from ..widgets.directory_browser import DirectoryBrowser
+from ..widgets.model_selector import ModelSelector
 from .new_session_lists import AttachListBuilder, ResumeListBuilder, update_list_selection
 
 # Re-export for backwards compatibility
@@ -176,6 +178,20 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         color: $text-disabled;
         height: auto;
     }
+
+    NewSessionModal ModelSelector {
+        width: 100%;
+        margin-bottom: 0;
+    }
+
+    NewSessionModal ModelSelector #model-input {
+        border: tall $surface-lighten-1;
+    }
+
+    NewSessionModal ModelSelector #dropdown {
+        border: round $surface-lighten-1;
+        background: $surface;
+    }
     """
 
     def __init__(
@@ -187,11 +203,13 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         session_prefix: str = "zen-",
         initial_working_dir: Path | None = None,
         known_claude_session_ids: set[str] | None = None,
+        models_service: OpenRouterModelsService | None = None,
     ) -> None:
         super().__init__()
         self._config = config_manager
         self._discovery = discovery_service or DiscoveryService()
         self._tmux = tmux_service or TmuxService()
+        self._models_service = models_service or OpenRouterModelsService()
         self._existing_names = existing_names or set()
         self._prefix = session_prefix
 
@@ -367,11 +385,11 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
 
                 with Vertical(classes="proxy-row"):
                     yield Static("model (optional)", classes="proxy-label")
-                    yield Input(
-                        value=proxy_model,
+                    yield ModelSelector(
+                        models_service=self._models_service,
+                        initial_value=proxy_model,
                         placeholder="anthropic/claude-sonnet-4",
-                        id="proxy-model-input",
-                        classes="proxy-input",
+                        id="proxy-model-selector",
                     )
 
     def on_mount(self) -> None:
@@ -792,7 +810,8 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
             if billing_mode == BillingMode.OPENROUTER:
                 # Get proxy settings from form
                 api_key = self.query_one("#proxy-key-input", Input).value.strip()
-                model = self.query_one("#proxy-model-input", Input).value.strip()
+                model_selector = self.query_one("#proxy-model-selector", ModelSelector)
+                model = model_selector.get_value().strip()
 
                 # Create proxy settings (enabled)
                 proxy_settings = ProxySettings(

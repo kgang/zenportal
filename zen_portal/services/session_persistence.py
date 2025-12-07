@@ -39,6 +39,15 @@ class SessionPersistence:
         Returns:
             Dictionary mapping session ID to Session
         """
+        sessions, _ = self.load_persisted_sessions_with_order()
+        return sessions
+
+    def load_persisted_sessions_with_order(self) -> tuple[dict[str, Session], list[str]]:
+        """Load sessions and custom order from persisted state.
+
+        Returns:
+            Tuple of (sessions dict, session order list)
+        """
         state = self._state.load_state()
         sessions = {}
 
@@ -47,7 +56,9 @@ class SessionPersistence:
             if session:
                 sessions[session.id] = session
 
-        return sessions
+        # Filter order to only include existing sessions
+        order = [sid for sid in state.session_order if sid in sessions]
+        return sessions, order
 
     def _session_from_record(self, record: SessionRecord) -> Session | None:
         """Reconstruct a Session from a persisted record.
@@ -183,6 +194,15 @@ class SessionPersistence:
         """
         records = [self.session_to_record(s) for s in sessions.values()]
         state = PortalState(sessions=records)
+        return self._state.save_state(state)
+
+    def save_state_with_order(self, sessions: dict[str, Session], order: list[str]) -> bool:
+        """Persist current session state with custom order.
+
+        Returns True on success.
+        """
+        records = [self.session_to_record(s) for s in sessions.values()]
+        state = PortalState(sessions=records, session_order=order)
         return self._state.save_state(state)
 
     def append_history(self, session: Session, event: str) -> None:

@@ -86,14 +86,18 @@ class PortalState:
     version: int = 1  # Schema version for future migrations
     last_updated: str = field(default_factory=lambda: datetime.now().isoformat())
     sessions: list[SessionRecord] = field(default_factory=list)
+    session_order: list[str] = field(default_factory=list)  # Custom display order
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
-        return {
+        result = {
             "version": self.version,
             "last_updated": self.last_updated,
             "sessions": [s.to_dict() for s in self.sessions],
         }
+        if self.session_order:
+            result["session_order"] = self.session_order
+        return result
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "PortalState":
@@ -104,6 +108,7 @@ class PortalState:
             sessions=[
                 SessionRecord.from_dict(s) for s in data.get("sessions", [])
             ],
+            session_order=data.get("session_order", []),
         )
 
 

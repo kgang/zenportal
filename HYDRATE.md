@@ -39,6 +39,7 @@ zen_portal/
 │   ├── session_persistence.py # State loading/saving
 │   ├── session_commands.py # Command building for session types
 │   ├── proxy_validation.py # Proxy connectivity/credential checks
+│   ├── openrouter_models.py # Fetch/cache OpenRouter model list
 │   ├── notification.py    # Centralized notification service
 │   ├── tmux.py            # Low-level tmux commands
 │   ├── worktree.py        # Git worktree isolation
@@ -54,6 +55,7 @@ zen_portal/
 │   ├── output_view.py     # Session output display
 │   ├── session_info.py    # Metadata panel
 │   ├── notification.py    # Zen-styled notification widget
+│   ├── model_selector.py  # Autocomplete model selector for OpenRouter
 │   ├── directory_browser.py
 │   ├── session_type_dropdown.py # Collapsible session type selector
 │   ├── path_input.py      # Validated path input
@@ -160,8 +162,10 @@ SessionSelected(session)
 
 | Key | Action |
 |-----|--------|
-| j/k | Navigate up/down |
-| h/l | Focus left/right panel |
+| j/k | Navigate up/down (reorder in grab mode) |
+| h/l | Focus left/right panel (l enters grab mode from list) |
+| space | Toggle grab mode |
+| esc | Exit grab mode |
 | f | Toggle focus between panels |
 | n | New session |
 | p | Pause (preserve worktree) |
@@ -174,6 +178,25 @@ SessionSelected(session)
 | c | Config screen |
 | ? | Help |
 | q | Quit |
+
+## Grab Mode (Session Reordering)
+
+Allows reordering sessions in the list. Order is persisted.
+
+**Entering grab mode:**
+- Press `space` or `l` on session list
+
+**Visual indicators:**
+- Title changes to "≡ reorder" (cyan)
+- Selected session shows border outline
+
+**In grab mode:**
+- `j/k` moves the session up/down in the list
+- `space`, `l`, or `esc` exits grab mode and saves order
+
+**Persistence:**
+- Order stored in `~/.zen_portal/state.json` as `session_order` array
+- New sessions appear at top (not in saved order yet)
 
 ## Keybinding Invariants
 
@@ -208,9 +231,11 @@ These patterns MUST be followed consistently across all screens:
 | `services/config.py` | 3-tier config resolution |
 | `services/proxy_validation.py` | Proxy connectivity/credential checks |
 | `services/token_parser.py` | Parse Claude JSONL for token stats |
+| `services/openrouter_models.py` | Fetch/cache OpenRouter model list |
 | `screens/main.py` | Primary UI with keybindings |
 | `screens/new_session.py` | Session creation modal + billing settings |
 | `screens/config_screen.py` | Settings UI (theme, exit behavior, session types) |
+| `widgets/model_selector.py` | Autocomplete model selector for OpenRouter |
 | `models/session.py` | Session dataclass + enums |
 
 ## Constraints & Limits
@@ -230,6 +255,7 @@ Tests use mocked tmux operations. Test files:
 - `test_session_manager.py` - Session lifecycle
 - `test_session_commands.py` - Command building, proxy env vars
 - `test_proxy_validation.py` - Proxy connectivity/credential checks
+- `test_openrouter_models.py` - Model fetching, caching, search
 - `test_config.py` - 3-tier config resolution
 - `test_tmux.py` - Tmux command wrappers
 - `test_worktree.py` - Git worktree operations
@@ -446,8 +472,16 @@ git clone https://github.com/luohy15/y-router && cd y-router && docker-compose u
 
 **When OpenRouter selected:**
 - Status shows "● ready" if API key configured (from input or `OPENROUTER_API_KEY` env)
-- API key + optional model inputs inline in advanced section
+- API key + model selector with autocomplete inline in advanced section
 - Settings persisted to config on session creation
+
+**Model Selector:**
+- `widgets/model_selector.py` - Autocomplete input for 400+ OpenRouter models
+- `services/openrouter_models.py` - Fetches and caches model list from OpenRouter API
+- Cache: `~/.cache/zen-portal/openrouter_models.json` (24h TTL)
+- Search: Exact match > prefix > contains > fuzzy (chars in order)
+- Display: `provider/model  $prompt/$completion  context-length`
+- Keybindings: `j/k` navigate dropdown, `Enter` select, `Esc` close
 
 **Security:**
 - All env var values validated before shell injection
@@ -491,3 +525,23 @@ Three-tab modal for session management (new/attach/resume):
 - Lists built once on load (`_build_*_list`)
 - Selection uses CSS class toggling (`_update_*_selection`) - O(1) vs O(n) rebuild
 - Each row has unique ID (`attach-row-{i}`, `resume-row-{i}`)
+
+## Future Enhancements (Backlog)
+
+Potential features that build on the grab mode infrastructure:
+
+| Feature | Key | Description | Complexity |
+|---------|-----|-------------|------------|
+| Duplicate session | `D` | Clone session config to new session | Medium |
+| Bulk pause | `P` | Pause all running sessions | Low |
+| Bulk clean | `X` | Clean all dead sessions | Low |
+| Pin to top | `t` | Pin session to always show at top | Medium |
+| Session groups | `g` | Group sessions by project/worktree | High |
+| Session tags | `#` | Tag sessions for filtering | High |
+| Quick switch | `1-9` | Jump to session by number | Low |
+
+**Design principles for new actions:**
+- Single-letter keys for frequent actions
+- Uppercase for "heavier" operations (bulk, destructive)
+- Modal confirmations for destructive bulk operations
+- Consistent with vim idioms (d=delete, p=put/pause, y=yank/duplicate)

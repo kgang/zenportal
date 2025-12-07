@@ -48,6 +48,7 @@ class SessionManager:
         self._on_event = on_event
         self._state = state_service or StateService()
         self._sessions: dict[str, Session] = {}
+        self._session_order: list[str] = []  # Custom display order
         self._token_parser = TokenParser()
         self._commands = SessionCommandBuilder()
 
@@ -60,16 +61,36 @@ class SessionManager:
         )
 
         # Load persisted state on startup
-        self._sessions = self._persistence.load_persisted_sessions()
+        self._sessions, self._session_order = self._persistence.load_persisted_sessions_with_order()
 
     @property
     def sessions(self) -> list[Session]:
-        """All sessions sorted by creation time (newest first)."""
+        """All sessions in custom order (or by creation time if no custom order)."""
+        if self._session_order:
+            # Use custom order, with any new sessions at the top
+            by_id = {s.id: s for s in self._sessions.values()}
+            ordered = []
+            for sid in self._session_order:
+                if sid in by_id:
+                    ordered.append(by_id.pop(sid))
+            # New sessions not in order go to top (newest first)
+            new_sessions = sorted(by_id.values(), key=lambda s: s.created_at, reverse=True)
+            return new_sessions + ordered
         return sorted(
             self._sessions.values(),
             key=lambda s: s.created_at,
             reverse=True,
         )
+
+    @property
+    def session_order(self) -> list[str]:
+        """Get the custom session order."""
+        return self._session_order
+
+    def set_session_order(self, order: list[str]) -> None:
+        """Set custom session display order and persist."""
+        self._session_order = order
+        self._persistence.save_state_with_order(self._sessions, order)
 
     def _emit(self, event) -> None:
         if self._on_event:
