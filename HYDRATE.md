@@ -105,7 +105,12 @@ q       quit
 
 ## Token Tracking
 
-Parsed from Claude's JSONL at `~/.claude/projects/`. Claude AI sessions only (provider check).
+Parsed from Claude's JSONL at `~/.claude/projects/`. Claude AI sessions only.
+
+Key files:
+- `services/token_parser.py` - JSONL parsing, `TokenUsage` dataclass
+- `services/core/token_manager.py` - session updates, auto-discovery
+- `widgets/session_info.py` - display with sparkline visualization
 
 ---
 
