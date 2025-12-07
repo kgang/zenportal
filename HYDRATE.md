@@ -1,7 +1,7 @@
 # HYDRATE.md - Claude Code Context Document
 
 > Quick context for future Claude Code sessions working on this codebase.
-> Last updated: 2025-12-07 (v0.3.8) - Login shell fix for tmux scrollback in TUI sessions.
+> Last updated: 2025-12-07 (v0.4.0) - Zen AI: native AI integration with `/` prompt and context references.
 
 ## What is Zenportal?
 
@@ -215,6 +215,7 @@ All interactions happen through the session list - no panel focus switching need
 | Ctrl+F | Search output |
 | Ctrl+I | Toggle info mode |
 | R | Restart app (preserves state) |
+| / | Zen AI prompt |
 | ? | Help |
 | q | Quit |
 
@@ -660,6 +661,59 @@ proxy  claude account                      # Direct billing
 ● openrouter (12ms) $4.23 remaining        # Full metrics
 ⚠ openrouter (slow)                        # Performance issue
 ```
+
+## Zen AI (v0.4.0)
+
+Native AI integration for quick queries without leaving context.
+
+**Invocation:**
+- `/` key opens quick prompt modal
+- Command palette: "ask ai"
+
+**Context References:**
+| Reference | Expands To |
+|-----------|------------|
+| `@output` | Last 100 lines of session output |
+| `@error` | Most recent error message |
+| `@git` | Current branch, status, recent commits |
+| `@session` | Session metadata (type, state, age, model) |
+| `@all` | Full context bundle |
+
+**Example prompts:**
+- `why is @error happening?`
+- `explain @output`
+- `what should I commit based on @git?`
+
+**Architecture:**
+- `services/zen_ai.py` - Core AI invocation (claude -p / OpenRouter API)
+- `services/context_parser.py` - @ref parsing and context gathering
+- `screens/zen_prompt.py` - Quick query modal with streaming response
+- `widgets/zen_mirror.py` - Optional context sidebar (future)
+
+**Backends:**
+- **Claude Provider**: Uses `claude -p` subprocess (pipe mode)
+- **OpenRouter Provider**: Direct HTTP to OpenRouter API
+- Hybrid mode: Claude for Claude models, API for others
+
+**Configuration:**
+```json
+{
+  "features": {
+    "zen_ai": {
+      "enabled": true,
+      "model": "haiku",
+      "provider": "claude"
+    }
+  }
+}
+```
+
+**Models:** `haiku` (fast, cheap), `sonnet` (balanced), `opus` (deep)
+
+**Graceful Degradation:**
+- No API key? Feature hidden
+- API error? Notification: "could not reach ai"
+- Claude not installed? Falls back gracefully
 
 ## App Restart
 

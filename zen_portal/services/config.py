@@ -140,6 +140,81 @@ class ProxySettings:
 OpenRouterProxySettings = ProxySettings
 
 
+class ZenAIProvider(Enum):
+    """AI provider for Zen AI queries."""
+
+    CLAUDE = "claude"  # Use claude -p subprocess
+    OPENROUTER = "openrouter"  # Direct OpenRouter API
+
+
+class ZenAIModel(Enum):
+    """Quick model selection for Zen AI."""
+
+    HAIKU = "haiku"  # Fast, cheap - good for whispers
+    SONNET = "sonnet"  # Balanced - good for prompts
+    OPUS = "opus"  # Deep - for complex questions
+
+
+@dataclass
+class ZenAIConfig:
+    """Configuration for Zen AI feature.
+
+    Provides lightweight AI queries without creating tmux sessions.
+    """
+
+    enabled: bool = False
+    model: ZenAIModel = ZenAIModel.HAIKU
+    provider: ZenAIProvider = ZenAIProvider.CLAUDE
+    # Custom OpenRouter model (overrides model enum)
+    openrouter_model: str = ""
+
+    def to_dict(self) -> dict:
+        result: dict = {"enabled": self.enabled}
+        if self.model != ZenAIModel.HAIKU:
+            result["model"] = self.model.value
+        if self.provider != ZenAIProvider.CLAUDE:
+            result["provider"] = self.provider.value
+        if self.openrouter_model:
+            result["openrouter_model"] = self.openrouter_model
+        return result
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "ZenAIConfig":
+        model = ZenAIModel.HAIKU
+        if data.get("model"):
+            try:
+                model = ZenAIModel(data["model"])
+            except ValueError:
+                pass
+
+        provider = ZenAIProvider.CLAUDE
+        if data.get("provider"):
+            try:
+                provider = ZenAIProvider(data["provider"])
+            except ValueError:
+                pass
+
+        return cls(
+            enabled=data.get("enabled", False),
+            model=model,
+            provider=provider,
+            openrouter_model=data.get("openrouter_model", ""),
+        )
+
+    @property
+    def effective_model(self) -> str:
+        """Get the model to use for OpenRouter queries."""
+        if self.openrouter_model:
+            return self.openrouter_model
+        # Default OpenRouter model IDs
+        model_map = {
+            ZenAIModel.HAIKU: "anthropic/claude-3-haiku",
+            ZenAIModel.SONNET: "anthropic/claude-sonnet-4-20250514",
+            ZenAIModel.OPUS: "anthropic/claude-opus-4-20250514",
+        }
+        return model_map.get(self.model, model_map[ZenAIModel.HAIKU])
+
+
 @dataclass
 class WorktreeSettings:
     """Settings for git worktree integration.
@@ -214,6 +289,8 @@ class FeatureSettings:
     openrouter_model: str | None = None
     # Proxy settings for routing Claude sessions through y-router or CLIProxyAPI
     openrouter_proxy: ProxySettings | None = None
+    # Zen AI settings for inline AI queries
+    zen_ai: ZenAIConfig | None = None
 
     def to_dict(self) -> dict:
         result = {}
@@ -231,6 +308,8 @@ class FeatureSettings:
             result["openrouter_model"] = self.openrouter_model
         if self.openrouter_proxy is not None:
             result["openrouter_proxy"] = self.openrouter_proxy.to_dict()
+        if self.zen_ai is not None:
+            result["zen_ai"] = self.zen_ai.to_dict()
         return result
 
     @classmethod
@@ -240,6 +319,7 @@ class FeatureSettings:
         worktree = WorktreeSettings.from_dict(data["worktree"]) if data.get("worktree") else None
         enabled_types = data.get("enabled_session_types")
         openrouter_proxy = ProxySettings.from_dict(data["openrouter_proxy"]) if data.get("openrouter_proxy") else None
+        zen_ai = ZenAIConfig.from_dict(data["zen_ai"]) if data.get("zen_ai") else None
         return cls(
             working_dir=working_dir,
             model=model,
@@ -248,6 +328,7 @@ class FeatureSettings:
             enabled_session_types=enabled_types,
             openrouter_model=data.get("openrouter_model"),
             openrouter_proxy=openrouter_proxy,
+            zen_ai=zen_ai,
         )
 
     def merge_with(self, override: "FeatureSettings") -> "FeatureSettings":
@@ -268,6 +349,9 @@ class FeatureSettings:
             else:
                 merged_openrouter_proxy = override.openrouter_proxy
 
+        # Zen AI: override takes precedence if set
+        merged_zen_ai = override.zen_ai if override.zen_ai is not None else self.zen_ai
+
         return FeatureSettings(
             working_dir=override.working_dir if override.working_dir is not None else self.working_dir,
             model=override.model if override.model is not None else self.model,
@@ -276,6 +360,7 @@ class FeatureSettings:
             enabled_session_types=override.enabled_session_types if override.enabled_session_types is not None else self.enabled_session_types,
             openrouter_model=override.openrouter_model if override.openrouter_model is not None else self.openrouter_model,
             openrouter_proxy=merged_openrouter_proxy,
+            zen_ai=merged_zen_ai,
         )
 
 

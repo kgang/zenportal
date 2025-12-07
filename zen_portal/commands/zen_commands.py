@@ -41,6 +41,11 @@ class ZenCommandProvider(Provider):
             help="create a new session",
         )
         yield DiscoveryHit(
+            "ask ai",
+            partial(self._run_action, "zen_prompt"),
+            help="open zen ai prompt",
+        )
+        yield DiscoveryHit(
             "config",
             partial(self._run_action, "config"),
             help="open settings",
@@ -70,6 +75,7 @@ class ZenCommandProvider(Provider):
             ("toggle info", "toggle_info", "toggle info panel"),
             ("toggle streaming", "toggle_streaming", "toggle output streaming"),
             ("refresh", "refresh_output", "refresh output"),
+            ("ask ai", "zen_prompt", "open zen ai prompt"),
             ("quit", "quit", "exit application"),
         ]
 

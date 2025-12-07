@@ -280,6 +280,41 @@ class MainScreenActionsMixin:
 
         self.app.push_screen(InsertModal(selected.display_name), handle_result)
 
+    def action_zen_prompt(self) -> None:
+        """Open Zen AI prompt modal for quick queries."""
+        from .zen_prompt import ZenPromptModal
+        from ..services.zen_ai import ZenAI
+        from ..services.config import ZenAIConfig
+
+        # Get Zen AI config
+        features = self._config.resolve_features()
+        zen_ai_config = features.zen_ai or ZenAIConfig()
+
+        # Check if Zen AI is available
+        if not zen_ai_config.enabled:
+            self.zen_notify("zen ai not enabled (configure in settings)", "warning")
+            return
+
+        # Create ZenAI service
+        proxy_settings = features.openrouter_proxy
+        zen_ai = ZenAI(zen_ai_config, proxy_settings)
+
+        if not zen_ai.is_available:
+            self.zen_notify("zen ai not available (check claude or api key)", "warning")
+            return
+
+        # Get current session for context
+        session_list = self.query_one("#session-list", SessionList)
+        selected = session_list.get_selected()
+
+        def handle_result(result: str | None) -> None:
+            pass  # Modal handles display
+
+        self.app.push_screen(
+            ZenPromptModal(zen_ai, selected, self._manager),
+            handle_result,
+        )
+
 
 class MainScreenExitMixin:
     """Mixin providing exit-related handlers for MainScreen."""

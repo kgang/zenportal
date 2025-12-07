@@ -174,6 +174,11 @@ ZenNotification.-error {
     color: $error;
 }
 
+ZenNotification.-ai {
+    border: round $primary-darken-2;
+    color: $primary;
+}
+
 /* Fade animation */
 ZenNotification {
     opacity: 1;

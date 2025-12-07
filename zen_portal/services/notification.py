@@ -12,6 +12,7 @@ class NotificationSeverity(Enum):
     SUCCESS = "success"
     WARNING = "warning"
     ERROR = "error"
+    AI = "ai"  # For Zen AI responses (longer timeout)
 
 
 @dataclass
@@ -21,6 +22,7 @@ class NotificationConfig:
     success_timeout: float = 3.0
     warning_timeout: float = 4.0
     error_timeout: float = 5.0
+    ai_timeout: float = 10.0  # Longer timeout for AI responses
 
 
 class NotificationRequest(Message):
@@ -66,4 +68,12 @@ class NotificationService:
             message=message,
             severity=NotificationSeverity.ERROR,
             timeout=timeout or self._config.error_timeout,
+        )
+
+    def ai(self, message: str, timeout: float | None = None) -> NotificationRequest:
+        """Create AI response notification request (longer timeout)."""
+        return NotificationRequest(
+            message=message,
+            severity=NotificationSeverity.AI,
+            timeout=timeout or self._config.ai_timeout,
         )
