@@ -1,7 +1,7 @@
 # HYDRATE.md - Claude Code Context Document
 
 > Quick context for future Claude Code sessions working on this codebase.
-> Last updated: 2025-12-06 (v0.3.3) - Enhanced output view with search functionality and token history visualization via Sparklines.
+> Last updated: 2025-12-06 (v0.3.3) - Output search, token sparklines, command palette.
 
 ## What is Zenportal?
 
@@ -29,6 +29,8 @@ uv run pytest zen_portal/tests/ -v
 ```
 zen_portal/
 ├── app.py                 # Main Textual app entry point
+├── commands/
+│   └── zen_commands.py    # Command palette provider (Ctrl+P)
 ├── styles/
 │   └── base.py            # Shared CSS tokens and modal base styles
 ├── models/
@@ -80,50 +82,16 @@ zen_portal/
 └── tests/                 # pytest + pytest-asyncio
 ```
 
-## Recent Enhancements (v0.3.3)
+## Recent Enhancements (v0.3.x)
 
-### Output View Search & Token Visualization
-- **Output Search** - Real-time search filtering in session output with `Ctrl+F`
-- **Token Sparklines** - Visual token usage history for Claude sessions using Textual's Sparkline widget
-- **Enhanced Session Monitoring** - Improved token tracking with historical data visualization
+| Feature | Files | Key |
+|---------|-------|-----|
+| Output Search | `output_view.py` | `Ctrl+F` |
+| Token Sparklines | `session_info.py`, `token_parser.py` | `Ctrl+I` (info mode) |
+| Command Palette | `commands/zen_commands.py` | `Ctrl+P` |
+| Proxy Monitoring | `proxy_monitor.py`, `billing_tracker.py` | `P` (dashboard) |
 
-**Key Features:**
-- Live output filtering with case-insensitive search
-- Keyboard shortcuts: `Ctrl+F` to open search, `Esc` to close
-- Token usage sparklines showing historical patterns for Claude sessions
-- Real-time search results with "no matches" feedback
-- Sparkline integration in session info panel
-
-**Integration Points:**
-- Main screen `Ctrl+F` binding delegates to output view
-- Session info view conditionally renders sparklines for Claude sessions with token history
-- Search state managed through reactive properties for real-time updates
-
-### Enhanced Proxy Monitoring System
-- **`proxy_monitor.py`** - Real-time proxy health monitoring with performance metrics
-- **`billing_tracker.py`** - OpenRouter billing and usage analytics
-- **`proxy_status.py`** - Reactive UI widget for proxy status display
-
-**Key Features:**
-- Continuous health checks with response time tracking
-- OpenRouter API integration for billing information
-- Performance thresholds and status classification (excellent/good/degraded/warning/error)
-- Proactive issue detection and notifications
-- Session-level proxy status display
-
-**Integration Points:**
-- Main screen initializes proxy monitoring on mount
-- Session info view shows enhanced proxy status per session
-- Event-driven status updates via callback system
-
-### Textual Framework Enhancement Plan
-- **`TEXTUAL_ENHANCEMENTS.md`** - Comprehensive roadmap for leveraging advanced Textual widgets
-
-**Priority Features:**
-- Command Palette integration for fuzzy search actions
-- Toast notification system with actionable buttons
-- Session metrics dashboard with Sparkline visualizations
-- Enhanced output view with syntax highlighting via TextArea
+See feature-specific sections below for details.
 
 ## Module Organization
 
@@ -202,26 +170,6 @@ Key settings: `exit_behavior`, `working_dir`, `model`, `worktree.*`, `enabled_se
 - Standard tmux scrolling works: `Ctrl+B [` enters copy mode, then j/k/PgUp/PgDn
 - The 100-line `capture_pane` is only for zen-portal's output view widget, not the actual scrollback
 - Scrollback preserved when attaching via `a` key or external `tmux attach`
-
-### Output View Search
-Real-time search functionality within session output:
-
-**Features:**
-- Live filtering of output lines containing search query (case-insensitive)
-- No matches feedback when search yields no results
-- Search input with placeholder text and auto-focus
-- Non-destructive filtering - original output preserved
-
-**Keybindings:**
-- `Ctrl+F` - Toggle search input visibility and focus
-- `Esc` - Close search and clear filter
-- Typing in search input automatically filters output in real-time
-
-**Implementation:**
-- `OutputView` widget manages search state via reactive properties
-- `search_active` controls search input visibility
-- `search_query` triggers output filtering via `_get_filtered_output()`
-- Main screen delegates `Ctrl+F` to output view when not in info mode
 
 ### Event System (Textual Messages)
 ```python
