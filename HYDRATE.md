@@ -28,6 +28,8 @@ uv run pytest zen_portal/tests/ -v
 ```
 zen_portal/
 ├── app.py                 # Main Textual app entry point
+├── styles/
+│   └── base.py            # Shared CSS tokens and modal base styles
 ├── models/
 │   ├── session.py         # Session dataclass + enums (SessionType, SessionState)
 │   ├── events.py          # Custom Textual messages
@@ -308,35 +310,57 @@ Failed sessions now capture and display error reasons:
 
 ## Design System (Zen/Minimalist)
 
-Recent design pass established consistent visual patterns:
+### Shared CSS (`zen_portal/styles/base.py`)
+
+Central design tokens imported via `app.py`. All modals use shared classes.
+
+**Modal size tiers (viewport-relative):**
+| Class | Width | Min | Max | Use |
+|-------|-------|-----|-----|-----|
+| `.modal-sm` | 50vw | 40 | 50 | RenameModal, ExitModal |
+| `.modal-md` | 60vw | 50 | 65 | InsertModal, HelpScreen |
+| `.modal-lg` | 70vw | 60 | 80 | NewSessionModal, ConfigScreen, AttachSessionModal |
+| `.modal-xl` | 80vw | 70 | 90 | WorktreesScreen |
+
+**List height tiers:**
+| Class | Max Height | Use |
+|-------|------------|-----|
+| `.list-sm` | 20vh | DirectoryBrowser |
+| `.list-md` | 30vh | Modal lists |
+| `.list-lg` | 50vh | Large lists |
+
+**Common classes:**
+- `.modal-base` - Center alignment for modals
+- `.dialog-title` - Centered, muted title
+- `.dialog-hint` - Bottom hint text
+- `.field-label` - Field labels with margin-top: 1
+- `.list-row` - Standard list row with hover/selected states
+
+**Usage pattern:**
+```python
+def compose(self) -> ComposeResult:
+    self.add_class("modal-base", "modal-lg")
+    with Vertical(id="dialog"):
+        yield Static("title", classes="dialog-title")
+        # ... content
+        yield Static("hints", classes="dialog-hint")
+```
+
+### Visual Patterns
 
 **Color hierarchy:**
 - `$text` - Primary content
 - `$text-muted` - Secondary labels, titles
 - `$text-disabled` - Hints, placeholders
-- Semantic colors only for states (green=running, etc.)
+- `$surface-lighten-1` - Selection highlight (standardized)
 
 **Borders:**
 - `border: round $surface-lighten-1` for modals/containers
 - `border: none` or subtle dividers for main screen panels
-- No heavy/thick borders
 
-**Layout:**
-- Main screen: 2:3 ratio (session list : output), subtle vertical divider
-- Modals: 45-65 char width, centered
-- Consistent padding: 1-2 units
-
-**Elastic modals (IMPORTANT):**
-```css
-#dialog {
-    height: auto;
-    max-height: 90%;      /* viewport-relative, NOT fixed pixels */
-    overflow-y: auto;     /* scroll when content overflows */
-}
-```
-- Never use fixed `max-height` values (like `max-height: 36`) on modal dialogs
-- Child containers should use `height: auto` without restrictive max-heights
-- This prevents content from being cut off when collapsibles expand or content is added
+**Elastic modals:**
+- `height: auto; max-height: 90%; overflow-y: auto`
+- Never use fixed max-height values on dialogs
 
 **Session list prefixes:**
 - Claude: no prefix
