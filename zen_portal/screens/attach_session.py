@@ -37,26 +37,7 @@ class AttachSessionModal(ModalScreen[AttachSessionResult | None]):
     """
 
     DEFAULT_CSS = """
-    AttachSessionModal {
-        align: center middle;
-    }
-
-    AttachSessionModal #dialog {
-        width: 70;
-        height: auto;
-        max-height: 90%;
-        padding: 1 2;
-        background: $surface;
-        border: round $surface-lighten-1;
-        overflow-y: auto;
-    }
-
-    AttachSessionModal .title {
-        text-align: center;
-        color: $text-muted;
-        margin-bottom: 1;
-    }
-
+    /* Component-specific: session list and indicators */
     AttachSessionModal #session-list {
         height: auto;
         padding: 0;
@@ -72,7 +53,7 @@ class AttachSessionModal(ModalScreen[AttachSessionResult | None]):
     }
 
     AttachSessionModal .session-row.selected {
-        background: $primary-darken-2;
+        background: $surface-lighten-1;
     }
 
     AttachSessionModal .empty {
@@ -80,12 +61,6 @@ class AttachSessionModal(ModalScreen[AttachSessionResult | None]):
         text-style: italic;
         padding: 1;
         text-align: center;
-    }
-
-    AttachSessionModal .hint {
-        text-align: center;
-        color: $text-muted;
-        margin-top: 1;
     }
 
     AttachSessionModal .claude-indicator {
@@ -121,10 +96,11 @@ class AttachSessionModal(ModalScreen[AttachSessionResult | None]):
         self._selected_index = 0
 
     def compose(self) -> ComposeResult:
+        self.add_class("modal-base", "modal-lg")
         with Vertical(id="dialog"):
-            yield Static("attach to tmux", classes="title")
+            yield Static("attach to tmux", classes="dialog-title")
             yield Vertical(id="session-list")
-            yield Static("j/k navigate · enter attach · esc cancel", classes="hint")
+            yield Static("j/k navigate · enter attach · esc cancel", classes="dialog-hint")
 
     def on_mount(self) -> None:
         self._load_sessions()

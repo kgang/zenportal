@@ -6,6 +6,7 @@ Page 3: Tips and advanced usage
 """
 
 from textual.app import ComposeResult
+from textual.containers import Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Static
 
@@ -120,16 +121,8 @@ class HelpScreen(ModalScreen):
     """Multi-page help overlay."""
 
     DEFAULT_CSS = """
-    HelpScreen {
-        align: center middle;
-    }
-
-    HelpScreen > Static {
-        width: 60;
-        height: auto;
-        padding: 1 2;
-        background: $surface;
-        border: round $surface-lighten-1;
+    /* Component-specific: help content styling */
+    HelpScreen #help-content {
         color: $text-muted;
     }
     """
@@ -148,7 +141,9 @@ class HelpScreen(ModalScreen):
         self._page_index = 0
 
     def compose(self) -> ComposeResult:
-        yield Static(PAGES[self._page_index], id="help-content")
+        self.add_class("modal-base", "modal-md")
+        with Vertical(id="dialog"):
+            yield Static(PAGES[self._page_index], id="help-content")
 
     def _update_page(self) -> None:
         """Update displayed page."""

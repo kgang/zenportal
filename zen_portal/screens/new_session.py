@@ -35,27 +35,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
     ]
 
     DEFAULT_CSS = """
-    NewSessionModal {
-        align: center middle;
-    }
-
-    NewSessionModal #dialog {
-        width: 65;
-        height: auto;
-        max-height: 90%;
-        padding: 1 2;
-        background: $surface;
-        border: round $surface-lighten-1;
-        overflow-y: auto;
-    }
-
-    NewSessionModal #title {
-        text-align: center;
-        width: 100%;
-        margin-bottom: 1;
-        color: $text-muted;
-    }
-
+    /* Component-specific: tabs and form layout */
     NewSessionModal TabbedContent {
         height: auto;
     }
@@ -64,11 +44,6 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         padding: 1 0;
         height: auto;
         overflow-y: auto;
-    }
-
-    NewSessionModal .field-label {
-        margin-top: 1;
-        color: $text-disabled;
     }
 
     NewSessionModal .field-input {
@@ -86,35 +61,12 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         margin-top: 1;
     }
 
-    NewSessionModal .hint {
-        text-align: center;
-        color: $text-disabled;
-        margin-top: 1;
-    }
-
     NewSessionModal .list-container {
         height: auto;
-        max-height: 15;
+        max-height: 30vh;
+        min-height: 8;
         padding: 0;
-    }
-
-    NewSessionModal .list-row {
-        height: 1;
-        padding: 0 1;
-    }
-
-    NewSessionModal .list-row:hover {
-        background: $surface-lighten-1;
-    }
-
-    NewSessionModal .list-row.selected {
-        background: $surface-lighten-1;
-    }
-
-    NewSessionModal .empty-list {
-        color: $text-disabled;
-        padding: 2;
-        text-align: center;
+        overflow-y: auto;
     }
 
     NewSessionModal #advanced-config {
@@ -283,10 +235,11 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         return self._generate_unique_name(base)
 
     def compose(self) -> ComposeResult:
+        self.add_class("modal-base", "modal-lg")
         resolved = self._config.resolve_features()
 
         with Vertical(id="dialog"):
-            yield Static("session", id="title")
+            yield Static("session", classes="dialog-title")
 
             with TabbedContent(id="tabs"):
                 # Tab 1: New session
@@ -296,14 +249,14 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
                 # Tab 2: Attach to existing tmux
                 with TabPane("attach", id="tab-attach"):
                     yield Static("tmux sessions", classes="field-label")
-                    yield Vertical(id="attach-list", classes="list-container")
+                    yield Vertical(id="attach-list", classes="list-container list-md")
 
                 # Tab 3: Resume Claude session
                 with TabPane("resume", id="tab-resume"):
                     yield Static("claude sessions", classes="field-label")
-                    yield Vertical(id="resume-list", classes="list-container")
+                    yield Vertical(id="resume-list", classes="list-container list-md")
 
-            yield Static("h/l tabs  j/k select  f expand  enter confirm  esc cancel", classes="hint")
+            yield Static("h/l tabs  j/k select  f expand  enter confirm  esc cancel", classes="dialog-hint")
 
     def _compose_new_tab(self, resolved) -> ComposeResult:
         """Compose the new session tab content."""

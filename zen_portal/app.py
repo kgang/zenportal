@@ -16,6 +16,7 @@ from zen_portal.services.session_manager import SessionManager
 from zen_portal.services.config import ConfigManager
 from zen_portal.services.worktree import WorktreeService
 from zen_portal.services.profile import ProfileManager
+from zen_portal.styles import BASE_CSS
 
 
 def check_dependencies() -> None:
@@ -97,7 +98,7 @@ class ZenPortalApp(App):
     """The main Zen Portal application."""
 
     TITLE = "Zen Portal"
-    CSS = """
+    CSS = BASE_CSS + """
     Screen {
         background: $background;
     }

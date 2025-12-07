@@ -29,26 +29,7 @@ class WorktreesScreen(ModalScreen[WorktreeAction | None]):
     """
 
     DEFAULT_CSS = """
-    WorktreesScreen {
-        align: center middle;
-    }
-
-    WorktreesScreen #dialog {
-        width: 80;
-        height: auto;
-        max-height: 90%;
-        padding: 1 2;
-        background: $surface;
-        border: round $surface-lighten-1;
-        overflow-y: auto;
-    }
-
-    WorktreesScreen .title {
-        text-align: center;
-        color: $text-muted;
-        margin-bottom: 1;
-    }
-
+    /* Component-specific: worktree list styling */
     WorktreesScreen #worktree-list {
         height: auto;
         padding: 0;
@@ -64,7 +45,7 @@ class WorktreesScreen(ModalScreen[WorktreeAction | None]):
     }
 
     WorktreesScreen .worktree-row.selected {
-        background: $primary-darken-2;
+        background: $surface-lighten-1;
     }
 
     WorktreesScreen .worktree-row.main-repo {
@@ -76,12 +57,6 @@ class WorktreesScreen(ModalScreen[WorktreeAction | None]):
         text-style: italic;
         padding: 1;
         text-align: center;
-    }
-
-    WorktreesScreen .hint {
-        text-align: center;
-        color: $text-muted;
-        margin-top: 1;
     }
 
     WorktreesScreen .session-indicator {
@@ -114,10 +89,11 @@ class WorktreesScreen(ModalScreen[WorktreeAction | None]):
         self._selected_index = 0
 
     def compose(self) -> ComposeResult:
+        self.add_class("modal-base", "modal-xl")
         with Vertical(id="dialog"):
-            yield Static("worktrees", classes="title")
+            yield Static("worktrees", classes="dialog-title")
             yield Vertical(id="worktree-list")
-            yield Static("j/k move · enter/o shell · d delete · q close", classes="hint")
+            yield Static("j/k move · enter/o shell · d delete · q close", classes="dialog-hint")
 
     def on_mount(self) -> None:
         self._load_worktrees()

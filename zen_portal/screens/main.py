@@ -66,7 +66,8 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, Screen):
 
     MainScreen #session-list {
         width: 2fr;
-        max-width: 50;
+        min-width: 30;
+        max-width: 30vw;
     }
 
     MainScreen #output-view {

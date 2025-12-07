@@ -53,27 +53,7 @@ class ConfigScreen(ModalScreen[None]):
     ]
 
     DEFAULT_CSS = """
-    ConfigScreen {
-        align: center middle;
-    }
-
-    ConfigScreen #dialog {
-        width: 60;
-        height: auto;
-        max-height: 90%;
-        padding: 1 2;
-        background: $surface;
-        border: round $surface-lighten-1;
-        overflow-y: auto;
-    }
-
-    ConfigScreen #title {
-        text-align: center;
-        width: 100%;
-        margin-bottom: 1;
-        color: $text-muted;
-    }
-
+    /* Component-specific: settings layout */
     ConfigScreen .section-title {
         color: $text-disabled;
         margin-top: 1;
@@ -121,19 +101,13 @@ class ConfigScreen(ModalScreen[None]):
 
     ConfigScreen #button-row {
         width: 100%;
-        height: 3;
+        height: auto;
         align: center middle;
         margin-top: 1;
     }
 
     ConfigScreen Button {
         margin: 0 1;
-    }
-
-    ConfigScreen .hint {
-        text-align: center;
-        color: $text-disabled;
-        height: 1;
     }
 
     ConfigScreen SessionTypeDropdown {
@@ -148,13 +122,14 @@ class ConfigScreen(ModalScreen[None]):
         self._original_theme = None
 
     def compose(self) -> ComposeResult:
+        self.add_class("modal-base", "modal-lg")
         current_exit = self._config_manager.config.exit_behavior
         global_dir = self._config_manager.config.features.working_dir
         instance_dir = self._config_manager.portal.features.working_dir
         enabled_types = self._config_manager.config.features.enabled_session_types
 
         with Vertical(id="dialog"):
-            yield Static("settings", id="title")
+            yield Static("settings", classes="dialog-title")
 
             # Session types section
             yield SessionTypeDropdown(enabled_types=enabled_types, id="session-types")
@@ -205,7 +180,7 @@ class ConfigScreen(ModalScreen[None]):
                 yield Button("Save", variant="primary", id="save")
                 yield Button("Cancel", variant="default", id="cancel")
 
-            yield Static("h/l sections  j/k nav  f expand  esc cancel", classes="hint")
+            yield Static("h/l sections  j/k nav  f expand  esc cancel", classes="dialog-hint")
 
     def on_mount(self) -> None:
         """Store original theme for cancel."""

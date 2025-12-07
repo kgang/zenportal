@@ -88,24 +88,7 @@ class InsertModal(ModalScreen[InsertResult | None]):
     """
 
     DEFAULT_CSS = """
-    InsertModal {
-        align: center middle;
-    }
-
-    InsertModal #dialog {
-        width: 55;
-        height: auto;
-        padding: 1 2;
-        background: $surface;
-        border: round $surface-lighten-1;
-    }
-
-    InsertModal .title {
-        text-align: center;
-        color: $text-muted;
-        margin-bottom: 1;
-    }
-
+    /* Component-specific: buffer styling */
     InsertModal #buffer-scroll {
         width: 100%;
         height: 5;
@@ -119,12 +102,6 @@ class InsertModal(ModalScreen[InsertResult | None]):
         height: auto;
         color: $text;
     }
-
-    InsertModal .hint {
-        text-align: center;
-        color: $text-disabled;
-        margin-top: 1;
-    }
     """
 
     def __init__(self, session_name: str) -> None:
@@ -133,11 +110,12 @@ class InsertModal(ModalScreen[InsertResult | None]):
         self._buffer: list[KeyItem] = []
 
     def compose(self) -> ComposeResult:
+        self.add_class("modal-base", "modal-md")
         with Vertical(id="dialog"):
-            yield Static(f"insert  {self._session_name}", classes="title")
+            yield Static(f"insert  {self._session_name}", classes="dialog-title")
             with VerticalScroll(id="buffer-scroll"):
                 yield Static("", id="buffer")
-            yield Static("type keys  esc send", classes="hint")
+            yield Static("type keys  esc send", classes="dialog-hint")
 
     def _get_display_text(self) -> str:
         """Get the display representation of the buffer."""

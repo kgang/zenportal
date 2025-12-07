@@ -48,25 +48,7 @@ class ExitModal(ModalScreen[ExitResult | None]):
     selected_index: reactive[int] = reactive(0)
 
     DEFAULT_CSS = """
-    ExitModal {
-        align: center middle;
-    }
-
-    ExitModal #dialog {
-        width: 45;
-        height: auto;
-        padding: 1 2;
-        background: $surface;
-        border: round $surface-lighten-1;
-    }
-
-    ExitModal #title {
-        text-align: center;
-        width: 100%;
-        margin-bottom: 1;
-        color: $text-muted;
-    }
-
+    /* Component-specific: button and layout styling */
     ExitModal .status-line {
         color: $text-disabled;
         margin-bottom: 0;
@@ -84,21 +66,8 @@ class ExitModal(ModalScreen[ExitResult | None]):
 
     ExitModal #remember-row {
         width: 100%;
-        height: 3;
+        height: auto;
         align: center middle;
-        margin-top: 1;
-    }
-
-    ExitModal #cancel-row {
-        width: 100%;
-        height: 3;
-        align: center middle;
-    }
-
-    ExitModal .hint {
-        text-align: center;
-        color: $text-disabled;
-        height: 1;
         margin-top: 1;
     }
     """
@@ -110,8 +79,9 @@ class ExitModal(ModalScreen[ExitResult | None]):
         self._button_ids: list[str] = []
 
     def compose(self) -> ComposeResult:
+        self.add_class("modal-base", "modal-sm")
         with Vertical(id="dialog"):
-            yield Static("exit", id="title")
+            yield Static("exit", classes="dialog-title")
 
             # Compact status
             if self._active_count > 0 or self._dead_count > 0:
@@ -149,7 +119,7 @@ class ExitModal(ModalScreen[ExitResult | None]):
             with Horizontal(id="remember-row"):
                 yield Checkbox("Remember choice", id="remember")
 
-            yield Static("j/k select  enter confirm  esc cancel", classes="hint")
+            yield Static("j/k select  enter confirm  esc cancel", classes="dialog-hint")
 
     def on_mount(self) -> None:
         """Highlight the first button."""

@@ -10,32 +10,13 @@ class RenameModal(ModalScreen[str | None]):
     """Modal for renaming a session."""
 
     DEFAULT_CSS = """
-    RenameModal {
-        align: center middle;
-    }
-
+    /* Component-specific overrides only */
     RenameModal #dialog {
-        width: 50;
-        height: auto;
-        padding: 1 2;
-        background: $surface;
         border: round $primary;
-    }
-
-    RenameModal .title {
-        text-align: center;
-        color: $text-muted;
-        margin-bottom: 1;
     }
 
     RenameModal #name-input {
         width: 100%;
-    }
-
-    RenameModal .hint {
-        text-align: center;
-        color: $text-muted;
-        margin-top: 1;
     }
     """
 
@@ -44,14 +25,15 @@ class RenameModal(ModalScreen[str | None]):
         self._current_name = current_name
 
     def compose(self) -> ComposeResult:
+        self.add_class("modal-base", "modal-sm")
         with Vertical(id="dialog"):
-            yield Static("rename session", classes="title")
+            yield Static("rename session", classes="dialog-title")
             yield Input(
                 value=self._current_name,
                 placeholder="session name",
                 id="name-input",
             )
-            yield Static("enter confirm · esc cancel", classes="hint")
+            yield Static("enter confirm · esc cancel", classes="dialog-hint")
 
     def on_mount(self) -> None:
         """Focus input and select all text."""

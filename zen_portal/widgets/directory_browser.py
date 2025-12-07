@@ -58,7 +58,8 @@ class DirectoryBrowser(Widget, can_focus=True):
     DEFAULT_CSS = """
     DirectoryBrowser {
         height: auto;
-        max-height: 14;
+        max-height: 25vh;
+        min-height: 8;
         border: round $surface-lighten-1;
     }
 
@@ -97,7 +98,8 @@ class DirectoryBrowser(Widget, can_focus=True):
 
     DirectoryBrowser ListView {
         height: auto;
-        max-height: 10;
+        max-height: 20vh;
+        min-height: 5;
         background: transparent;
     }
 
