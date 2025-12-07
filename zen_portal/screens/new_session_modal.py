@@ -82,11 +82,25 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         return f"{base}-{counter}"
 
     def _get_default_name(self, session_type: NewSessionType) -> str:
-        """Generate a smart default name based on session type."""
-        if session_type == NewSessionType.SHELL:
-            base = self._initial_dir.name or "shell"
-        else:
-            base = "session"
+        """Generate a smart default name based on session type and context.
+
+        Follows zen principles: use directory name for meaningful context,
+        fall back to session type if no directory context available.
+        """
+        # Use directory name for context (most meaningful default)
+        dir_name = self._initial_dir.name if self._initial_dir else ""
+
+        # Fallback to session type if no directory context
+        type_fallbacks = {
+            NewSessionType.CLAUDE: "claude",
+            NewSessionType.CODEX: "codex",
+            NewSessionType.GEMINI: "gemini",
+            NewSessionType.SHELL: "shell",
+            NewSessionType.OPENROUTER: "openrouter",
+        }
+        fallback = type_fallbacks.get(session_type, "session")
+
+        base = dir_name or fallback
         return self._generate_unique_name(base)
 
     def compose(self) -> ComposeResult:

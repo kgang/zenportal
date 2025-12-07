@@ -213,6 +213,7 @@ class SessionManager:
 
         # Create tmux session
         tmux_name = self._tmux_name(session.id)
+        session.tmux_name = tmux_name
         result = self._tmux.create_session(
             name=tmux_name,
             command=command,
@@ -269,6 +270,7 @@ class SessionManager:
         command = self._commands.wrap_with_banner(command_args, name, session.id, env_vars)
 
         tmux_name = self._tmux_name(session.id)
+        session.tmux_name = tmux_name
         result = self._tmux.create_session(
             name=tmux_name,
             command=command,
@@ -513,6 +515,7 @@ class SessionManager:
             for existing in self._sessions.values():
                 if existing.claude_session_id == claude_session_id:
                     existing._external_tmux_name = tmux_name
+                    existing.tmux_name = tmux_name
                     if working_dir:
                         existing.resolved_working_dir = working_dir
                     if self._tmux.session_exists(tmux_name) and self._tmux.is_pane_dead(tmux_name):
@@ -531,6 +534,7 @@ class SessionManager:
             resolved_working_dir=working_dir,
         )
         session._external_tmux_name = tmux_name
+        session.tmux_name = tmux_name
 
         self._sessions[session.id] = session
 

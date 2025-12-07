@@ -49,6 +49,7 @@ class SessionRecord:
     input_tokens: int = 0
     output_tokens: int = 0
     cache_tokens: int = 0
+    message_count: int = 0  # Number of API turns
     # Proxy billing flag (for cost tracking)
     uses_proxy: bool = False
     # Token history for sparkline (cumulative totals over time)
@@ -77,6 +78,7 @@ class SessionRecord:
             input_tokens=data.get("input_tokens", 0),
             output_tokens=data.get("output_tokens", 0),
             cache_tokens=data.get("cache_tokens", 0),
+            message_count=data.get("message_count", 0),
             uses_proxy=data.get("uses_proxy", False),
             token_history=data.get("token_history", []),
         )

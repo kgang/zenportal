@@ -123,13 +123,15 @@ class SessionPersistence:
             worktree_path=Path(record.worktree_path) if record.worktree_path else None,
             worktree_branch=record.worktree_branch,
             uses_proxy=record.uses_proxy,
+            message_count=record.message_count,
             token_history=record.token_history,
         )
 
         # Override the auto-generated ID with the persisted one
         session.id = record.id
 
-        # Set external tmux name if applicable
+        # Set tmux name (computed or external)
+        session.tmux_name = tmux_name
         if record.external_tmux_name:
             session._external_tmux_name = record.external_tmux_name
 
@@ -185,6 +187,7 @@ class SessionPersistence:
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cache_tokens=cache_tokens,
+            message_count=session.message_count,
             uses_proxy=session.uses_proxy,
             token_history=session.token_history,
         )

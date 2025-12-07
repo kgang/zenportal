@@ -1,7 +1,7 @@
 # HYDRATE.md - Claude Code Context Document
 
 > Quick context for future Claude Code sessions working on this codebase.
-> Last updated: 2025-12-07 (v0.4.9) - Fix Rich markup in dead session info display.
+> Last updated: 2025-12-07 (v0.4.11) - Enhanced token metrics with activity tracking, cache efficiency.
 
 ## What is Zenportal?
 
@@ -338,8 +338,17 @@ These patterns MUST be followed consistently across all screens:
 ## Constraints & Limits
 
 - MAX_SESSIONS = 10
-- Session names: `{prefix}-{session_id[:8]}` (e.g., "zen-a1b2c3d4")
+- Tmux session names: `{prefix}-{session_id[:8]}` (e.g., "zen-a1b2c3d4")
 - Worktrees symlink env files (.env, .env.local)
+
+## Naming Defaults (Zen UX)
+
+Session display names use meaningful context-based defaults:
+1. **Directory name** - primary default for all session types (e.g., "zenportal")
+2. **Session type** - fallback when no directory context (e.g., "claude", "shell")
+3. **Uniqueness** - auto-increment suffix if name exists (e.g., "zenportal-1")
+
+The `Session.tmux_name` property stores the tmux session name for easy terminal attachment.
 
 ## Testing
 
@@ -409,20 +418,29 @@ Token usage is parsed from Claude's JSONL session files at `~/.claude/projects/`
 
 **Key components:**
 - `services/token_parser.py` - `TokenParser` parses JSONL, `TokenUsage.estimate_cost()` for pricing
-- `models/session.py` - `Session.token_stats`, `Session.uses_proxy`
-- `services/state.py` - `SessionRecord.{input_tokens, output_tokens, cache_tokens, uses_proxy}`
+- `models/session.py` - `Session.{token_stats, message_count, first_message_at, last_message_at}`
+- `services/state.py` - `SessionRecord.{input_tokens, output_tokens, cache_tokens, message_count, uses_proxy}`
 - `widgets/session_info.py` - `_render_token_section()` displays tokens
 
 **Info panel display format:**
 ```
+● session-name
+claude  active  5m
+tmux  zen-a1b2c3d4
+dir  .../project/folder
+git  main ✓ +2
+
 tokens  12.5k  (8.2k↓ 4.3k↑)
-cache   2.1k read / 0.5k write
-cost    ~$0.32  openrouter        # Only for proxy billing
-[sparkline visualization]           # Token history for Claude sessions
+activity  12 turns · ~1.0k/turn · 15m
+cache  2.1k read / 0.5k write (45% hit)
+cost  ~$0.32  api
+[sparkline visualization]
 ```
+- `tmux` line: shows tmux session name for easy `tmux attach -t` usage
 - ↓ = input tokens, ↑ = output tokens
-- Cache line: shown when >1k tokens
-- Cost line: shown when `uses_proxy=True`
+- `activity` line: turn count, avg tokens/turn, session duration
+- Cache line: shown when >1k tokens, includes hit rate
+- Cost line: always shown for Claude sessions (api or openrouter)
 - Sparkline: Visual token usage history for Claude sessions with 2+ data points
 
 **Token History Visualization:**
@@ -439,9 +457,10 @@ cost    ~$0.32  openrouter        # Only for proxy billing
 
 **Data flow:**
 1. `refresh_states()` → `update_session_tokens()` for Claude sessions
-2. `TokenParser.get_session_stats()` reads Claude's JSONL
-3. Stored in `session.token_stats`, persisted via `SessionRecord`
-4. Cost displayed when `uses_proxy=True`
+2. `TokenParser.get_session_stats()` reads Claude's JSONL, extracts `message_count` and timestamps
+3. `TokenManager` updates `session.{token_stats, message_count, first_message_at, last_message_at}`
+4. Persisted via `SessionRecord`, restored on restart
+5. Cost always displayed for insight (labeled "api" or "openrouter")
 
 ## Error Handling
 

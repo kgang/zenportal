@@ -90,12 +90,18 @@ class Session:
     error_message: str = ""
     # Token tracking (populated from Claude JSONL parsing)
     token_stats: TokenUsage | None = None
+    # Extended token metrics (from SessionTokenStats)
+    message_count: int = 0  # Number of API turns
+    first_message_at: datetime | None = None  # Session start time (from Claude)
+    last_message_at: datetime | None = None  # Last activity time (from Claude)
     # Proxy tracking - whether session uses OpenRouter billing (pay-per-token)
     uses_proxy: bool = False
     # Proxy warning (set when proxy validation finds issues)
     proxy_warning: str = ""
     # Token history for sparkline visualization (cumulative totals over time)
     token_history: list[int] = field(default_factory=list)
+    # tmux session name (e.g., "zen-a1b2c3d4")
+    tmux_name: str = ""
 
     def __post_init__(self):
         # Don't auto-generate claude_session_id - let Claude Code generate it
@@ -142,8 +148,11 @@ class Session:
 
     @property
     def display_name(self) -> str:
-        """Name for display in UI."""
-        text = self.name or self.prompt or "claude"
+        """Name for display in UI.
+
+        Falls back to session type if no name or prompt available.
+        """
+        text = self.name or self.prompt or self.session_type.value
         first_line = text.split("\n")[0].strip()
         if len(first_line) <= 30:
             return first_line

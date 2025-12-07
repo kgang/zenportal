@@ -114,6 +114,10 @@ class SessionInfoView(Static, can_focus=False):
         lines.append(f"{s.status_glyph} {s.display_name}")
         lines.append(f"[dim]{s.session_type.value}  {state_display}  {s.age_display}[/dim]")
 
+        # tmux session name (for attaching)
+        if s.tmux_name:
+            lines.append(f"[dim]tmux[/dim]  {s.tmux_name}")
+
         # Location - only if meaningful
         working_path = s.worktree_path or s.resolved_working_dir
         if working_path:
@@ -177,8 +181,9 @@ class SessionInfoView(Static, can_focus=False):
 
         Shows:
         - Token counts (input/output) in compact format
+        - Activity metrics (turns, duration, tokens/turn)
         - Cache efficiency when significant
-        - Cost estimate when using proxy billing
+        - Cost estimate (always shown for insight)
         """
         lines = [""]
         ts = s.token_stats
@@ -200,6 +205,21 @@ class SessionInfoView(Static, can_focus=False):
                 return f"${cost:.3f}"
             return f"${cost:.4f}"
 
+        def fmt_duration(first, last) -> str:
+            """Format session duration from timestamps."""
+            if not first or not last:
+                return ""
+            delta = last - first
+            seconds = int(delta.total_seconds())
+            if seconds < 60:
+                return f"{seconds}s"
+            elif seconds < 3600:
+                return f"{seconds // 60}m"
+            else:
+                hours = seconds // 3600
+                mins = (seconds % 3600) // 60
+                return f"{hours}h{mins}m" if mins else f"{hours}h"
+
         # Main token line: total with breakdown
         # Format: "tokens  15.2k  (12.1k↓ 3.1k↑)"
         lines.append(
@@ -207,23 +227,42 @@ class SessionInfoView(Static, can_focus=False):
             f"[dim]({fmt_tokens(ts.input_tokens)}↓ {fmt_tokens(ts.output_tokens)}↑)[/dim]"
         )
 
-        # Cache line - only if meaningful (>1k tokens)
+        # Activity line: turns + tokens/turn + duration
+        if s.message_count > 0:
+            tokens_per_turn = ts.total_tokens // s.message_count if s.message_count else 0
+            activity_parts = [f"{s.message_count} turns"]
+            if tokens_per_turn > 0:
+                activity_parts.append(f"~{fmt_tokens(tokens_per_turn)}/turn")
+            duration = fmt_duration(s.first_message_at, s.last_message_at)
+            if duration:
+                activity_parts.append(duration)
+            lines.append(f"[dim]activity[/dim]  {' · '.join(activity_parts)}")
+
+        # Cache line with efficiency percentage
         if ts.cache_tokens > 1000:
-            # Show cache efficiency as ratio of reads to total
             cache_read = fmt_tokens(ts.cache_read_tokens)
             cache_write = fmt_tokens(ts.cache_creation_tokens)
+            # Calculate cache efficiency: reads as % of total input
+            total_input = ts.input_tokens + ts.cache_read_tokens
+            efficiency = ""
+            if total_input > 0 and ts.cache_read_tokens > 0:
+                pct = (ts.cache_read_tokens / total_input) * 100
+                if pct >= 10:  # Only show if meaningful
+                    efficiency = f" [dim]({pct:.0f}% hit)[/dim]"
+
             if ts.cache_read_tokens > 0 and ts.cache_creation_tokens > 0:
-                lines.append(f"[dim]cache[/dim]  {cache_read} read / {cache_write} write")
+                lines.append(f"[dim]cache[/dim]  {cache_read} read / {cache_write} write{efficiency}")
             elif ts.cache_read_tokens > 0:
-                lines.append(f"[dim]cache[/dim]  {cache_read} read")
+                lines.append(f"[dim]cache[/dim]  {cache_read} read{efficiency}")
             elif ts.cache_creation_tokens > 0:
                 lines.append(f"[dim]cache[/dim]  {cache_write} write")
 
-        # Cost estimate - only for proxy billing sessions
-        if s.uses_proxy:
-            model_name = s.resolved_model.value if s.resolved_model else ""
-            cost = ts.estimate_cost(model_name)
-            lines.append(f"[dim]cost[/dim]  ~{fmt_cost(cost)}  [dim]openrouter[/dim]")
+        # Cost estimate - show for all Claude sessions (useful insight)
+        model_name = s.resolved_model.value if s.resolved_model else ""
+        cost = ts.estimate_cost(model_name)
+        if cost > 0:
+            billing = "openrouter" if s.uses_proxy else "api"
+            lines.append(f"[dim]cost[/dim]  ~{fmt_cost(cost)}  [dim]{billing}[/dim]")
 
         return lines
 
