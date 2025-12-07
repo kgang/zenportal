@@ -79,7 +79,7 @@ class TokenManager:
         Returns:
             TokenUsage or None if not available
         """
-        if session.session_type != SessionType.CLAUDE:
+        if session.session_type != SessionType.AI:
             return None
         return session.token_stats
 
@@ -92,7 +92,7 @@ class TokenManager:
         Returns:
             List of cumulative token totals, empty if not available
         """
-        if session.session_type != SessionType.CLAUDE:
+        if session.session_type != SessionType.AI:
             return []
         return session.token_history or []
 

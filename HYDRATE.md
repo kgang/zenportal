@@ -1,6 +1,6 @@
 # HYDRATE.md
 
-> Quick context for Claude Code sessions. Last updated: 2025-12-07 (v0.5.2 - info panel enhancement)
+> Quick context for Claude Code sessions. Last updated: 2025-12-07 (v0.5.3 - token metrics fix)
 
 ## Essence
 
@@ -143,7 +143,8 @@ Shows detailed session metadata:
 - **identifiers**: tmux name (`zen-xxxxx`), zen id, claude session id
 - **type**: provider (claude/codex/gemini/openrouter), model
 - **directory**: working dir, worktree branch
-- **tokens**: input/output counts, turn count (if available)
+- **tokens**: input/output/total counts, cache efficiency, turns, sparkline
+- **cost**: estimated cost for proxy sessions (~$0.xxx)
 - **created**: timestamp
 
 ---

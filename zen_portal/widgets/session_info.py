@@ -109,8 +109,23 @@ class SessionInfoView(Static, can_focus=False):
             lines.append("[dim]tokens[/dim]")
             lines.append(f"  input   {s.token_stats.input_tokens:,}")
             lines.append(f"  output  {s.token_stats.output_tokens:,}")
+            lines.append(f"  total   {s.token_stats.total_tokens:,}")
+            # Cache efficiency - percentage of context served from cache
+            if s.token_stats.cache_read_tokens > 0:
+                total_context = s.token_stats.input_tokens + s.token_stats.cache_read_tokens
+                cache_pct = int(100 * s.token_stats.cache_read_tokens / max(total_context, 1))
+                lines.append(f"  cache   {cache_pct}%")
             if s.message_count:
                 lines.append(f"  turns   {s.message_count}")
+            # Sparkline for token usage pattern
+            if s.token_history and len(s.token_history) > 1:
+                sparkline = self._render_sparkline(s.token_history)
+                lines.append(f"  [dim]{sparkline}[/dim]")
+            # Estimated cost for proxy sessions
+            if s.uses_proxy:
+                model = s.resolved_model.value if s.resolved_model else ""
+                cost = s.token_stats.estimate_cost(model)
+                lines.append(f"  ~${cost:.3f}")
             lines.append("")
 
         # Error message for failed sessions
@@ -143,6 +158,35 @@ class SessionInfoView(Static, can_focus=False):
             SessionState.KILLED: "killed",
         }
         return descriptions.get(state, str(state.value))
+
+    def _render_sparkline(self, history: list[int], width: int = 16) -> str:
+        """Render token history as a minimal sparkline.
+
+        Uses Unicode block characters to show token usage pattern.
+        """
+        if not history:
+            return ""
+
+        # Sample history to fit width
+        if len(history) > width:
+            step = len(history) / width
+            sampled = [history[int(i * step)] for i in range(width)]
+        else:
+            sampled = history
+
+        # Normalize to 0-7 range for block characters
+        min_val = min(sampled)
+        max_val = max(sampled)
+        if max_val == min_val:
+            return "▄" * len(sampled)  # Flat line
+
+        blocks = "▁▂▃▄▅▆▇█"
+        sparkline = ""
+        for val in sampled:
+            idx = int(7 * (val - min_val) / (max_val - min_val))
+            sparkline += blocks[idx]
+
+        return sparkline
 
     def watch_session(self, new_session: Session | None) -> None:
         """Update display when session changes."""
