@@ -248,7 +248,7 @@ class ConfigScreen(ModalScreen[None]):
             theme_id, _ = THEMES[theme_list.highlighted]
             self._profile_manager.update_theme(theme_id)
 
-        self.post_message(self.app.notifications.success("settings saved"))
+        self.post_message(self.app.notification_service.success("settings saved"))
         self.dismiss(None)
 
     def action_cancel(self) -> None:

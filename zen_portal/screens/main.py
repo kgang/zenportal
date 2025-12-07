@@ -483,7 +483,7 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, Screen):
     def zen_notify(self, message: str, severity: str = "success") -> None:
         """Helper method for sending zen-styled notifications."""
         from ..services.notification import NotificationSeverity
-        svc = self.app.notifications
+        svc = self.app.notification_service
         if severity == "warning":
             self.post_message(svc.warning(message))
         elif severity == "error":

@@ -160,7 +160,7 @@ class ZenPortalApp(App):
         ))
 
     @property
-    def notifications(self) -> NotificationService:
+    def notification_service(self) -> NotificationService:
         """Access notification service."""
         return self._notifications
 

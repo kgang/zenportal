@@ -47,7 +47,7 @@ class RenameModal(ModalScreen[str | None]):
         if name:
             self.dismiss(name)
         else:
-            self.post_message(self.app.notifications.warning("name cannot be empty"))
+            self.post_message(self.app.notification_service.warning("name cannot be empty"))
 
     def on_key(self, event) -> None:
         """Handle escape to cancel."""
