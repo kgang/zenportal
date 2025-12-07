@@ -20,6 +20,13 @@ from zen_portal.services.notification import NotificationService
 from zen_portal.styles import BASE_CSS
 
 
+def _clear_pycache() -> None:
+    """Clear Python bytecode cache to ensure fresh code on restart."""
+    package_dir = Path(__file__).parent
+    for cache_dir in package_dir.rglob("__pycache__"):
+        shutil.rmtree(cache_dir, ignore_errors=True)
+
+
 def check_dependencies() -> None:
     """Check for required and optional dependencies on startup.
 
@@ -190,6 +197,12 @@ def main():
             focus_tmux_session=focus_tmux_session,
         )
         result = app.run()
+
+        # Handle restart - clear cache and continue
+        if result == "restart":
+            _clear_pycache()
+            focus_tmux_session = None
+            continue
 
         # Handle attach exit - attach to tmux then return to TUI
         if result and isinstance(result, str) and result.startswith("attach:"):

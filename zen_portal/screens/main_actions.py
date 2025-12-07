@@ -389,3 +389,8 @@ class MainScreenExitMixin:
             self._exit_with_cleanup(cleanup_orphans=cleanup_orphans, keep_running=keep_running)
 
         self.app.push_screen(ExitModal(active, dead), handle_exit)
+
+    def action_restart_app(self) -> None:
+        """Restart the application with cache clearing."""
+        self._manager.save_state()
+        self.app.exit(result="restart")

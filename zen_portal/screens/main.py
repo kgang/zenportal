@@ -52,6 +52,7 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, ZenScreen):
         ("q", "quit", "Quit"),
         Binding("ctrl+q", "quit", "Quit", show=False),
         Binding("/", "zen_prompt", "Ask AI", show=False),
+        Binding("R", "restart_app", "Restart", show=False),
     ]
 
     info_mode: reactive[bool] = reactive(False)

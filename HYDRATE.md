@@ -1,7 +1,7 @@
 # HYDRATE.md - Claude Code Context Document
 
 > Quick context for future Claude Code sessions working on this codebase.
-> Last updated: 2025-12-07 (v0.4.6) - Comprehensive code health refactoring.
+> Last updated: 2025-12-07 (v0.4.7) - Restart with cache clearing.
 
 ## What is Zenportal?
 
@@ -232,6 +232,7 @@ All interactions happen through the session list - no panel focus switching need
 | / | Zen AI prompt |
 | ? | Help |
 | q | Quit |
+| R | Restart (clears cache) |
 
 ## Grab Mode (Session Reordering)
 
