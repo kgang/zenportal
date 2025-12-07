@@ -6,18 +6,17 @@ from textual.reactive import reactive
 from textual.widgets import Static, RichLog, Input
 
 
-class OutputView(Static):
-    """Scrolling output display for a session with search capability."""
+class OutputView(Static, can_focus=False):
+    """Scrolling output display for a session with search capability.
+
+    This widget is intentionally non-focusable - search is triggered
+    from MainScreen keybindings. Only the search input field is focusable.
+    """
 
     output: reactive[str] = reactive("")
     session_name: reactive[str] = reactive("")
     search_active: reactive[bool] = reactive(False)
     search_query: reactive[str] = reactive("")
-
-    BINDINGS = [
-        Binding("ctrl+f", "toggle_search", "Search", show=False),
-        Binding("escape", "close_search", "Close", show=False),
-    ]
 
     DEFAULT_CSS = """
     OutputView {

@@ -175,7 +175,7 @@ class ProxyDashboardScreen(ZenScreen):
             with Horizontal(classes="actions"):
                 yield Button("Refresh Now", id="refresh", variant="primary")
                 yield Button("Configure Proxy", id="configure", variant="default")
-                yield Button("Toggle Monitoring", id="toggle-monitoring", variant="outline")
+                yield Button("Toggle Monitoring", id="toggle-monitoring", variant="default")
                 yield Button("Reset Metrics", id="reset", variant="warning")
 
         # Notification rack from ZenScreen base
@@ -183,65 +183,64 @@ class ProxyDashboardScreen(ZenScreen):
 
     def _build_connectivity_card(self) -> Widget:
         """Build connectivity status card."""
-        with Vertical(classes="status-card"):
-            yield Static("Connectivity", classes="card-title")
+        status = self._proxy_monitor.status if self._proxy_monitor else ProxyHealthStatus.UNKNOWN
+        status_display = self._get_status_display(status)
 
-            status = self._proxy_monitor.status if self._proxy_monitor else ProxyHealthStatus.UNKNOWN
-            status_display = self._get_status_display(status)
-            yield Static(status_display, id="connectivity-status")
+        children = [
+            Static("Connectivity", classes="card-title"),
+            Static(status_display, id="connectivity-status"),
+        ]
 
-            if self._proxy_monitor and self._proxy_monitor.last_validation:
-                validation = self._proxy_monitor.last_validation
-                if not validation.connectivity.is_ok:
-                    yield Static(f"[red]Issue:[/red] {validation.connectivity.message}", id="connectivity-issue")
-                    if validation.connectivity.hint:
-                        yield Static(f"[dim]Hint:[/dim] {validation.connectivity.hint}", id="connectivity-hint")
+        if self._proxy_monitor and self._proxy_monitor.last_validation:
+            validation = self._proxy_monitor.last_validation
+            if not validation.connectivity.is_ok:
+                children.append(Static(f"[red]Issue:[/red] {validation.connectivity.message}", id="connectivity-issue"))
+                if validation.connectivity.hint:
+                    children.append(Static(f"[dim]Hint:[/dim] {validation.connectivity.hint}", id="connectivity-hint"))
 
-        return Vertical()
+        return Vertical(*children, classes="status-card")
 
     def _build_performance_card(self) -> Widget:
         """Build performance metrics card."""
-        with Vertical(classes="status-card"):
-            yield Static("Performance", classes="card-title")
+        children = [Static("Performance", classes="card-title")]
 
-            if self._proxy_monitor:
-                metrics = self._proxy_monitor.metrics
+        if self._proxy_monitor:
+            metrics = self._proxy_monitor.metrics
 
-                # Response time
-                response_time = metrics.response_time_ms
-                if response_time > 0:
-                    time_color = "green" if response_time <= 200 else "yellow" if response_time <= 500 else "red"
-                    yield Static(f"Response: [{time_color}]{int(response_time)}ms[/{time_color}]", id="response-time")
-                else:
-                    yield Static("Response: [dim]not measured[/dim]", id="response-time")
-
-                # Success rate
-                success_rate = metrics.success_rate
-                rate_color = "green" if success_rate >= 95 else "yellow" if success_rate >= 85 else "red"
-                yield Static(f"Success: [{rate_color}]{success_rate:.1f}%[/{rate_color}]", id="success-rate")
-
-                # Consecutive failures
-                if metrics.consecutive_failures > 0:
-                    yield Static(f"[red]Failures:[/red] {metrics.consecutive_failures} consecutive", id="failures")
+            # Response time
+            response_time = metrics.response_time_ms
+            if response_time > 0:
+                time_color = "green" if response_time <= 200 else "yellow" if response_time <= 500 else "red"
+                children.append(Static(f"Response: [{time_color}]{int(response_time)}ms[/{time_color}]", id="response-time"))
             else:
-                yield Static("[dim]No monitoring data[/dim]", id="no-performance-data")
+                children.append(Static("Response: [dim]not measured[/dim]", id="response-time"))
 
-        return Vertical()
+            # Success rate
+            success_rate = metrics.success_rate
+            rate_color = "green" if success_rate >= 95 else "yellow" if success_rate >= 85 else "red"
+            children.append(Static(f"Success: [{rate_color}]{success_rate:.1f}%[/{rate_color}]", id="success-rate"))
+
+            # Consecutive failures
+            if metrics.consecutive_failures > 0:
+                children.append(Static(f"[red]Failures:[/red] {metrics.consecutive_failures} consecutive", id="failures"))
+        else:
+            children.append(Static("[dim]No monitoring data[/dim]", id="no-performance-data"))
+
+        return Vertical(*children, classes="status-card")
 
     def _build_billing_card(self) -> Widget:
         """Build billing information card."""
-        with Vertical(classes="status-card"):
-            yield Static("Billing", classes="card-title")
+        children = [Static("Billing", classes="card-title")]
 
-            if self._billing_tracker:
-                # This would be populated with actual billing data
-                yield Static("[dim]Balance:[/dim] Loading...", id="account-balance")
-                yield Static("[dim]Usage:[/dim] Loading...", id="monthly-usage")
-                yield Static("[dim]Rate Limit:[/dim] Loading...", id="rate-limit")
-            else:
-                yield Static("[dim]Billing tracker not available[/dim]", id="no-billing-data")
+        if self._billing_tracker:
+            # This would be populated with actual billing data
+            children.append(Static("[dim]Balance:[/dim] Loading...", id="account-balance"))
+            children.append(Static("[dim]Usage:[/dim] Loading...", id="monthly-usage"))
+            children.append(Static("[dim]Rate Limit:[/dim] Loading...", id="rate-limit"))
+        else:
+            children.append(Static("[dim]Billing tracker not available[/dim]", id="no-billing-data"))
 
-        return Vertical()
+        return Vertical(*children, classes="status-card")
 
     def _build_metrics_table(self) -> DataTable:
         """Build historical metrics table."""

@@ -68,8 +68,12 @@ class SessionListItem(Static):
         return f"{s.status_glyph}  {name:<32} {s.age_display:>5}"
 
 
-class SessionList(Static):
-    """List of all sessions with keyboard navigation and grab mode for reordering."""
+class SessionList(Static, can_focus=False):
+    """List of all sessions with keyboard navigation and grab mode for reordering.
+
+    This widget is intentionally non-focusable - all navigation is handled
+    by the MainScreen keybindings which delegate to SessionList methods.
+    """
 
     sessions: reactive[list[Session]] = reactive(list, recompose=True)
     selected_index: reactive[int] = reactive(0)

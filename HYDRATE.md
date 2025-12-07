@@ -185,13 +185,13 @@ SessionSelected(session)
 
 ## Key Keybindings (MainScreen)
 
+All interactions happen through the session list - no panel focus switching needed.
+
 | Key | Action |
 |-----|--------|
 | j/k | Navigate up/down (reorder in grab mode) |
-| h/l | Focus left/right panel (l enters grab mode from list) |
-| space | Toggle grab mode |
+| l/space | Toggle grab mode |
 | esc | Exit grab mode |
-| f | Toggle focus between panels |
 | n | New session |
 | p | Pause (preserve worktree) |
 | x | Kill (remove worktree) |
@@ -203,7 +203,8 @@ SessionSelected(session)
 | c | Config screen |
 | P | Proxy dashboard |
 | Ctrl+P | Command palette |
-| Ctrl+F | Search output (when output view focused) |
+| Ctrl+F | Search output |
+| Ctrl+I | Toggle info mode |
 | R | Restart app (preserves state) |
 | ? | Help |
 | q | Quit |
@@ -213,7 +214,7 @@ SessionSelected(session)
 Allows reordering sessions in the list. Order is persisted.
 
 **Entering grab mode:**
-- Press `space` or `l` on session list
+- Press `space` or `l`
 
 **Visual indicators:**
 - Title changes to "≡ reorder" (cyan)
@@ -276,8 +277,8 @@ These patterns MUST be followed consistently across all screens:
 | Key | Semantic | Context |
 |-----|----------|---------|
 | j/k | Vertical navigation (down/up) | Lists, items within containers |
-| h/l | Horizontal navigation (left/right) | Panels, sections, tabs |
-| f | Focus/expand toggle | Dropdowns, collapsibles, panel focus |
+| h/l | Horizontal navigation (left/right) | Tabs, sections in modals |
+| f | Expand toggle | Dropdowns, collapsibles |
 | Enter/Space | Select/toggle | Buttons, checkboxes, options |
 | Esc | Cancel/close/collapse | Modals, dropdowns, cancel actions |
 | Tab | Next section | Form navigation (fallback for h/l) |
@@ -288,10 +289,10 @@ These patterns MUST be followed consistently across all screens:
 - `j/k` inside expanded → navigate items
 - Checkbox toggle via `Enter` or `Space`
 
-**Panel navigation:**
-- `h` → focus left panel
-- `l` → focus right panel
-- `f` → toggle between panels (if no expandable focused)
+**Main screen focus model:**
+- All widgets are non-focusable (`can_focus=False`)
+- All keybindings are handled by MainScreen and delegate to widgets
+- This simplifies UX - no focus switching between panels needed
 
 ## Important Files to Know
 
@@ -528,6 +529,8 @@ def compose(self) -> ComposeResult:
 **Borders:**
 - `border: round $surface-lighten-1` for modals/containers
 - `border: none` or subtle dividers for main screen panels
+
+**Button variants:** `default`, `error`, `primary`, `success`, `warning` (no `outline`)
 
 **Elastic modals:**
 - Dialog: `height: auto; max-height: 90%; overflow-y: auto`

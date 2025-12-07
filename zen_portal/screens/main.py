@@ -28,11 +28,7 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, ZenScreen):
         ("k", "move_up", "↑"),
         ("down", "move_down", "↓"),
         ("up", "move_up", "↑"),
-        Binding("h", "focus_list", "←", show=False),
-        Binding("l", "focus_output_or_grab", "→", show=False),
-        Binding("left", "focus_list", "←", show=False),
-        Binding("right", "focus_output", "→", show=False),
-        Binding("f", "focus_panel", "Focus", show=False),
+        Binding("l", "toggle_grab", "→", show=False),
         Binding("space", "toggle_grab", "Grab", show=False),
         Binding("escape", "exit_grab", "Exit grab", show=False),
         ("n", "new_session", "New"),
@@ -343,31 +339,6 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, ZenScreen):
     def action_move_up(self) -> None:
         self.query_one("#session-list", SessionList).move_up()
 
-    def action_focus_list(self) -> None:
-        self.query_one("#session-list", SessionList).focus()
-
-    def action_focus_output(self) -> None:
-        if self.info_mode:
-            self.query_one("#info-view", SessionInfoView).focus()
-        else:
-            self.query_one("#output-view", OutputView).focus()
-
-    def action_focus_output_or_grab(self) -> None:
-        """Press l to enter grab mode if on session list, otherwise focus output."""
-        session_list = self.query_one("#session-list", SessionList)
-        if session_list.has_focus or not session_list.grab_mode:
-            # If in grab mode already, l exits and focuses output
-            if session_list.grab_mode:
-                session_list.exit_grab_mode()
-                self._save_session_order()
-                self.action_focus_output()
-            else:
-                # Enter grab mode
-                session_list.toggle_grab_mode()
-                self.zen_notify("grab mode: j/k to reorder, space/esc to exit")
-        else:
-            self.action_focus_output()
-
     def action_toggle_grab(self) -> None:
         """Toggle grab mode for reordering sessions."""
         session_list = self.query_one("#session-list", SessionList)
@@ -392,13 +363,6 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, ZenScreen):
         session_list = self.query_one("#session-list", SessionList)
         order = session_list.get_session_order()
         self._manager.set_session_order(order)
-
-    def action_focus_panel(self) -> None:
-        session_list = self.query_one("#session-list", SessionList)
-        if session_list.has_focus:
-            self.action_focus_output()
-        else:
-            self.action_focus_list()
 
     def action_new_session(self) -> None:
         """Open new session modal."""

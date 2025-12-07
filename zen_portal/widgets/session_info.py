@@ -89,10 +89,12 @@ def _get_env_symlinks(working_dir: Path) -> list[str]:
     return symlinks
 
 
-class SessionInfoView(Static):
+class SessionInfoView(Static, can_focus=False):
     """Minimalist zen panel showing session metadata.
 
     Displayed when information mode is active instead of output view.
+    This widget is intentionally non-focusable - all interactions
+    are handled by MainScreen keybindings.
     """
 
     session: reactive[Session | None] = reactive(None)
