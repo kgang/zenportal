@@ -3,6 +3,7 @@
 Main Textual application.
 """
 
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -198,11 +199,10 @@ def main():
         )
         result = app.run()
 
-        # Handle restart - clear cache and continue
+        # Handle restart - re-exec process for fresh code
         if result == "restart":
             _clear_pycache()
-            focus_tmux_session = None
-            continue
+            os.execv(sys.executable, [sys.executable] + sys.argv)
 
         # Handle attach exit - attach to tmux then return to TUI
         if result and isinstance(result, str) and result.startswith("attach:"):
