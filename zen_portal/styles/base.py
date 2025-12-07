@@ -7,7 +7,7 @@ MODAL_CSS = """
     align: center middle;
 }
 
-/* Dialog container base */
+/* Dialog container base - truly elastic height */
 .modal-base #dialog {
     height: auto;
     max-height: 90%;
@@ -40,6 +40,32 @@ MODAL_CSS = """
     width: 80vw;
     min-width: 70;
     max-width: 90;
+}
+"""
+
+# Elastic container system for proper content-based sizing
+CONTAINER_CSS = """
+/* Elastic containers shrink to fit content */
+.elastic {
+    height: auto;
+    min-height: 0;
+}
+
+/* Hidden containers take no space */
+.hidden {
+    display: none;
+}
+
+/* Collapsible contents - elastic by default */
+Collapsible Contents {
+    height: auto;
+    min-height: 0;
+}
+
+/* Vertical containers inside collapsibles */
+Collapsible Vertical {
+    height: auto;
+    min-height: 0;
 }
 """
 
@@ -159,4 +185,4 @@ ZenNotification.-dismissing {
 """
 
 # Combined base CSS for import
-BASE_CSS = MODAL_CSS + COMMON_CSS + NOTIFICATION_CSS
+BASE_CSS = MODAL_CSS + CONTAINER_CSS + COMMON_CSS + NOTIFICATION_CSS

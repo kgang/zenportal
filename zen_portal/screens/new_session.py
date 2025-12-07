@@ -40,12 +40,13 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
     /* Component-specific: tabs and form layout */
     NewSessionModal TabbedContent {
         height: auto;
+        min-height: 0;
     }
 
     NewSessionModal TabPane {
         padding: 1 0;
         height: auto;
-        overflow-y: auto;
+        min-height: 0;
     }
 
     NewSessionModal .field-input {
@@ -73,6 +74,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
 
     NewSessionModal #advanced-config {
         margin-top: 1;
+        height: auto;
     }
 
     NewSessionModal #advanced-config CollapsibleTitle {
@@ -82,6 +84,13 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
 
     NewSessionModal #advanced-config Contents {
         height: auto;
+        min-height: 0;
+        padding: 0;
+    }
+
+    NewSessionModal #advanced-config Vertical {
+        height: auto;
+        min-height: 0;
     }
 
     NewSessionModal #default-dir-row {
@@ -127,6 +136,8 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
 
     NewSessionModal #billing-section {
         margin-top: 0;
+        height: auto;
+        min-height: 0;
     }
 
     NewSessionModal #billing-section.hidden {
@@ -135,16 +146,20 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
 
     NewSessionModal #proxy-config {
         height: auto;
+        min-height: 0;
         margin-top: 1;
     }
 
-    NewSessionModal #proxy-config.hidden {
+    NewSessionModal #proxy-config.hidden,
+    NewSessionModal #proxy-config[display="none"] {
         display: none;
+        height: 0;
     }
 
     NewSessionModal .proxy-row {
         width: 100%;
         height: auto;
+        min-height: 0;
         margin-bottom: 1;
     }
 
