@@ -1,7 +1,7 @@
 # HYDRATE.md - Claude Code Context Document
 
 > Quick context for future Claude Code sessions working on this codebase.
-> Last updated: 2025-12-07 (v0.4.0) - Zen AI: native AI integration with `/` prompt and context references.
+> Last updated: 2025-12-07 (v0.4.1) - Zen AI config screen integration with ZenAIDropdown widget.
 
 ## What is Zenportal?
 
@@ -90,7 +90,7 @@ zen_portal/
 
 | Feature | Files | Key |
 |---------|-------|-----|
-| **Zen AI** | `zen_ai.py`, `context_parser.py`, `zen_prompt.py` | `/` |
+| **Zen AI** | `zen_ai.py`, `context_parser.py`, `zen_prompt.py`, `zen_ai_dropdown.py` | `/` |
 | Textual 6.x Upgrade | `pyproject.toml`, all modals | - |
 | Modal Focus Trapping | all `screens/*.py` modals | `trap_focus=True` |
 | Flat Cancel Buttons | `exit_modal.py`, `config_screen.py` | `.flat` CSS class |
@@ -111,7 +111,7 @@ Files are kept under ~500 lines for progressive disclosure in AI-assisted develo
 | `session_manager.py` | `session_persistence.py`, `session_commands.py` |
 | `main.py` | `main_actions.py` |
 | `new_session.py` | `new_session_lists.py`, `models/new_session.py` |
-| `config_screen.py` | `widgets/session_type_dropdown.py`, `widgets/path_input.py` |
+| `config_screen.py` | `widgets/session_type_dropdown.py`, `widgets/path_input.py`, `widgets/zen_ai_dropdown.py` |
 
 ## Core Concepts
 
@@ -688,6 +688,7 @@ Native AI integration for quick queries without leaving context.
 - `services/zen_ai.py` - Core AI invocation (claude -p / OpenRouter API)
 - `services/context_parser.py` - @ref parsing and context gathering
 - `screens/zen_prompt.py` - Quick query modal with streaming response
+- `widgets/zen_ai_dropdown.py` - Config screen settings widget
 - `widgets/zen_mirror.py` - Optional context sidebar (future)
 
 **Backends:**
@@ -709,6 +710,12 @@ Native AI integration for quick queries without leaving context.
 ```
 
 **Models:** `haiku` (fast, cheap), `sonnet` (balanced), `opus` (deep)
+
+**Config Screen (`c` key):**
+- `ZenAIDropdown` widget in settings modal
+- Header shows: `▶ zen ai: on · haiku · claude`
+- `f` to expand, configure enabled/model/provider
+- Settings saved to `~/.config/zen-portal/config.json`
 
 **Graceful Degradation:**
 - No API key? Feature hidden
