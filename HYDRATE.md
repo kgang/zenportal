@@ -1,7 +1,7 @@
 # HYDRATE.md - Claude Code Context Document
 
 > Quick context for future Claude Code sessions working on this codebase.
-> Last updated: 2025-12-07 (v0.4.7) - Restart with cache clearing.
+> Last updated: 2025-12-07 (v0.4.8) - Worktree per-session source repo fix.
 
 ## What is Zenportal?
 
