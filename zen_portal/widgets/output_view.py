@@ -74,8 +74,9 @@ class OutputView(Static, can_focus=False):
             search_input.add_class("hidden")
         yield search_input
 
-        # Output content
+        # Output content (non-focusable to ensure MainScreen handles all keys)
         log = RichLog(classes="content", highlight=True, markup=False)
+        log.can_focus = False
         log.write(self._get_filtered_output())
         yield log
 
@@ -106,6 +107,8 @@ class OutputView(Static, can_focus=False):
                 search_input.focus()
             else:
                 search_input.add_class("hidden")
+                search_input.blur()
+                self.screen.focus()  # Return focus to screen for keybindings
                 self.search_query = ""
                 self.refresh(recompose=True)
         except Exception:
@@ -127,6 +130,13 @@ class OutputView(Static, can_focus=False):
                 log.write(self._get_filtered_output())
             except Exception:
                 pass
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        """Close search on Enter."""
+        if event.input.id == "search-input":
+            # Keep filter applied but blur the input
+            event.input.blur()
+            self.screen.focus()
 
     def watch_output(self, new_output: str) -> None:
         """Update display when output changes."""

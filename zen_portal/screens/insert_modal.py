@@ -115,13 +115,17 @@ class InsertModal(ModalScreen[InsertResult | None]):
         with Vertical(id="dialog"):
             yield Static(f"insert  {self._session_name}", classes="dialog-title")
             with VerticalScroll(id="buffer-scroll"):
-                yield Static("", id="buffer")
+                yield Static("type to capture...", id="buffer")
             yield Static("type keys  esc send", classes="dialog-hint")
+
+    def on_mount(self) -> None:
+        """Trap focus within modal."""
+        self.trap_focus = True
 
     def _get_display_text(self) -> str:
         """Get the display representation of the buffer."""
         if not self._buffer:
-            return "(empty)"
+            return "type to capture..."
         parts = []
         for item in self._buffer:
             if item.value == "\n":

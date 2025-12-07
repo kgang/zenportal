@@ -103,6 +103,7 @@ class AttachSessionModal(ModalScreen[AttachSessionResult | None]):
             yield Static("j/k navigate · enter attach · esc cancel", classes="dialog-hint")
 
     def on_mount(self) -> None:
+        self.trap_focus = True
         self._load_sessions()
 
     def _load_sessions(self) -> None:

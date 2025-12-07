@@ -212,5 +212,38 @@ CommandPalette > Vertical > OptionList > .option-list--option {
 }
 """
 
+# Flat button styling - zen aesthetic for secondary actions
+FLAT_BUTTON_CSS = """
+/* Flat button variant - minimal chrome for secondary actions */
+Button.flat {
+    background: transparent;
+    border: none;
+    color: $text-muted;
+}
+
+Button.flat:hover {
+    background: $surface-lighten-1;
+    color: $text;
+}
+
+Button.flat:focus {
+    background: $surface-lighten-1;
+    color: $text;
+}
+"""
+
+# Scrollbar visibility - cleaner UI
+SCROLLBAR_CSS = """
+/* Auto-hide scrollbars when not needed */
+.auto-scrollbar {
+    scrollbar-visibility: auto;
+}
+
+/* Always hide scrollbars */
+.no-scrollbar {
+    scrollbar-visibility: hidden;
+}
+"""
+
 # Combined base CSS for import
-BASE_CSS = MODAL_CSS + CONTAINER_CSS + COMMON_CSS + NOTIFICATION_CSS + COMMAND_PALETTE_CSS
+BASE_CSS = MODAL_CSS + CONTAINER_CSS + COMMON_CSS + NOTIFICATION_CSS + COMMAND_PALETTE_CSS + FLAT_BUTTON_CSS + SCROLLBAR_CSS

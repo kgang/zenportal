@@ -106,7 +106,7 @@ class TestInsertModal:
     def test_get_display_text_empty(self):
         """Empty buffer shows placeholder."""
         modal = InsertModal("test")
-        assert modal._get_display_text() == "(empty)"
+        assert modal._get_display_text() == "type to capture..."
 
     def test_get_display_text_literals(self):
         """Display text shows literal characters."""

@@ -146,6 +146,10 @@ class HelpScreen(ModalScreen):
         with Vertical(id="dialog"):
             yield Static(PAGES[self._page_index], id="help-content")
 
+    def on_mount(self) -> None:
+        """Trap focus within modal."""
+        self.trap_focus = True
+
     def _update_page(self) -> None:
         """Update displayed page."""
         content = self.query_one("#help-content", Static)

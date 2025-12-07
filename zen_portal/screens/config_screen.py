@@ -178,12 +178,13 @@ class ConfigScreen(ModalScreen[None]):
 
             with Horizontal(id="button-row"):
                 yield Button("Save", variant="primary", id="save")
-                yield Button("Cancel", variant="default", id="cancel")
+                yield Button("Cancel", variant="default", id="cancel", classes="flat")
 
             yield Static("h/l sections  j/k nav  f expand  esc cancel", classes="dialog-hint")
 
     def on_mount(self) -> None:
         """Store original theme for cancel."""
+        self.trap_focus = True
         self._original_theme = self.app.theme
 
         current_theme = self._profile_manager.profile.theme or "textual-dark"

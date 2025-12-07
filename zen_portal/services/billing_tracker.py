@@ -243,9 +243,8 @@ class BillingTracker:
             url = f"{self.API_BASE}{self.ACCOUNT_ENDPOINT}"
             req = urllib.request.Request(url, headers=headers, method='GET')
 
-            # Run in executor to avoid blocking
-            loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(None, urllib.request.urlopen, req)
+            # Run in thread to avoid blocking
+            response = await asyncio.to_thread(urllib.request.urlopen, req)
 
             if response.status == 200:
                 data = json.loads(response.read().decode())
@@ -289,9 +288,8 @@ class BillingTracker:
             url = f"{self.API_BASE}{self.MODELS_ENDPOINT}"
             req = urllib.request.Request(url, method='GET')
 
-            # Run in executor to avoid blocking
-            loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(None, urllib.request.urlopen, req)
+            # Run in thread to avoid blocking
+            response = await asyncio.to_thread(urllib.request.urlopen, req)
 
             if response.status == 200:
                 data = json.loads(response.read().decode())

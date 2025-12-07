@@ -121,7 +121,7 @@ class ExitModal(ModalScreen[ExitResult | None]):
                 "Cancel",
                 variant="default",
                 id="cancel",
-                classes="option-btn",
+                classes="option-btn flat",
             )
             self._button_ids.append("cancel")
 
@@ -132,6 +132,7 @@ class ExitModal(ModalScreen[ExitResult | None]):
 
     def on_mount(self) -> None:
         """Highlight the first button."""
+        self.trap_focus = True
         self._update_highlight()
 
     def watch_selected_index(self, index: int) -> None:

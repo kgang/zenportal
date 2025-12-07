@@ -37,6 +37,7 @@ class RenameModal(ModalScreen[str | None]):
 
     def on_mount(self) -> None:
         """Focus input and select all text."""
+        self.trap_focus = True
         input_widget = self.query_one("#name-input", Input)
         input_widget.focus()
         input_widget.selection = (0, len(self._current_name))

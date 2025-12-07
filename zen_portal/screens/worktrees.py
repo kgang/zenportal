@@ -96,6 +96,7 @@ class WorktreesScreen(ModalScreen[WorktreeAction | None]):
             yield Static("j/k move · enter/o shell · d delete · q close", classes="dialog-hint")
 
     def on_mount(self) -> None:
+        self.trap_focus = True
         self._load_worktrees()
 
     def _load_worktrees(self) -> None:

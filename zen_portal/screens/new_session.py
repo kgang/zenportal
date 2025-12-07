@@ -408,6 +408,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
 
     def on_mount(self) -> None:
         """Focus the name input and load lists."""
+        self.trap_focus = True
         self.query_one("#name-input", Input).focus()
         self._load_lists()
         self._set_initial_visibility()
