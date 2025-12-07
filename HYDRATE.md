@@ -1,7 +1,7 @@
 # HYDRATE.md - Claude Code Context Document
 
 > Quick context for future Claude Code sessions working on this codebase.
-> Last updated: 2025-12-06 (v0.3.4) - App restart with state preservation.
+> Last updated: 2025-12-06 (v0.3.5) - Simplified focus model, non-focusable widgets.
 
 ## What is Zenportal?
 
