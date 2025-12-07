@@ -1,7 +1,7 @@
 # HYDRATE.md - Claude Code Context Document
 
 > Quick context for future Claude Code sessions working on this codebase.
-> Last updated: 2025-12-07 (v0.4.2) - Zen AI prompt uses Textual workers for non-blocking queries.
+> Last updated: 2025-12-07 (v0.4.3) - Zen AI prompt has breathing animation while loading.
 
 ## What is Zenportal?
 
