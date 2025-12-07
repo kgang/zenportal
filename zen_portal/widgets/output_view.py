@@ -45,7 +45,7 @@ class OutputView(Static):
 
         title = self.session_name if self.session_name else "output"
         yield Static(title, classes="title")
-        log = RichLog(classes="content", highlight=True, markup=True)
+        log = RichLog(classes="content", highlight=True, markup=False)
         log.write(self.output)
         yield log
 

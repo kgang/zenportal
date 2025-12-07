@@ -93,6 +93,8 @@ class Session:
     uses_proxy: bool = False
     # Proxy warning (set when proxy validation finds issues)
     proxy_warning: str = ""
+    # Token history for sparkline visualization (cumulative totals over time)
+    token_history: list[int] = field(default_factory=list)
 
     def __post_init__(self):
         # Don't auto-generate claude_session_id - let Claude Code generate it

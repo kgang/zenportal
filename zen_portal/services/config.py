@@ -445,6 +445,16 @@ class ConfigManager:
 
         return resolved
 
+    # --- Proxy Settings ---
+
+    def get_proxy_settings(self) -> ProxySettings | None:
+        """Get resolved proxy settings from config.
+
+        Returns proxy settings if configured, None otherwise.
+        """
+        features = self.resolve_features()
+        return features.openrouter_proxy
+
     # --- Backward compatibility ---
 
     def save(self, config: Config) -> None:

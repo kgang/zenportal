@@ -1,7 +1,7 @@
 # HYDRATE.md - Claude Code Context Document
 
 > Quick context for future Claude Code sessions working on this codebase.
-> Last updated: 2025-12-06 (v0.3.1) - Added tmux scrollback fix.
+> Last updated: 2025-12-06 (v0.3.2) - Added proxy monitoring and billing integration.
 
 ## What is Zenportal?
 
@@ -40,6 +40,8 @@ zen_portal/
 │   ├── session_persistence.py # State loading/saving
 │   ├── session_commands.py # Command building for session types
 │   ├── proxy_validation.py # Proxy connectivity/credential checks
+│   ├── proxy_monitor.py   # Real-time proxy monitoring with billing integration
+│   ├── billing_tracker.py # OpenRouter billing and usage tracking
 │   ├── openrouter_models.py # Fetch/cache OpenRouter model list
 │   ├── notification.py    # Centralized notification service
 │   ├── tmux.py            # Low-level tmux commands
@@ -54,7 +56,8 @@ zen_portal/
 ├── widgets/               # Reusable UI components
 │   ├── session_list.py    # Session list with selection
 │   ├── output_view.py     # Session output display
-│   ├── session_info.py    # Metadata panel
+│   ├── session_info.py    # Metadata panel with enhanced proxy status
+│   ├── proxy_status.py    # Real-time proxy monitoring widget
 │   ├── notification.py    # Zen-styled notification widget
 │   ├── model_selector.py  # Autocomplete model selector for OpenRouter
 │   ├── directory_browser.py
@@ -76,6 +79,34 @@ zen_portal/
 │   └── help.py            # Keybindings display
 └── tests/                 # pytest + pytest-asyncio
 ```
+
+## Recent Enhancements (v0.3.2)
+
+### Enhanced Proxy Monitoring System
+- **`proxy_monitor.py`** - Real-time proxy health monitoring with performance metrics
+- **`billing_tracker.py`** - OpenRouter billing and usage analytics
+- **`proxy_status.py`** - Reactive UI widget for proxy status display
+
+**Key Features:**
+- Continuous health checks with response time tracking
+- OpenRouter API integration for billing information
+- Performance thresholds and status classification (excellent/good/degraded/warning/error)
+- Proactive issue detection and notifications
+- Session-level proxy status display
+
+**Integration Points:**
+- Main screen initializes proxy monitoring on mount
+- Session info view shows enhanced proxy status per session
+- Event-driven status updates via callback system
+
+### Textual Framework Enhancement Plan
+- **`TEXTUAL_ENHANCEMENTS.md`** - Comprehensive roadmap for leveraging advanced Textual widgets
+
+**Priority Features:**
+- Command Palette integration for fuzzy search actions
+- Toast notification system with actionable buttons
+- Session metrics dashboard with Sparkline visualizations
+- Enhanced output view with syntax highlighting via TextArea
 
 ## Module Organization
 
@@ -184,6 +215,7 @@ SessionSelected(session)
 | e | Rename session |
 | i | Insert mode (send keys) |
 | c | Config screen |
+| P | Proxy dashboard |
 | ? | Help |
 | q | Quit |
 
@@ -236,14 +268,18 @@ These patterns MUST be followed consistently across all screens:
 | File | Purpose |
 |------|---------|
 | `services/session_manager.py` | Core session lifecycle logic |
+| `services/proxy_monitor.py` | Real-time proxy health monitoring and metrics |
+| `services/billing_tracker.py` | OpenRouter billing and usage analytics |
 | `services/tmux.py` | All tmux command wrappers |
 | `services/config.py` | 3-tier config resolution |
 | `services/proxy_validation.py` | Proxy connectivity/credential checks |
 | `services/token_parser.py` | Parse Claude JSONL for token stats |
 | `services/openrouter_models.py` | Fetch/cache OpenRouter model list |
-| `screens/main.py` | Primary UI with keybindings |
+| `screens/main.py` | Primary UI with keybindings + proxy monitoring |
 | `screens/new_session.py` | Session creation modal + billing settings |
 | `screens/config_screen.py` | Settings UI (theme, exit behavior, session types) |
+| `widgets/session_info.py` | Session metadata with enhanced proxy status |
+| `widgets/proxy_status.py` | Real-time proxy monitoring widget |
 | `widgets/model_selector.py` | Autocomplete model selector for OpenRouter |
 | `models/session.py` | Session dataclass + enums |
 
@@ -513,6 +549,48 @@ git clone https://github.com/luohy15/y-router && cd y-router && docker-compose u
 - API keys: Alphanumeric + dash/underscore only; shell metacharacters rejected
 - Config files saved with 0600 permissions (owner read/write only)
 - Prefer env vars (`OPENROUTER_API_KEY`) over storing credentials in config
+
+## Proxy Monitoring System (v0.3.2)
+
+Real-time proxy health monitoring with billing integration:
+
+**Architecture:**
+- **`ProxyMonitor`** - Async monitoring service with health checks and billing
+- **`BillingTracker`** - OpenRouter API integration for usage and cost tracking
+- **`ProxyStatusWidget`** - Reactive UI component with real-time updates
+
+**Health Status Levels:**
+- `EXCELLENT` (●) - Fast response, < 200ms
+- `GOOD` (●) - Normal operation, < 500ms
+- `DEGRADED` (◐) - Slow but working, < 2000ms
+- `WARNING` (⚠) - Issues detected but functional
+- `ERROR` (⚠) - Not working, connection failed
+- `UNKNOWN` (○) - Not tested yet
+
+**Monitoring Features:**
+- Continuous health checks (30s interval, 10s when issues detected)
+- Response time tracking and performance metrics
+- Success rate calculation over 24h window
+- OpenRouter account balance and rate limit monitoring
+- Session-level proxy status display
+
+**Integration:**
+- Main screen initializes monitoring on mount
+- Session info view shows enhanced per-session proxy status
+- Event-driven status updates via callback system
+- Cached billing data (5min TTL) and model pricing (24h TTL)
+
+**Display Formats:**
+```
+# Session info view
+proxy  ● openrouter (claude-sonnet-4.5)    # Active session
+proxy  ⚠ openrouter (timeout)              # Connection issue
+proxy  claude account                      # Direct billing
+
+# Detailed status (in proxy widget)
+● openrouter (12ms) $4.23 remaining        # Full metrics
+⚠ openrouter (slow)                        # Performance issue
+```
 
 ## Exit Modal
 

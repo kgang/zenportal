@@ -51,6 +51,8 @@ class SessionRecord:
     cache_tokens: int = 0
     # Proxy billing flag (for cost tracking)
     uses_proxy: bool = False
+    # Token history for sparkline (cumulative totals over time)
+    token_history: list[int] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary, omitting None values."""
@@ -76,6 +78,7 @@ class SessionRecord:
             output_tokens=data.get("output_tokens", 0),
             cache_tokens=data.get("cache_tokens", 0),
             uses_proxy=data.get("uses_proxy", False),
+            token_history=data.get("token_history", []),
         )
 
 

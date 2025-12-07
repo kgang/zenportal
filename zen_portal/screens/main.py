@@ -12,6 +12,7 @@ from ..models.session import Session, SessionState, SessionType
 from ..services.session_manager import SessionManager, SessionLimitError
 from ..services.config import ConfigManager
 from ..services.profile import ProfileManager
+from ..services.proxy_monitor import ProxyMonitor, ProxyStatusEvent
 from ..widgets.session_list import SessionList
 from ..widgets.output_view import OutputView
 from ..widgets.session_info import SessionInfoView
@@ -49,6 +50,7 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, ZenScreen):
         ("r", "refresh_output", "Refresh"),
         Binding("s", "toggle_streaming", "Stream", show=False),
         ("c", "config", "Config"),
+        Binding("P", "proxy_dashboard", "Proxy Dashboard", show=False),
         ("?", "show_help", "Help"),
         ("q", "quit", "Quit"),
         Binding("ctrl+q", "quit", "Quit", show=False),
@@ -116,25 +118,37 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, ZenScreen):
         self._rapid_refresh_timer = None
         self._rapid_refresh_count = 0
 
+        # Initialize proxy monitoring
+        proxy_settings = self._config.get_proxy_settings()
+        self._proxy_monitor = ProxyMonitor(proxy_settings) if proxy_settings and proxy_settings.enabled else None
+
+        # Subscribe to proxy status events for notifications
+        if self._proxy_monitor:
+            self._proxy_monitor.add_status_callback(self._on_proxy_status_change)
+
     def compose(self) -> ComposeResult:
         yield Header()
         with Horizontal(id="content"):
             yield SessionList(id="session-list")
             yield OutputView(id="output-view")
-            info_view = SessionInfoView(id="info-view")
+            info_view = SessionInfoView(proxy_monitor=self._proxy_monitor, id="info-view")
             info_view.display = False
             yield info_view
         yield Static("j/k nav  n new  a attach  ? help  q quit", id="hint", classes="hint")
         # Notification rack from ZenScreen base - must be last for layer ordering
         yield from super().compose()
 
-    def on_mount(self) -> None:
+    async def on_mount(self) -> None:
         """Initialize and start polling."""
         self._refresh_sessions()
         if self._focus_tmux_session:
             self._select_session_by_tmux_name(self._focus_tmux_session)
         self._refresh_selected_output()
         self.set_interval(1.0, self._poll_sessions)
+
+        # Start proxy monitoring if available
+        if self._proxy_monitor:
+            await self._proxy_monitor.start_monitoring()
 
     def _select_session_by_tmux_name(self, tmux_name: str) -> None:
         """Select the session with the given tmux session name."""
@@ -473,6 +487,18 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, ZenScreen):
         from .config_screen import ConfigScreen
         self.app.push_screen(ConfigScreen(self._config, self._profile))
 
+    def action_proxy_dashboard(self) -> None:
+        """Open proxy health dashboard."""
+        if not self._proxy_monitor:
+            self.zen_notify("proxy monitoring not available", "warning")
+            return
+
+        from .proxy_dashboard import ProxyDashboardScreen
+        self.app.push_screen(ProxyDashboardScreen(
+            proxy_monitor=self._proxy_monitor,
+            config_manager=self._config
+        ))
+
     def action_show_help(self) -> None:
         from ..screens.help import HelpScreen
         self.app.push_screen(HelpScreen())
@@ -493,3 +519,36 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, ZenScreen):
             self.post_message(svc.error(message))
         else:
             self.post_message(svc.success(message))
+
+    def _on_proxy_status_change(self, event: ProxyStatusEvent) -> None:
+        """Handle proxy status change events for proactive notifications."""
+        from ..services.proxy_monitor import ProxyHealthStatus
+
+        # Only notify on significant status changes
+        if event.old_status == ProxyHealthStatus.UNKNOWN:
+            # Initial status detection - don't notify
+            return
+
+        # Notify on degradation or recovery
+        if event.new_status in [ProxyHealthStatus.ERROR, ProxyHealthStatus.WARNING]:
+            if event.old_status in [ProxyHealthStatus.EXCELLENT, ProxyHealthStatus.GOOD]:
+                # Degradation from healthy to problematic
+                self.zen_notify(f"proxy: {event.message}", "warning")
+        elif event.new_status in [ProxyHealthStatus.EXCELLENT, ProxyHealthStatus.GOOD]:
+            if event.old_status in [ProxyHealthStatus.ERROR, ProxyHealthStatus.WARNING, ProxyHealthStatus.DEGRADED]:
+                # Recovery from problematic to healthy
+                self.zen_notify("proxy: connection restored", "success")
+
+        # Update session info display if visible
+        if self.info_mode:
+            info_view = self.query_one("#info-view", SessionInfoView)
+            info_view.refresh()
+
+    async def _cleanup_monitoring(self) -> None:
+        """Clean up proxy monitoring on screen exit."""
+        if self._proxy_monitor:
+            await self._proxy_monitor.stop_monitoring()
+
+    async def on_unmount(self) -> None:
+        """Clean up when screen is unmounted."""
+        await self._cleanup_monitoring()

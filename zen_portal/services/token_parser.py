@@ -215,3 +215,67 @@ class TokenParser:
                     return self.parse_session_file(session_file)
 
         return None
+
+    def get_token_history(
+        self,
+        claude_session_id: str,
+        working_dir: Path | None = None,
+    ) -> list[int]:
+        """Get cumulative token counts over time for sparkline visualization.
+
+        Returns list of cumulative total tokens at each API response.
+        Useful for showing token usage trend in a sparkline.
+
+        Args:
+            claude_session_id: Claude session ID
+            working_dir: Working directory to search in
+
+        Returns:
+            List of cumulative token totals (empty if session not found)
+        """
+        if not claude_session_id:
+            return []
+
+        session_file = None
+
+        if working_dir:
+            project_dir = self.get_project_dir(working_dir)
+            if project_dir:
+                candidate = project_dir / f"{claude_session_id}.jsonl"
+                if candidate.exists():
+                    session_file = candidate
+
+        # Search all project directories if not found
+        if not session_file and self._claude_dir.exists():
+            for project_dir in self._claude_dir.iterdir():
+                if not project_dir.is_dir():
+                    continue
+                candidate = project_dir / f"{claude_session_id}.jsonl"
+                if candidate.exists():
+                    session_file = candidate
+                    break
+
+        if not session_file:
+            return []
+
+        history = []
+        running_total = 0
+
+        try:
+            with open(session_file) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entry = json.loads(line)
+                        usage = self._extract_usage(entry)
+                        if usage:
+                            running_total += usage.total_tokens
+                            history.append(running_total)
+                    except json.JSONDecodeError:
+                        continue
+        except OSError:
+            pass
+
+        return history

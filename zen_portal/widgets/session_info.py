@@ -4,10 +4,12 @@ import subprocess
 from pathlib import Path
 
 from textual.app import ComposeResult
+from textual.containers import Vertical
 from textual.reactive import reactive
-from textual.widgets import Static
+from textual.widgets import Static, Sparkline
 
 from ..models.session import Session, SessionState
+from ..services.proxy_monitor import ProxyMonitor
 
 
 def _get_git_info(working_dir: Path) -> dict | None:
@@ -95,6 +97,10 @@ class SessionInfoView(Static):
 
     session: reactive[Session | None] = reactive(None)
 
+    def __init__(self, proxy_monitor: ProxyMonitor | None = None, **kwargs):
+        super().__init__(**kwargs)
+        self._proxy_monitor = proxy_monitor
+
     DEFAULT_CSS = """
     SessionInfoView {
         width: 100%;
@@ -177,6 +183,12 @@ class SessionInfoView(Static):
         if s.session_type.value == "claude" and s.token_stats:
             lines.extend(self._render_token_section(s))
 
+        # Enhanced proxy status - show for all sessions
+        proxy_status = self._render_proxy_status(s)
+        if proxy_status:
+            lines.append("")
+            lines.append(proxy_status)
+
         # Prompt preview - truncated
         if s.prompt:
             lines.append("")
@@ -191,8 +203,8 @@ class SessionInfoView(Static):
             lines.append("")
             lines.append(f"[red]error[/red]  {s.error_message}")
 
-        # Proxy warning (non-fatal issues)
-        if s.proxy_warning:
+        # Proxy warning (non-fatal issues) - legacy fallback
+        if s.proxy_warning and not self._proxy_monitor:
             lines.append("")
             lines.append(f"[yellow]proxy[/yellow]  {s.proxy_warning}")
 
@@ -252,6 +264,32 @@ class SessionInfoView(Static):
             lines.append(f"[dim]cost[/dim]  ~{fmt_cost(cost)}  [dim]openrouter[/dim]")
 
         return lines
+
+    def _render_proxy_status(self, s: Session) -> str:
+        """Render enhanced proxy status for the session.
+
+        Returns:
+            Formatted proxy status line or empty string if not applicable
+        """
+        if not self._proxy_monitor:
+            # Fallback to simple proxy display if monitor not available
+            if s.uses_proxy:
+                model_display = s.resolved_model.value if s.resolved_model else "openrouter"
+                return f"[dim]proxy[/dim]  {model_display}"
+            return ""
+
+        # Use enhanced proxy monitor for detailed status
+        model_name = s.resolved_model.value if s.resolved_model else None
+        proxy_display = self._proxy_monitor.get_session_status(s.uses_proxy, model_name)
+
+        if proxy_display == "direct":
+            return f"[dim]proxy[/dim]  claude account"
+        elif proxy_display.startswith("proxy"):
+            # Disabled or error cases
+            return f"[dim]proxy[/dim]  {proxy_display}"
+        else:
+            # Active proxy status with metrics
+            return f"[dim]proxy[/dim]  {proxy_display}"
 
     def _format_state(self, state: SessionState) -> str:
         """Format state with description."""

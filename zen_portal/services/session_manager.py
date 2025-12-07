@@ -487,7 +487,7 @@ class SessionManager:
         return result.output if result.success else ""
 
     def update_session_tokens(self, session_id: str) -> bool:
-        """Update token statistics for a Claude session."""
+        """Update token statistics and history for a Claude session."""
         session = self._sessions.get(session_id)
         if not session or session.session_type != SessionType.CLAUDE:
             return False
@@ -501,8 +501,16 @@ class SessionManager:
 
         if stats:
             session.token_stats = stats.total_usage
-            return True
-        return False
+
+        # Update token history for sparkline
+        history = self._token_parser.get_token_history(
+            claude_session_id=session.claude_session_id,
+            working_dir=session.resolved_working_dir,
+        )
+        if history:
+            session.token_history = history
+
+        return bool(stats or history)
 
     def refresh_states(self) -> None:
         """Update session states based on tmux status."""
