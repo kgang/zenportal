@@ -1,7 +1,7 @@
 # HYDRATE.md - Claude Code Context Document
 
 > Quick context for future Claude Code sessions working on this codebase.
-> Last updated: 2025-12-06 (v0.3.3) - Output search, token sparklines, command palette.
+> Last updated: 2025-12-06 (v0.3.4) - App restart with state preservation.
 
 ## What is Zenportal?
 
@@ -86,6 +86,7 @@ zen_portal/
 
 | Feature | Files | Key |
 |---------|-------|-----|
+| App Restart | `app.py`, `main_actions.py`, `exit_modal.py` | `R` or exit modal |
 | Output Search | `output_view.py` | `Ctrl+F` |
 | Token Sparklines | `session_info.py`, `token_parser.py` | `Ctrl+I` (info mode) |
 | Command Palette | `commands/zen_commands.py` | `Ctrl+P` |
@@ -203,6 +204,7 @@ SessionSelected(session)
 | P | Proxy dashboard |
 | Ctrl+P | Command palette |
 | Ctrl+F | Search output (when output view focused) |
+| R | Restart app (preserves state) |
 | ? | Help |
 | q | Quit |
 
@@ -339,6 +341,7 @@ Tests use mocked tmux operations. Test files:
 - `test_banner.py` - Session banners
 - `test_profile.py` - User profiles
 - `test_insert_modal.py` - Insert mode UI
+- `test_restart.py` - App restart with state preservation
 
 ## Common Tasks
 
@@ -629,12 +632,28 @@ proxy  claude account                      # Direct billing
 ⚠ openrouter (slow)                        # Performance issue
 ```
 
+## App Restart
+
+Restart the app while preserving UI state (`R` key or exit modal → "Restart app").
+
+**Preserved state:**
+- Selected session (by ID, falls back to index)
+- Info mode toggle
+- All running tmux sessions
+
+**Implementation:**
+- `_save_restart_context()` writes to `~/.zen_portal/restart_context.json`
+- `_load_restart_context()` reads and deletes file on startup
+- Main loop in `app.py` detects `{"restart": True}` result and continues
+
+**Tests:** `test_restart.py` (17 tests)
+
 ## Exit Modal
 
 Safe defaults for quit behavior:
 - Default selection is "Keep running" (not "Kill all")
-- Options: Keep running → Kill all → Cancel
-- "Remember choice" checkbox persists to config
+- Options: Keep running → Kill all → Restart app → Cancel
+- "Remember choice" checkbox persists to config (not for restart)
 
 ## New Session Modal
 
