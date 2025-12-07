@@ -1,7 +1,7 @@
 # HYDRATE.md - Claude Code Context Document
 
 > Quick context for future Claude Code sessions working on this codebase.
-> Last updated: 2025-12-06 (v0.3.5) - Simplified focus model, non-focusable widgets.
+> Last updated: 2025-12-06 (v0.3.6) - Textual 6.x upgrade with trap_focus, flat buttons.
 
 ## What is Zenportal?
 
@@ -86,6 +86,9 @@ zen_portal/
 
 | Feature | Files | Key |
 |---------|-------|-----|
+| Textual 6.x Upgrade | `pyproject.toml`, all modals | - |
+| Modal Focus Trapping | all `screens/*.py` modals | `trap_focus=True` |
+| Flat Cancel Buttons | `exit_modal.py`, `config_screen.py` | `.flat` CSS class |
 | App Restart | `app.py`, `main_actions.py`, `exit_modal.py` | `R` or exit modal |
 | Output Search | `output_view.py` | `Ctrl+F` |
 | Token Sparklines | `session_info.py`, `token_parser.py` | `Ctrl+I` (info mode) |
@@ -131,8 +134,8 @@ Files are kept under ~500 lines for progressive disclosure in AI-assisted develo
 
 ## Key Technologies
 
-- **textual >= 0.89.0** - TUI framework
-- **rich >= 13.0.0** - Terminal formatting
+- **textual >= 6.7.0** - TUI framework
+- **rich >= 14.0.0** - Terminal formatting
 - **tmux** - Session multiplexing (system dep)
 - **git** - Worktree isolation (system dep)
 - **Python 3.11+**
@@ -507,6 +510,11 @@ Central design tokens imported via `app.py`. All modals use shared classes.
 - `.list-row` - Standard list row with hover/selected states
 - `.elastic` - `height: auto; min-height: 0` for content-based sizing
 - `.hidden` - `display: none` for toggled visibility
+- `.no-scrollbar` - Hide scrollbars (Textual 6.x `scrollbar-visibility`)
+
+**Modal focus trapping (Textual 6.5+):**
+- All modals set `self.trap_focus = True` in `on_mount()`
+- Prevents focus from escaping to background elements
 
 **Usage pattern:**
 ```python
@@ -531,6 +539,7 @@ def compose(self) -> ComposeResult:
 - `border: none` or subtle dividers for main screen panels
 
 **Button variants:** `default`, `error`, `primary`, `success`, `warning` (no `outline`)
+- `.flat` class: transparent background, no border (zen aesthetic for secondary actions)
 
 **Elastic modals:**
 - Dialog: `height: auto; max-height: 90%; overflow-y: auto`
