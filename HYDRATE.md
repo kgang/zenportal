@@ -198,6 +198,7 @@ Allows reordering sessions in the list. Order is persisted.
 **Persistence:**
 - Order stored in `~/.zen_portal/state.json` as `session_order` array
 - New sessions appear at top (not in saved order yet)
+- Polling is paused during grab mode to prevent overwriting user's reordering
 
 ## Keybinding Invariants
 
@@ -420,6 +421,8 @@ Central design tokens imported via `app.py`. All modals use shared classes.
 - `.dialog-hint` - Bottom hint text
 - `.field-label` - Field labels with margin-top: 1
 - `.list-row` - Standard list row with hover/selected states
+- `.elastic` - `height: auto; min-height: 0` for content-based sizing
+- `.hidden` - `display: none` for toggled visibility
 
 **Usage pattern:**
 ```python
