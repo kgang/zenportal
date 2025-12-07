@@ -41,7 +41,6 @@ PAGE_1 = """
       ?          help                 ◐  paused     ·  ended
       q          quit
 
-
                               \\[1/3]  n:next  q:close"""
 
 
