@@ -1,6 +1,6 @@
 # HYDRATE.md
 
-> Quick context for Claude Code sessions. Last updated: 2025-12-07 (v0.5.3 - token metrics fix)
+> Quick context for Claude Code sessions. Last updated: 2025-12-07 (v0.5.4 - analyze keybinding)
 
 ## Essence
 
@@ -116,7 +116,7 @@ Key files:
 
 ## Zen AI
 
-Press `/` for quick AI queries. Context is automatically included (session output, errors, git status). Just ask naturally - no @ references needed.
+Press `/` for quick AI queries, `A` for instant session analysis. Context is automatically included (session output, errors, git status). Just ask naturally - no @ references needed.
 
 ---
 
