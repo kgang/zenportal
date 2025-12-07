@@ -51,7 +51,6 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, ZenScreen):
         ("?", "show_help", "Help"),
         ("q", "quit", "Quit"),
         Binding("ctrl+q", "quit", "Quit", show=False),
-        Binding("R", "restart_app", "Restart", show=False),
         Binding("/", "zen_prompt", "Ask AI", show=False),
     ]
 
@@ -107,14 +106,12 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, ZenScreen):
         config_manager: ConfigManager,
         profile_manager: ProfileManager | None = None,
         focus_tmux_session: str | None = None,
-        restart_context: dict | None = None,
     ) -> None:
         super().__init__()
         self._manager = session_manager
         self._config = config_manager
         self._profile = profile_manager or ProfileManager()
         self._focus_tmux_session = focus_tmux_session
-        self._restart_context = restart_context
         self._streaming = False
         self._rapid_refresh_timer = None
         self._rapid_refresh_count = 0
@@ -144,43 +141,12 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, ZenScreen):
         self._refresh_sessions()
         if self._focus_tmux_session:
             self._select_session_by_tmux_name(self._focus_tmux_session)
-        elif self._restart_context:
-            self._restore_restart_context()
         self._refresh_selected_output()
         self.set_interval(1.0, self._poll_sessions)
 
         # Start proxy monitoring if available
         if self._proxy_monitor:
             await self._proxy_monitor.start_monitoring()
-
-    def _restore_restart_context(self) -> None:
-        """Restore UI state from restart context."""
-        if not self._restart_context:
-            return
-
-        session_list = self.query_one("#session-list", SessionList)
-
-        # Restore session selection by ID first, fall back to index
-        selected_id = self._restart_context.get("selected_session_id")
-        if selected_id:
-            for i, session in enumerate(self._manager.sessions):
-                if session.id == selected_id:
-                    session_list.selected_index = i
-                    session_list.refresh(recompose=True)
-                    break
-            else:
-                # Fall back to index if session ID not found
-                idx = self._restart_context.get("selected_index", 0)
-                if 0 <= idx < len(self._manager.sessions):
-                    session_list.selected_index = idx
-                    session_list.refresh(recompose=True)
-
-        # Restore info mode
-        if self._restart_context.get("info_mode"):
-            self.info_mode = True
-
-        # Show restart notification
-        self.zen_notify("restarted")
 
     def _select_session_by_tmux_name(self, tmux_name: str) -> None:
         """Select the session with the given tmux session name."""

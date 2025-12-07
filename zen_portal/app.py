@@ -21,21 +21,6 @@ from zen_portal.styles import BASE_CSS
 from zen_portal.commands import ZenCommandProvider
 
 
-def _load_restart_context() -> dict | None:
-    """Load restart context if available, then clean up the file."""
-    import json
-    restart_file = Path.home() / ".zen_portal" / "restart_context.json"
-    if restart_file.exists():
-        try:
-            with open(restart_file, "r") as f:
-                context = json.load(f)
-            restart_file.unlink()
-            return context
-        except Exception:
-            restart_file.unlink(missing_ok=True)
-    return None
-
-
 def check_dependencies() -> None:
     """Check for required and optional dependencies on startup.
 
@@ -137,7 +122,6 @@ class ZenPortalApp(App):
         profile_manager: ProfileManager | None = None,
         working_dir: Path | None = None,
         focus_tmux_session: str | None = None,
-        restart_context: dict | None = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -147,7 +131,6 @@ class ZenPortalApp(App):
         self._profile = profile_manager or ProfileManager()
         self._notification_service = NotificationService()
         self._focus_tmux_session = focus_tmux_session
-        self._restart_context = restart_context
 
         # Use provided session manager or create one
         if session_manager:
@@ -175,7 +158,6 @@ class ZenPortalApp(App):
             self._config,
             self._profile,
             focus_tmux_session=self._focus_tmux_session,
-            restart_context=self._restart_context,
         ))
 
     @property
@@ -205,17 +187,14 @@ def main():
     )
 
     focus_tmux_session = None
-    restart_context = _load_restart_context()
     while True:
         app = ZenPortalApp(
             session_manager=manager,
             config_manager=config,
             profile_manager=profile,
             focus_tmux_session=focus_tmux_session,
-            restart_context=restart_context,
         )
         result = app.run()
-        restart_context = None  # Only use on first iteration
 
         # Handle attach exit - attach to tmux then return to TUI
         if result and isinstance(result, str) and result.startswith("attach:"):
@@ -224,12 +203,6 @@ def main():
             subprocess.run(["tmux", "attach", "-t", tmux_name])
             # Focus on the session we just detached from
             focus_tmux_session = tmux_name
-            continue
-
-        # Handle restart - loop back immediately
-        if result and isinstance(result, dict) and result.get("restart"):
-            restart_context = _load_restart_context()
-            focus_tmux_session = None
             continue
 
         # Handle "keep all running" exit - show which sessions are still active

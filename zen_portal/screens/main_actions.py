@@ -320,18 +320,12 @@ class MainScreenExitMixin:
     """Mixin providing exit-related handlers for MainScreen."""
 
     def _exit_with_cleanup(
-        self, cleanup_orphans: bool = False, keep_running: bool = False, restart: bool = False
+        self, cleanup_orphans: bool = False, keep_running: bool = False
     ) -> None:
         """Exit the application."""
         if cleanup_orphans:
             self._manager.cleanup_dead_tmux_sessions()
         self._manager.save_state()
-
-        if restart:
-            # Save restart context for session selection restoration
-            self._save_restart_context()
-            self.app.exit(result={"restart": True})
-            return
 
         if keep_running:
             running_sessions = []
@@ -348,25 +342,6 @@ class MainScreenExitMixin:
                 return
 
         self.app.exit()
-
-    def _save_restart_context(self) -> None:
-        """Save context for restoration after restart."""
-        import json
-        from pathlib import Path
-
-        session_list = self.query_one("#session-list", SessionList)
-        selected = session_list.get_selected()
-
-        context = {
-            "selected_session_id": selected.id if selected else None,
-            "selected_index": session_list.selected_index,
-            "info_mode": self.info_mode,
-        }
-
-        restart_file = Path.home() / ".zen_portal" / "restart_context.json"
-        restart_file.parent.mkdir(parents=True, exist_ok=True)
-        with open(restart_file, "w") as f:
-            json.dump(context, f)
 
     def action_quit(self) -> None:
         """Quit the application with optional cleanup."""
@@ -396,11 +371,6 @@ class MainScreenExitMixin:
             if result is None:
                 return
 
-            # Handle restart - no "remember" option for restart
-            if result.choice == ExitChoice.RESTART:
-                self._exit_with_cleanup(restart=True)
-                return
-
             if result.remember:
                 if result.choice == ExitChoice.KILL_ALL:
                     self._config.update_exit_behavior(ExitBehavior.KILL_ALL)
@@ -419,7 +389,3 @@ class MainScreenExitMixin:
             self._exit_with_cleanup(cleanup_orphans=cleanup_orphans, keep_running=keep_running)
 
         self.app.push_screen(ExitModal(active, dead), handle_exit)
-
-    def action_restart_app(self) -> None:
-        """Restart the application, preserving sessions."""
-        self._exit_with_cleanup(restart=True)

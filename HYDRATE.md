@@ -1,7 +1,7 @@
 # HYDRATE.md - Claude Code Context Document
 
 > Quick context for future Claude Code sessions working on this codebase.
-> Last updated: 2025-12-07 (v0.4.3) - Zen AI prompt has breathing animation while loading.
+> Last updated: 2025-12-07 (v0.4.4) - Removed app restart functionality.
 
 ## What is Zenportal?
 
@@ -94,7 +94,6 @@ zen_portal/
 | Textual 6.x Upgrade | `pyproject.toml`, all modals | - |
 | Modal Focus Trapping | all `screens/*.py` modals | `trap_focus=True` |
 | Flat Cancel Buttons | `exit_modal.py`, `config_screen.py` | `.flat` CSS class |
-| App Restart | `app.py`, `main_actions.py`, `exit_modal.py` | `R` or exit modal |
 | Output Search | `output_view.py` | `Ctrl+F` |
 | Token Sparklines | `session_info.py`, `token_parser.py` | `Ctrl+I` (info mode) |
 | Command Palette | `commands/zen_commands.py` | `Ctrl+P` |
@@ -214,7 +213,6 @@ All interactions happen through the session list - no panel focus switching need
 | Ctrl+P | Command palette |
 | Ctrl+F | Search output |
 | Ctrl+I | Toggle info mode |
-| R | Restart app (preserves state) |
 | / | Zen AI prompt |
 | ? | Help |
 | q | Quit |
@@ -363,7 +361,6 @@ Tests use mocked tmux operations. Test files:
 - `test_banner.py` - Session banners
 - `test_profile.py` - User profiles
 - `test_insert_modal.py` - Insert mode UI
-- `test_restart.py` - App restart with state preservation
 
 ## Common Tasks
 
@@ -729,28 +726,12 @@ Native AI integration for quick queries without leaving context.
 - API error? Notification: "could not reach ai"
 - Claude not installed? Falls back gracefully
 
-## App Restart
-
-Restart the app while preserving UI state (`R` key or exit modal → "Restart app").
-
-**Preserved state:**
-- Selected session (by ID, falls back to index)
-- Info mode toggle
-- All running tmux sessions
-
-**Implementation:**
-- `_save_restart_context()` writes to `~/.zen_portal/restart_context.json`
-- `_load_restart_context()` reads and deletes file on startup
-- Main loop in `app.py` detects `{"restart": True}` result and continues
-
-**Tests:** `test_restart.py` (17 tests)
-
 ## Exit Modal
 
 Safe defaults for quit behavior:
 - Default selection is "Keep running" (not "Kill all")
-- Options: Keep running → Kill all → Restart app → Cancel
-- "Remember choice" checkbox persists to config (not for restart)
+- Options: Keep running → Kill all → Cancel
+- "Remember choice" checkbox persists to config
 
 ## New Session Modal
 
