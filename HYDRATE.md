@@ -301,10 +301,11 @@ Tests use mocked tmux operations. Test files:
 
 - **Services** have no UI dependencies - can be tested in isolation
 - **Widgets** are reusable Textual components
-- **Screens** are full views or modals
+- **Screens** inherit from `ZenScreen` (not `Screen`) for notification support
 - **Models** are pure data structures
 - State is managed reactively via Textual's reactive properties
 - **NEVER use `_notifications` as attribute name** - Textual's App uses it internally for toast rack
+- **Screen compose pattern**: Call `yield from super().compose()` at end to include notification rack
 
 ## Token Tracking
 
