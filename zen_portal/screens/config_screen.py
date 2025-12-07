@@ -129,10 +129,10 @@ class ConfigScreen(ModalScreen[None]):
     def compose(self) -> ComposeResult:
         self.add_class("modal-base", "modal-lg")
         current_exit = self._config_manager.config.exit_behavior
-        global_dir = self._config_manager.config.features.working_dir
-        instance_dir = self._config_manager.portal.features.working_dir
-        enabled_types = self._config_manager.config.features.enabled_session_types
-        zen_ai_config = self._config_manager.config.features.zen_ai
+        global_dir = self._config_manager.config.defaults.working_dir
+        instance_dir = self._config_manager.config.project.working_dir
+        enabled_types = self._config_manager.config.defaults.enabled_session_types
+        zen_ai_config = self._config_manager.config.defaults.zen_ai
 
         with Vertical(id="dialog"):
             yield Static("settings", classes="dialog-title")
@@ -241,21 +241,20 @@ class ConfigScreen(ModalScreen[None]):
         global_path = global_input.get_path()
 
         config = self._config_manager.config
-        config.features.working_dir = global_path
-        config.features.enabled_session_types = enabled_types_to_save
-        config.features.zen_ai = zen_ai_config
+        config.defaults.working_dir = global_path
+        config.defaults.enabled_session_types = enabled_types_to_save
+        config.defaults.zen_ai = zen_ai_config
         self._config_manager.save_config(config)
 
-        # Save instance directory
+        # Save instance directory (now as project setting)
         instance_input = self.query_one("#instance-dir-input", PathInput)
         instance_path = instance_input.get_path()
         if instance_path:
             features = FeatureSettings(working_dir=instance_path)
-            self._config_manager.update_portal_features(features)
+            self._config_manager.update_project_features(features)
         else:
-            portal = self._config_manager.portal
-            portal.features.working_dir = None
-            self._config_manager.save_portal(portal)
+            config.project.working_dir = None
+            self._config_manager.save_config(config)
 
         # Save theme to profile
         theme_list = self.query_one("#theme-list", OptionList)

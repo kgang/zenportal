@@ -10,10 +10,16 @@ from ..services.discovery import ClaudeSessionInfo, ExternalTmuxSession
 class NewSessionType(Enum):
     """Type of session to create in new session modal."""
 
+    AI = "ai"  # AI session (with provider selection)
+    SHELL = "shell"  # Shell session
+
+
+class AIProvider(Enum):
+    """AI provider for AI sessions."""
+
     CLAUDE = "claude"
     CODEX = "codex"
     GEMINI = "gemini"
-    SHELL = "shell"
     OPENROUTER = "openrouter"
 
 
@@ -34,7 +40,8 @@ class NewSessionResult:
     name: str = ""
     prompt: str = ""
     features: SessionFeatures | None = None
-    session_type: NewSessionType = NewSessionType.CLAUDE
+    session_type: NewSessionType = NewSessionType.AI
+    provider: AIProvider = AIProvider.CLAUDE  # AI provider for AI sessions
     # For ATTACH sessions
     tmux_session: ExternalTmuxSession | None = None
     # For RESUME sessions

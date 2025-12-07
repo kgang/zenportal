@@ -98,17 +98,17 @@ class TestValidateBinary:
     def test_passes_when_binary_exists(self):
         commands = Mock(validate_binary=Mock(return_value=None))
         step = ValidateBinary(commands)
-        ctx = CreateContext(name="test", session_type=SessionType.CLAUDE)
+        ctx = CreateContext(name="test", session_type=SessionType.AI, provider="claude")
 
         result = step.invoke(ctx)
 
         assert result.ok is True
-        commands.validate_binary.assert_called_once_with(SessionType.CLAUDE)
+        commands.validate_binary.assert_called_once_with(SessionType.AI, "claude")
 
     def test_fails_when_binary_missing(self):
         commands = Mock(validate_binary=Mock(return_value="claude not found"))
         step = ValidateBinary(commands)
-        ctx = CreateContext(name="test", session_type=SessionType.CLAUDE)
+        ctx = CreateContext(name="test", session_type=SessionType.AI, provider="claude")
 
         result = step.invoke(ctx)
 
@@ -124,7 +124,7 @@ class TestConflictDetection:
 
         conflicts = detect_conflicts(
             name="my-session",
-            session_type=SessionType.CLAUDE,
+            session_type=SessionType.AI,
             existing=existing,
             max_sessions=10,
         )
@@ -138,7 +138,7 @@ class TestConflictDetection:
 
         conflicts = detect_conflicts(
             name="new-session",
-            session_type=SessionType.CLAUDE,
+            session_type=SessionType.AI,
             existing=existing,
             max_sessions=10,
         )
@@ -150,7 +150,7 @@ class TestConflictDetection:
 
         conflicts = detect_conflicts(
             name="new-session",
-            session_type=SessionType.CLAUDE,
+            session_type=SessionType.AI,
             existing=existing,
             max_sessions=10,
         )
@@ -163,7 +163,7 @@ class TestConflictDetection:
 
         conflicts = detect_conflicts(
             name="new-unique-session",
-            session_type=SessionType.CLAUDE,
+            session_type=SessionType.AI,
             existing=existing,
             max_sessions=10,
         )
@@ -172,20 +172,20 @@ class TestConflictDetection:
 
     def test_has_blocking_conflict_with_error(self):
         existing = [Session(name=f"s{i}") for i in range(10)]
-        conflicts = detect_conflicts("new", SessionType.CLAUDE, existing, 10)
+        conflicts = detect_conflicts("new", SessionType.AI, existing, 10)
 
         assert has_blocking_conflict(conflicts) is True
 
     def test_has_blocking_conflict_without_error(self):
         existing = [Session(name="existing")]
-        conflicts = detect_conflicts("existing", SessionType.CLAUDE, existing, 10)
+        conflicts = detect_conflicts("existing", SessionType.AI, existing, 10)
 
         assert has_blocking_conflict(conflicts) is False  # warning only
 
     def test_get_conflict_summary_returns_highest_priority(self):
         existing = [Session(name=f"s{i}") for i in range(10)]
         # This creates both a name collision (warning) and at_limit (error)
-        conflicts = detect_conflicts("s0", SessionType.CLAUDE, existing, 10)
+        conflicts = detect_conflicts("s0", SessionType.AI, existing, 10)
 
         summary = get_conflict_summary(conflicts)
 

@@ -1,7 +1,7 @@
 """Zen Prompt - Quick AI query modal.
 
 Provides a minimal modal for asking AI questions without leaving context.
-Supports @output, @error, @git, @session context references.
+Automatically includes relevant session context.
 """
 
 from textual.app import ComposeResult
@@ -13,24 +13,18 @@ from textual.worker import Worker, WorkerState
 
 from ..services.config import ZenAIConfig, ZenAIProvider
 from ..services.zen_ai import ZenAI
-from ..services.context_parser import parse_context_refs, gather_context, strip_refs_from_prompt
+from ..services.context_parser import gather_context
 from ..models.session import Session
 
-# Zen breathing animation frames - minimalist dot pattern
-# Creates a gentle "breathing" effect: expand → contract
-ZEN_FRAMES = [
-    "· · ·",
-    "· · · ·",
-    "· · ·",
-    "· ·",
-]
+# Static loading indicator - simple, non-distracting
+ZEN_LOADING = "..."
 
 
 class ZenPromptModal(ModalScreen[str | None]):
     """Minimal AI query modal with streaming response.
 
-    Triggered by `/` key. Supports @output, @error, @git, @session references
-    for including session context in queries.
+    Triggered by `/` key. Automatically includes relevant session context
+    in all queries.
     """
 
     DEFAULT_CSS = """
@@ -65,8 +59,6 @@ class ZenPromptModal(ModalScreen[str | None]):
     # Track response state
     has_response: reactive[bool] = reactive(False)
 
-    # Animation interval (seconds) - slow, contemplative pace
-    ANIMATION_INTERVAL = 0.66
 
     def __init__(
         self,
@@ -79,8 +71,6 @@ class ZenPromptModal(ModalScreen[str | None]):
         self._session = session
         self._session_manager = session_manager
         self._is_querying = False
-        self._animation_frame = 0
-        self._animation_timer = None
 
     def compose(self) -> ComposeResult:
         # Use modal-left for eye strain reduction (opens near session list)
@@ -89,12 +79,12 @@ class ZenPromptModal(ModalScreen[str | None]):
             yield Static("/", classes="dialog-title")
             yield Input(
                 id="prompt-input",
-                placeholder="ask anything... @output @error @git @session",
+                placeholder="ask anything...",
             )
             with VerticalScroll(id="response-scroll", classes="hidden"):
                 yield RichLog(id="response", wrap=True, markup=True)
             yield Static(
-                "enter ask  esc close  @output @error @git @session",
+                "enter ask  esc close",
                 classes="dialog-hint",
             )
 
@@ -112,28 +102,15 @@ class ZenPromptModal(ModalScreen[str | None]):
         else:
             response_scroll.add_class("hidden")
 
-    def _start_animation(self) -> None:
-        """Start the zen breathing animation."""
-        self._animation_frame = 0
-        self._animation_timer = self.set_interval(
-            self.ANIMATION_INTERVAL,
-            self._animate_frame,
-            name="zen_animation",
-        )
+    def _show_loading(self) -> None:
+        """Show static loading indicator."""
+        title = self.query_one(".dialog-title", Static)
+        title.update(ZEN_LOADING)
 
-    def _stop_animation(self) -> None:
-        """Stop the animation and reset title."""
-        if self._animation_timer:
-            self._animation_timer.stop()
-            self._animation_timer = None
+    def _hide_loading(self) -> None:
+        """Reset title after loading."""
         title = self.query_one(".dialog-title", Static)
         title.update("/")
-
-    def _animate_frame(self) -> None:
-        """Advance to the next animation frame."""
-        title = self.query_one(".dialog-title", Static)
-        title.update(ZEN_FRAMES[self._animation_frame])
-        self._animation_frame = (self._animation_frame + 1) % len(ZEN_FRAMES)
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         """Handle prompt submission."""
@@ -159,24 +136,20 @@ class ZenPromptModal(ModalScreen[str | None]):
         response_log = self.query_one("#response", RichLog)
         response_log.clear()
 
-        # Start zen breathing animation
-        self._start_animation()
+        # Show loading indicator
+        self._show_loading()
 
-        # Parse context references (sync, fast)
-        refs = parse_context_refs(prompt)
-
-        # Gather context if we have a session
+        # Automatically gather all context if we have a session
         system_prompt = ""
-        if refs and self._session and self._session_manager:
+        if self._session and self._session_manager:
+            # Include all context automatically (equivalent to @all)
+            refs = {"all"}
             context = gather_context(refs, self._session, self._session_manager)
             system_prompt = context.to_system_prompt(refs)
 
-        # Clean the prompt (remove @refs)
-        clean_prompt = strip_refs_from_prompt(prompt) if refs else prompt
-
-        # Run query in worker thread
+        # Run query in worker thread (prompt used as-is, no cleaning needed)
         self.run_worker(
-            self._do_query(clean_prompt, system_prompt),
+            self._do_query(prompt, system_prompt),
             name="zen_ai_query",
             exclusive=True,
         )
@@ -197,7 +170,7 @@ class ZenPromptModal(ModalScreen[str | None]):
 
         if event.state == WorkerState.SUCCESS:
             self._is_querying = False
-            self._stop_animation()
+            self._hide_loading()
             self.has_response = True
 
             if event.worker.result:
@@ -209,14 +182,14 @@ class ZenPromptModal(ModalScreen[str | None]):
 
         elif event.state == WorkerState.ERROR:
             self._is_querying = False
-            self._stop_animation()
+            self._hide_loading()
             self.has_response = True
             error = event.worker.error
             response_log.write(f"[red]error: {str(error)[:100]}[/red]")
 
         elif event.state == WorkerState.CANCELLED:
             self._is_querying = False
-            self._stop_animation()
+            self._hide_loading()
             self.has_response = True
             response_log.write("[dim]cancelled[/dim]")
 

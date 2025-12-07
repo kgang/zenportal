@@ -17,11 +17,8 @@ if TYPE_CHECKING:
 class SessionType(Enum):
     """Type of session."""
 
-    CLAUDE = "claude"  # Claude Code session
-    CODEX = "codex"  # OpenAI Codex CLI
-    GEMINI = "gemini"  # Google Gemini CLI
+    AI = "ai"  # AI session (with provider: claude, codex, gemini, openrouter)
     SHELL = "shell"  # Plain shell session
-    OPENROUTER = "openrouter"  # OpenRouter via orchat
 
 
 class SessionState(Enum):
@@ -70,7 +67,8 @@ class Session:
     prompt: str = ""  # Initial prompt (if any)
     claude_session_id: str = ""  # Claude Code session ID for --resume
     state: SessionState = SessionState.RUNNING
-    session_type: SessionType = SessionType.CLAUDE  # Type of session
+    session_type: SessionType = SessionType.AI  # Type of session (AI or SHELL)
+    provider: str = "claude"  # AI provider: claude, codex, gemini, openrouter (for AI sessions)
     created_at: datetime = field(default_factory=datetime.now)
     ended_at: datetime | None = None
     # Level 3: Session-specific feature overrides
@@ -130,21 +128,12 @@ class Session:
 
     @property
     def status_glyph(self) -> str:
-        """State indicator glyphs.
+        """Binary state indicator: running or not.
 
-        ● active (filled, present)
-        ○ complete (open, released)
-        ◐ paused (half, suspended)
-        · ended (small, minimal)
+        ▪ running (filled, present)
+        ▫ not running (empty, released)
         """
-        glyphs = {
-            SessionState.RUNNING: "●",
-            SessionState.COMPLETED: "○",
-            SessionState.FAILED: "·",
-            SessionState.PAUSED: "◐",
-            SessionState.KILLED: "·",
-        }
-        return glyphs.get(self.state, "?")
+        return "▪" if self.state == SessionState.RUNNING else "▫"
 
     @property
     def display_name(self) -> str:

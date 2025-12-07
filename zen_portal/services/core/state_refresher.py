@@ -17,14 +17,10 @@ class StateRefresher:
 
     Orchestrates:
     - Polling of sessions
-    - Grace period after revival
     - Token updates for Claude sessions
 
     Detection logic is delegated to the detection module.
     """
-
-    # Grace period after revival before checking state (seconds)
-    REVIVAL_GRACE_PERIOD = 5.0
 
     def __init__(
         self,
@@ -74,11 +70,8 @@ class StateRefresher:
         if not tmux_name:
             return False
 
-        # Grace period check after revival
+        # Clear revival marker if present (no grace period)
         if session.revived_at:
-            grace_elapsed = (datetime.now() - session.revived_at).total_seconds()
-            if grace_elapsed < self.REVIVAL_GRACE_PERIOD:
-                return False
             session.revived_at = None
 
         # Use pure detection function
@@ -90,8 +83,10 @@ class StateRefresher:
             session.error_message = result.error_message or ""
             return True
 
-        # Update tokens for running Claude sessions
-        if session.state == SessionState.RUNNING and session.session_type == SessionType.CLAUDE:
+        # Update tokens for running Claude AI sessions
+        if (session.state == SessionState.RUNNING
+            and session.session_type == SessionType.AI
+            and getattr(session, 'provider', 'claude') == 'claude'):
             if self._on_token_update:
                 self._on_token_update(session)
 

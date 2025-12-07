@@ -7,7 +7,6 @@ from unittest.mock import MagicMock
 from zen_portal.services.tmux import TmuxService, TmuxResult
 from zen_portal.services.session_manager import SessionManager
 from zen_portal.services.config import ConfigManager
-from zen_portal.services.state import StateService
 
 
 @pytest.fixture
@@ -32,24 +31,17 @@ def config_manager(tmp_path: Path) -> ConfigManager:
 
 
 @pytest.fixture
-def state_service(tmp_path: Path) -> StateService:
-    """Create a StateService with temp directory (fresh for each test)."""
-    state_dir = tmp_path / ".zen_portal"
-    return StateService(base_dir=state_dir)
-
-
-@pytest.fixture
 def session_manager(
     mock_tmux: MagicMock,
     config_manager: ConfigManager,
-    state_service: StateService,
     tmp_path: Path,
 ) -> SessionManager:
     """Create a SessionManager with mock tmux, config, and fresh state."""
+    state_dir = tmp_path / ".zen_portal"
     return SessionManager(
         tmux=mock_tmux,
         config_manager=config_manager,
-        state_service=state_service,
+        base_dir=state_dir,
         working_dir=tmp_path,
     )
 

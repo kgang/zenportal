@@ -126,9 +126,16 @@ def gather_context(
     Returns:
         SessionContext with requested data populated
     """
+    # For AI sessions, show the provider; for shell, show "shell"
+    from ..models.session import SessionType
+    if session.session_type == SessionType.AI:
+        session_type_display = getattr(session, 'provider', 'claude')
+    else:
+        session_type_display = session.session_type.value
+
     context = SessionContext(
         session_name=session.display_name,
-        session_type=session.session_type.value,
+        session_type=session_type_display,
         session_state=session.state.value,
         session_age=session.age_display,
         model=session.resolved_model.value if session.resolved_model else "",

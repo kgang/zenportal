@@ -1,11 +1,10 @@
 """Configuration management for Zen Portal.
 
-3-Tier Feature System:
-1. Config Level (~/.config/zen-portal/config.json) - Global defaults
-2. Portal Level (~/.config/zen-portal/portal.json) - Current zen-portal state, survives restarts
-3. Session Level (per-session at creation) - Stored in Session dataclass
+Single-file configuration system with hierarchical keys:
+- ~/.config/zen-portal/config.json contains both defaults and current project settings
+- Session-level overrides are applied at runtime (stored in Session dataclass)
 
-Each level can override the previous. Resolution order: session > portal > config > defaults
+Resolution order: session > project > defaults
 
 Security notes:
 - Config files may contain API keys; saved with mode 0600
@@ -66,7 +65,10 @@ class ClaudeModel(Enum):
 
 
 # All available session types for configuration
-ALL_SESSION_TYPES = ["claude", "codex", "gemini", "shell", "openrouter"]
+ALL_SESSION_TYPES = ["ai", "shell"]
+
+# All available AI providers
+ALL_AI_PROVIDERS = ["claude", "codex", "gemini", "openrouter"]
 
 
 @dataclass
@@ -366,58 +368,44 @@ class FeatureSettings:
 
 @dataclass
 class Config:
-    """Level 1: Global Zen Portal configuration.
+    """Unified Zen Portal configuration.
 
     Stored in ~/.config/zen-portal/config.json
-    These are persistent defaults that rarely change.
+    Contains both global defaults and current project settings.
     """
 
     exit_behavior: ExitBehavior = ExitBehavior.ASK
-    features: FeatureSettings = field(default_factory=FeatureSettings)
+    defaults: FeatureSettings = field(default_factory=FeatureSettings)
+    project: FeatureSettings = field(default_factory=FeatureSettings)
+    project_description: str = ""  # Optional description of current project
 
     def to_dict(self) -> dict:
-        return {
+        result = {
             "exit_behavior": self.exit_behavior.value,
-            "features": self.features.to_dict(),
+            "defaults": self.defaults.to_dict(),
         }
+        # Only save project settings if they have values
+        project_dict = self.project.to_dict()
+        if project_dict:
+            result["project"] = project_dict
+        if self.project_description:
+            result["project_description"] = self.project_description
+        return result
 
     @classmethod
     def from_dict(cls, data: dict) -> "Config":
-        features = FeatureSettings.from_dict(data.get("features", {}))
+        defaults = FeatureSettings.from_dict(data.get("defaults", {}) or data.get("features", {}))
+        project = FeatureSettings.from_dict(data.get("project", {}))
         return cls(
             exit_behavior=ExitBehavior(data.get("exit_behavior", "ask")),
-            features=features,
-        )
-
-
-@dataclass
-class PortalState:
-    """Level 2: Current zen-portal state.
-
-    Stored in ~/.config/zen-portal/portal.json
-    Survives restarts. Use for "current project" or temporary overrides.
-    Clear explicitly when switching contexts.
-    """
-
-    features: FeatureSettings = field(default_factory=FeatureSettings)
-    description: str = ""  # Optional description of current context
-
-    def to_dict(self) -> dict:
-        return {
-            "features": self.features.to_dict(),
-            "description": self.description,
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict) -> "PortalState":
-        return cls(
-            features=FeatureSettings.from_dict(data.get("features", {})),
-            description=data.get("description", ""),
+            defaults=defaults,
+            project=project,
+            project_description=data.get("project_description", ""),
         )
 
 
 class ConfigManager:
-    """Manages the 3-tier configuration system."""
+    """Manages unified configuration with defaults and project settings."""
 
     DEFAULT_SESSION_PREFIX = "zen"
 
@@ -426,11 +414,7 @@ class ConfigManager:
             config_dir = Path.home() / ".config" / "zen-portal"
         self._config_dir = config_dir
         self._config_file = config_dir / "config.json"
-        self._portal_file = config_dir / "portal.json"
         self._config: Config | None = None
-        self._portal: PortalState | None = None
-
-    # --- Level 1: Config ---
 
     @property
     def config(self) -> Config:
@@ -460,50 +444,25 @@ class ConfigManager:
         config.exit_behavior = behavior
         self.save_config(config)
 
-    # --- Level 2: Portal State ---
-
-    @property
-    def portal(self) -> PortalState:
-        if self._portal is None:
-            self._portal = self._load_portal()
-        return self._portal
-
-    def _load_portal(self) -> PortalState:
-        """Load portal state from disk."""
-        if self._portal_file.exists():
-            try:
-                data = json.loads(self._portal_file.read_text())
-                return PortalState.from_dict(data)
-            except (json.JSONDecodeError, KeyError, ValueError):
-                pass
-        return PortalState()
-
-    def save_portal(self, state: PortalState) -> None:
-        """Save portal state to disk with secure permissions."""
-        self._config_dir.mkdir(parents=True, exist_ok=True)
-        _secure_write_json(self._portal_file, state.to_dict())
-        self._portal = state
-
-    def clear_portal(self) -> None:
-        """Clear portal state (e.g., when switching projects)."""
-        if self._portal_file.exists():
-            self._portal_file.unlink()
-        self._portal = PortalState()
-
-    def update_portal_features(self, features: FeatureSettings, description: str = "") -> None:
-        """Update portal-level feature overrides."""
-        state = self.portal
-        state.features = features
+    def update_project_features(self, features: FeatureSettings, description: str = "") -> None:
+        """Update project-level feature overrides."""
+        config = self.config
+        config.project = features
         if description:
-            state.description = description
-        self.save_portal(state)
+            config.project_description = description
+        self.save_config(config)
 
-    # --- Resolution: Merge all tiers ---
+    def clear_project(self) -> None:
+        """Clear project settings (e.g., when switching projects)."""
+        config = self.config
+        config.project = FeatureSettings()
+        config.project_description = ""
+        self.save_config(config)
 
     def resolve_features(self, session_override: FeatureSettings | None = None) -> FeatureSettings:
         """Resolve features through all tiers.
 
-        Resolution order: session > portal > config > defaults
+        Resolution order: session > project > defaults
 
         Args:
             session_override: Optional session-level overrides
@@ -511,11 +470,11 @@ class ConfigManager:
         Returns:
             Fully resolved FeatureSettings with defaults filled in
         """
-        # Start with config defaults
-        resolved = self.config.features
+        # Start with defaults
+        resolved = self.config.defaults
 
-        # Apply portal overrides
-        resolved = resolved.merge_with(self.portal.features)
+        # Apply project overrides
+        resolved = resolved.merge_with(self.config.project)
 
         # Apply session overrides
         if session_override:
@@ -530,8 +489,6 @@ class ConfigManager:
 
         return resolved
 
-    # --- Proxy Settings ---
-
     def get_proxy_settings(self) -> ProxySettings | None:
         """Get resolved proxy settings from config.
 
@@ -545,3 +502,28 @@ class ConfigManager:
     def save(self, config: Config) -> None:
         """Deprecated: use save_config instead."""
         self.save_config(config)
+
+    @property
+    def portal(self):
+        """Backward compatibility: portal is now the project section."""
+        from dataclasses import dataclass, field
+
+        @dataclass
+        class _PortalCompat:
+            features: FeatureSettings = field(default_factory=FeatureSettings)
+            description: str = ""
+
+        config = self.config
+        return _PortalCompat(features=config.project, description=config.project_description)
+
+    def save_portal(self, state) -> None:
+        """Backward compatibility: save portal state as project settings."""
+        self.update_project_features(state.features, state.description)
+
+    def clear_portal(self) -> None:
+        """Backward compatibility: clear portal is now clear project."""
+        self.clear_project()
+
+    def update_portal_features(self, features: FeatureSettings, description: str = "") -> None:
+        """Backward compatibility: update portal features is now update project features."""
+        self.update_project_features(features, description)

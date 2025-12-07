@@ -29,9 +29,9 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, ZenScreen):
         ("k", "move_up", "↑"),
         ("down", "move_down", "↓"),
         ("up", "move_up", "↑"),
-        Binding("l", "toggle_grab", "→", show=False),
-        Binding("space", "toggle_grab", "Grab", show=False),
-        Binding("escape", "exit_grab", "Exit grab", show=False),
+        Binding("l", "toggle_move", "→", show=False),
+        Binding("space", "toggle_move", "Move", show=False),
+        Binding("escape", "exit_move", "Exit move", show=False),
         ("n", "new_session", "New"),
         Binding("o", "attach_existing", "Attach Existing", show=False),
         ("p", "pause", "Pause"),
@@ -43,15 +43,14 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, ZenScreen):
         ("v", "revive", "Revive"),
         ("e", "rename", "Rename"),
         Binding("i", "insert", "Insert", show=False),
-        Binding("ctrl+i", "toggle_info", "Info", show=False),
+        Binding("I", "toggle_info", "Info", show=False),
         ("r", "refresh_output", "Refresh"),
         Binding("s", "toggle_streaming", "Stream", show=False),
-        Binding("ctrl+f", "search_output", "Search", show=False),
+        Binding("S", "search_output", "Search", show=False),
         ("c", "config", "Config"),
-        Binding("P", "proxy_dashboard", "Proxy Dashboard", show=False),
+        Binding("C", "toggle_completed", "Completed", show=False),
         ("?", "show_help", "Help"),
         ("q", "quit", "Quit"),
-        Binding("ctrl+q", "quit", "Quit", show=False),
         Binding("/", "zen_prompt", "Ask AI", show=False),
         Binding("R", "restart_app", "Restart", show=False),
     ]
@@ -177,9 +176,9 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, ZenScreen):
                 self._update_output_with_context(output_view, selected, content)
 
     def _refresh_sessions(self) -> None:
-        """Update session list widget (skipped during grab mode to preserve reordering)."""
+        """Update session list widget (skipped during move mode to preserve reordering)."""
         session_list = self.query_one("#session-list", SessionList)
-        if session_list.grab_mode:
+        if session_list.move_mode:
             return  # Don't overwrite user's reordering
         session_list.update_sessions(self._manager.sessions)
 
@@ -343,22 +342,22 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, ZenScreen):
     def action_move_up(self) -> None:
         self.query_one("#session-list", SessionList).move_up()
 
-    def action_toggle_grab(self) -> None:
-        """Toggle grab mode for reordering sessions."""
+    def action_toggle_move(self) -> None:
+        """Toggle move mode for reordering sessions."""
         session_list = self.query_one("#session-list", SessionList)
-        if session_list.grab_mode:
-            session_list.exit_grab_mode()
+        if session_list.move_mode:
+            session_list.exit_move_mode()
             self._save_session_order()
             self.zen_notify("order saved")
         else:
-            session_list.toggle_grab_mode()
-            self.zen_notify("grab mode: j/k to reorder, space/esc to exit")
+            session_list.toggle_move_mode()
+            self.zen_notify("move mode: j/k to reorder, space/esc to exit")
 
-    def action_exit_grab(self) -> None:
-        """Exit grab mode and save order."""
+    def action_exit_move(self) -> None:
+        """Exit move mode and save order."""
         session_list = self.query_one("#session-list", SessionList)
-        if session_list.grab_mode:
-            session_list.exit_grab_mode()
+        if session_list.move_mode:
+            session_list.exit_move_mode()
             self._save_session_order()
             self.zen_notify("order saved")
 
@@ -383,25 +382,26 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, ZenScreen):
             try:
                 if result.result_type == ResultType.NEW:
                     type_mapping = {
-                        ScreenSessionType.CLAUDE: SessionType.CLAUDE,
-                        ScreenSessionType.CODEX: SessionType.CODEX,
-                        ScreenSessionType.GEMINI: SessionType.GEMINI,
+                        ScreenSessionType.AI: SessionType.AI,
                         ScreenSessionType.SHELL: SessionType.SHELL,
-                        ScreenSessionType.OPENROUTER: SessionType.OPENROUTER,
                     }
-                    session_type = type_mapping.get(result.session_type, SessionType.CLAUDE)
+                    session_type = type_mapping.get(result.session_type, SessionType.AI)
+                    provider = result.provider.value if hasattr(result.provider, 'value') else result.provider
                     session = self._manager.create_session(
                         result.name,
                         result.prompt,
                         features=result.features,
                         session_type=session_type,
+                        provider=provider,
                     )
                     self._refresh_sessions()
                     session_list = self.query_one("#session-list", SessionList)
                     session_list.selected_index = 0
                     session_list.refresh(recompose=True)
                     self._start_rapid_refresh()
-                    self.zen_notify(f"created {session_type.value}: {session.display_name}")
+                    # Show provider name for AI sessions
+                    display_type = provider if session_type == SessionType.AI else session_type.value
+                    self.zen_notify(f"created {display_type}: {session.display_name}")
 
                 elif result.result_type == ResultType.ATTACH:
                     tmux_session = result.tmux_session
@@ -501,17 +501,17 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, ZenScreen):
         from .config_screen import ConfigScreen
         self.app.push_screen(ConfigScreen(self._config, self._profile))
 
-    def action_proxy_dashboard(self) -> None:
-        """Open proxy health dashboard."""
-        if not self._proxy_monitor:
-            self.zen_notify("proxy monitoring not available", "warning")
-            return
-
-        from .proxy_dashboard import ProxyDashboardScreen
-        self.app.push_screen(ProxyDashboardScreen(
-            proxy_monitor=self._proxy_monitor,
-            config_manager=self._config
-        ))
+    def action_toggle_completed(self) -> None:
+        """Toggle showing completed/dead sessions."""
+        session_list = self.query_one("#session-list", SessionList)
+        session_list.show_completed = not session_list.show_completed
+        # Reset selection to first item when toggling
+        session_list.selected_index = 0
+        session_list.refresh(recompose=True)
+        if session_list.show_completed:
+            self.zen_notify("showing all sessions")
+        else:
+            self.zen_notify("hiding completed")
 
     def action_show_help(self) -> None:
         from ..screens.help import HelpScreen

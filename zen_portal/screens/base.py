@@ -57,12 +57,16 @@ class ZenModalScreen(ModalScreen[ModalResultType], Generic[ModalResultType]):
     - Automatic focus trapping
     - Notification support
     - Escape to dismiss
+    - Auto-dismiss after action (optional)
 
     Subclasses should:
     - Call super().compose() to get notification rack
     - Use modal-base/modal-sm/modal-md/modal-lg CSS classes
     - Use standard dialog structure (Vertical#dialog, dialog-title, dialog-hint)
     """
+
+    # Auto-dismiss delay in seconds (0 = disabled)
+    AUTO_DISMISS_DELAY: float = 0
 
     BINDINGS = [
         ("escape", "dismiss_modal", "Cancel"),
@@ -75,6 +79,14 @@ class ZenModalScreen(ModalScreen[ModalResultType], Generic[ModalResultType]):
     def action_dismiss_modal(self) -> None:
         """Dismiss with None result."""
         self.dismiss(None)
+
+    def dismiss_after(self, result: ModalResultType, delay: float = 0.5) -> None:
+        """Dismiss modal after a short delay (for visual feedback).
+
+        Use this instead of dismiss() when you want the user to briefly
+        see the result before the modal closes.
+        """
+        self.set_timer(delay, lambda: self.dismiss(result))
 
     def on_notification_request(self, event: NotificationRequest) -> None:
         """Handle notification requests on this screen."""

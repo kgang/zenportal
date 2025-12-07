@@ -1,18 +1,18 @@
 """SessionManager: Core session lifecycle management."""
 
+import json
 from datetime import datetime
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Any
 
 from ..models.session import Session, SessionState, SessionFeatures, SessionType
 from ..models.events import SessionCreated, SessionPaused, SessionKilled, SessionCleaned
 from .tmux import TmuxService
-from .config import ConfigManager, FeatureSettings, WorktreeSettings, OpenRouterProxySettings
+from .config import ConfigManager, FeatureSettings, WorktreeSettings, OpenRouterProxySettings, ClaudeModel
 from .worktree import WorktreeService
 from .discovery import DiscoveryService
-from .state import StateService
+from .state import SessionRecord, PortalState
 from .token_parser import TokenParser
-from .session_persistence import SessionPersistence
 from .session_commands import SessionCommandBuilder
 from .proxy_validation import ProxyValidator, ProxyValidationResult
 from .core import WorktreeManager, TokenManager, StateRefresher
@@ -33,6 +33,8 @@ class SessionManager:
     """Manages Claude Code sessions in tmux."""
 
     MAX_SESSIONS = 10
+    STATE_FILE = "state.json"
+    HISTORY_DIR = "history"
 
     def __init__(
         self,
@@ -41,17 +43,24 @@ class SessionManager:
         worktree_service: WorktreeService | None = None,
         working_dir: Path | None = None,
         on_event: Callable | None = None,
-        state_service: StateService | None = None,
+        base_dir: Path | None = None,
     ):
         self._tmux = tmux
         self._config = config_manager
         self._worktree = worktree_service
         self._fallback_working_dir = working_dir or Path.cwd()
         self._on_event = on_event
-        self._state = state_service or StateService()
         self._sessions: dict[str, Session] = {}
         self._session_order: list[str] = []  # Custom display order
         self._commands = SessionCommandBuilder()
+
+        # State persistence paths
+        if base_dir:
+            self._base_dir = base_dir
+        else:
+            self._base_dir = Path.home() / ".zen_portal"
+        self._state_file = self._base_dir / self.STATE_FILE
+        self._history_dir = self._base_dir / self.HISTORY_DIR
 
         # Initialize extracted managers
         self._worktree_mgr = WorktreeManager(worktree_service)
@@ -66,16 +75,8 @@ class SessionManager:
         self.worktree = self._worktree_mgr
         self.tokens = self._token_mgr
 
-        # Initialize persistence handler
-        self._persistence = SessionPersistence(
-            state_service=self._state,
-            tmux_name_func=self._tmux_name,
-            tmux_session_exists_func=self._tmux.session_exists,
-            tmux_is_pane_dead_func=self._tmux.is_pane_dead,
-        )
-
         # Load persisted state on startup
-        self._sessions, self._session_order = self._persistence.load_persisted_sessions_with_order()
+        self._sessions, self._session_order = self._load_persisted_sessions_with_order()
 
     @property
     def sessions(self) -> list[Session]:
@@ -104,7 +105,7 @@ class SessionManager:
     def set_session_order(self, order: list[str]) -> None:
         """Set custom session display order and persist."""
         self._session_order = order
-        self._persistence.save_state_with_order(self._sessions, order)
+        self._save_state_with_order(order)
 
     def _emit(self, event) -> None:
         if self._on_event:
@@ -124,7 +125,8 @@ class SessionManager:
         name: str,
         prompt: str = "",
         features: SessionFeatures | None = None,
-        session_type: SessionType = SessionType.CLAUDE,
+        session_type: SessionType = SessionType.AI,
+        provider: str = "claude",
     ) -> Session:
         """Create a new session via pipeline.
 
@@ -132,7 +134,8 @@ class SessionManager:
             name: Display name for the session
             prompt: Optional initial prompt (AI sessions only)
             features: Optional session-level feature overrides
-            session_type: Type of session to create
+            session_type: Type of session to create (AI or SHELL)
+            provider: AI provider (claude, codex, gemini, openrouter) for AI sessions
 
         Returns:
             The created Session
@@ -141,6 +144,7 @@ class SessionManager:
             name=name,
             prompt=prompt,
             session_type=session_type,
+            provider=provider,
             features=features,
         )
 
@@ -166,6 +170,7 @@ class SessionManager:
                 state=SessionState.FAILED,
                 error_message=result.error,
                 session_type=session_type,
+                provider=provider,
             )
             self._sessions[session.id] = session
             self._emit(SessionCreated(session))
@@ -194,7 +199,8 @@ class SessionManager:
         session = Session(
             name=name,
             claude_session_id=resume_session_id,
-            session_type=SessionType.CLAUDE,
+            session_type=SessionType.AI,
+            provider="claude",
             resolved_working_dir=effective_working_dir,
             resolved_model=resolved.model,
         )
@@ -246,8 +252,8 @@ class SessionManager:
             session.error_message = None
             session.claude_session_id = ""
 
-        # For non-failed Claude sessions, try to discover session ID
-        if session.session_type == SessionType.CLAUDE and not was_failed:
+        # For non-failed Claude AI sessions, try to discover session ID
+        if session.session_type == SessionType.AI and session.provider == "claude" and not was_failed:
             if not session.claude_session_id and session.resolved_working_dir:
                 discovery = DiscoveryService(session.resolved_working_dir)
                 sessions = discovery.list_claude_sessions(
@@ -259,9 +265,9 @@ class SessionManager:
 
         command_args = self._commands.build_revive_command(session, was_failed)
 
-        # Get OpenRouter proxy env vars if enabled for Claude sessions
+        # Get OpenRouter proxy env vars if enabled for Claude AI sessions
         env_vars = None
-        if session.session_type == SessionType.CLAUDE:
+        if session.session_type == SessionType.AI and session.provider == "claude":
             resolved = self._config.resolve_features()
             if resolved.openrouter_proxy:
                 env_vars = self._commands.build_openrouter_env_vars(resolved.openrouter_proxy)
@@ -344,12 +350,12 @@ class SessionManager:
 
         self._worktree_mgr.cleanup(session)
 
-        record = self._persistence.session_to_record(session)
+        record = self._session_to_record(session)
         del self._sessions[session_id]
 
         self._emit(SessionCleaned(session_id))
-        self.save_state()
-        self._state.append_history(record, "cleaned")
+        self._save_state()
+        self._append_history(record, "cleaned")
         return True
 
     def navigate_to_worktree(self, session_id: str) -> Session | None:
@@ -476,11 +482,18 @@ class SessionManager:
                     return existing
 
         # Create new session
-        session_type = SessionType.CLAUDE if claude_session_id else SessionType.SHELL
+        if claude_session_id:
+            session_type = SessionType.AI
+            provider = "claude"
+        else:
+            session_type = SessionType.SHELL
+            provider = "claude"
+
         session = Session(
             name=tmux_name,
             claude_session_id=claude_session_id or "",
             session_type=session_type,
+            provider=provider,
             resolved_working_dir=working_dir,
         )
         session._external_tmux_name = tmux_name
@@ -522,17 +535,255 @@ class SessionManager:
         return True
 
     # -------------------------------------------------------------------------
-    # Persistence helpers
+    # State Persistence (merged from StateService)
     # -------------------------------------------------------------------------
 
-    def save_state(self) -> bool:
-        """Persist current session state to disk."""
-        return self._persistence.save_state(self._sessions)
+    def _ensure_dirs(self) -> None:
+        """Ensure required directories exist."""
+        self._base_dir.mkdir(parents=True, exist_ok=True)
+        self._history_dir.mkdir(parents=True, exist_ok=True)
+
+    def _load_state(self) -> PortalState:
+        """Load state from disk.
+
+        Returns empty state if file doesn't exist or is corrupted.
+        """
+        if not self._state_file.exists():
+            return PortalState()
+
+        try:
+            with open(self._state_file) as f:
+                data = json.load(f)
+            return PortalState.from_dict(data)
+        except (json.JSONDecodeError, KeyError, TypeError):
+            # Corrupted state - return empty
+            return PortalState()
+
+    def _save_state(self) -> bool:
+        """Save state to disk atomically.
+
+        Uses temp file + rename for atomic writes.
+        Returns True on success.
+        """
+        self._ensure_dirs()
+
+        records = [self._session_to_record(s) for s in self._sessions.values()]
+        state = PortalState(sessions=records, session_order=self._session_order)
+        state.last_updated = datetime.now().isoformat()
+
+        # Write to temp file first
+        temp_file = self._state_file.with_suffix(".tmp")
+        try:
+            with open(temp_file, "w") as f:
+                json.dump(state.to_dict(), f, indent=2)
+
+            # Atomic rename
+            temp_file.rename(self._state_file)
+            return True
+        except OSError:
+            # Clean up temp file if it exists
+            if temp_file.exists():
+                temp_file.unlink()
+            return False
+
+    def _save_state_with_order(self, order: list[str]) -> bool:
+        """Save state with custom order."""
+        self._session_order = order
+        return self._save_state()
+
+    def _append_history(self, record: SessionRecord, event: str = "update") -> None:
+        """Append a session event to today's history log.
+
+        History is stored as JSONL (one JSON object per line) for easy
+        streaming reads and appends.
+
+        Args:
+            record: Session record to log
+            event: Event type (created, updated, ended, cleaned)
+        """
+        self._ensure_dirs()
+
+        today = datetime.now().strftime("%Y-%m-%d")
+        history_file = self._history_dir / f"{today}.jsonl"
+
+        entry = {
+            "timestamp": datetime.now().isoformat(),
+            "event": event,
+            "session": record.to_dict(),
+        }
+
+        try:
+            with open(history_file, "a") as f:
+                f.write(json.dumps(entry) + "\n")
+        except OSError:
+            pass  # History is optional, don't fail on errors
+
+    def _session_to_record(self, session: Session) -> SessionRecord:
+        """Convert a Session to a persistable record."""
+        external_name = None
+        if hasattr(session, "_external_tmux_name"):
+            external_name = session._external_tmux_name
+
+        # Extract token stats if available
+        input_tokens = 0
+        output_tokens = 0
+        cache_tokens = 0
+        if session.token_stats:
+            input_tokens = session.token_stats.input_tokens
+            output_tokens = session.token_stats.output_tokens
+            cache_tokens = session.token_stats.cache_tokens
+
+        return SessionRecord(
+            id=session.id,
+            name=session.name,
+            session_type=session.session_type.value,
+            provider=session.provider,
+            state=session.state.value,
+            created_at=session.created_at.isoformat(),
+            ended_at=session.ended_at.isoformat() if session.ended_at else None,
+            claude_session_id=session.claude_session_id,
+            worktree_path=str(session.worktree_path) if session.worktree_path else None,
+            worktree_branch=session.worktree_branch,
+            working_dir=str(session.resolved_working_dir) if session.resolved_working_dir else None,
+            model=session.resolved_model.value if session.resolved_model else None,
+            external_tmux_name=external_name,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cache_tokens=cache_tokens,
+            message_count=session.message_count,
+            uses_proxy=session.uses_proxy,
+            token_history=session.token_history,
+        )
+
+    def _session_from_record(self, record: SessionRecord) -> Session | None:
+        """Reconstruct a Session from a persisted record.
+
+        Returns None if the session should not be restored (no valid resources).
+        """
+        # Parse state
+        try:
+            state = SessionState(record.state)
+        except ValueError:
+            state = SessionState.COMPLETED
+
+        # Parse session type
+        try:
+            session_type = SessionType(record.session_type)
+        except ValueError:
+            session_type = SessionType.AI
+
+        # Parse created_at
+        try:
+            created_at = datetime.fromisoformat(record.created_at)
+        except ValueError:
+            created_at = datetime.now()
+
+        # Parse ended_at
+        ended_at = None
+        if record.ended_at:
+            try:
+                ended_at = datetime.fromisoformat(record.ended_at)
+            except ValueError:
+                pass
+
+        # Determine tmux name for this session
+        if record.external_tmux_name:
+            tmux_name = record.external_tmux_name
+        else:
+            tmux_name = self._tmux_name(record.id)
+
+        # Check if tmux session still exists
+        tmux_exists = self._tmux.session_exists(tmux_name)
+        tmux_dead = tmux_exists and self._tmux.is_pane_dead(tmux_name)
+
+        # Check if worktree still exists
+        worktree_exists = (
+            record.worktree_path
+            and Path(record.worktree_path).exists()
+        )
+
+        # Decide whether to restore this session
+        # Restore if: tmux exists (alive or dead) OR worktree exists
+        if not tmux_exists and not worktree_exists:
+            return None
+
+        # Reconstruct session
+        session = Session(
+            name=record.name,
+            claude_session_id=record.claude_session_id,
+            session_type=session_type,
+            provider=record.provider,
+            created_at=created_at,
+            ended_at=ended_at,
+            resolved_working_dir=Path(record.working_dir) if record.working_dir else None,
+            worktree_path=Path(record.worktree_path) if record.worktree_path else None,
+            worktree_branch=record.worktree_branch,
+            uses_proxy=record.uses_proxy,
+            message_count=record.message_count,
+            token_history=record.token_history,
+        )
+
+        # Override the auto-generated ID with the persisted one
+        session.id = record.id
+
+        # Set tmux name (computed or external)
+        session.tmux_name = tmux_name
+        if record.external_tmux_name:
+            session._external_tmux_name = record.external_tmux_name
+
+        # Set model if available
+        if record.model:
+            try:
+                session.resolved_model = ClaudeModel(record.model)
+            except ValueError:
+                pass
+
+        # Update state based on current tmux status
+        if tmux_exists and not tmux_dead:
+            session.state = SessionState.RUNNING
+        elif state == SessionState.PAUSED:
+            # Keep paused state if worktree exists
+            session.state = SessionState.PAUSED if worktree_exists else SessionState.COMPLETED
+        elif state == SessionState.KILLED:
+            session.state = SessionState.KILLED
+        else:
+            session.state = SessionState.COMPLETED
+
+        return session
+
+    def _load_persisted_sessions_with_order(self) -> tuple[dict[str, Session], list[str]]:
+        """Load sessions and custom order from persisted state.
+
+        Returns:
+            Tuple of (sessions dict, session order list)
+        """
+        state = self._load_state()
+        sessions = {}
+
+        for record in state.sessions:
+            session = self._session_from_record(record)
+            if session:
+                sessions[session.id] = session
+
+        # Filter order to only include existing sessions
+        order = [sid for sid in state.session_order if sid in sessions]
+        return sessions, order
 
     def _persist_change(self, session: Session, event: str = "update") -> None:
         """Persist state after a session change."""
-        self.save_state()
-        self._persistence.append_history(session, event)
+        self._save_state()
+        record = self._session_to_record(session)
+        self._append_history(record, event)
+
+    # Public interface (for backward compatibility and tests)
+    def save_state(self) -> bool:
+        """Persist current session state to disk."""
+        return self._save_state()
+
+    @property
+    def base_dir(self) -> Path:
+        """Get the base directory path."""
+        return self._base_dir
 
     def validate_proxy(
         self,

@@ -22,7 +22,7 @@ class SessionListItem(Static):
         background: $surface-lighten-1;
     }
 
-    SessionListItem.grabbed {
+    SessionListItem.moving {
         background: $primary-darken-3;
     }
 
@@ -43,33 +43,23 @@ class SessionListItem(Static):
     }
     """
 
-    def __init__(self, session: Session, selected: bool = False, grabbed: bool = False) -> None:
+    def __init__(self, session: Session, selected: bool = False, moving: bool = False) -> None:
         super().__init__()
         self.session = session
         if selected:
             self.add_class("selected")
-        if grabbed:
-            self.add_class("grabbed")
+        if moving:
+            self.add_class("moving")
         self.add_class(session.state.value)
 
     def render(self) -> str:
         s = self.session
-        # Minimal format: glyph + name + age
-        # Type prefix only for non-Claude sessions
-        type_prefixes = {
-            SessionType.SHELL: "sh:",
-            SessionType.CODEX: "cx:",
-            SessionType.GEMINI: "gm:",
-            SessionType.OPENROUTER: "or:",
-        }
-        prefix = type_prefixes.get(s.session_type, "")
-        name = f"{prefix}{s.display_name}" if prefix else s.display_name
-
-        return f"{s.status_glyph}  {name:<32} {s.age_display:>5}"
+        # Minimal format: glyph + name + age (no type prefixes - cleaner)
+        return f"{s.status_glyph}  {s.display_name:<32} {s.age_display:>5}"
 
 
 class SessionList(Static, can_focus=False):
-    """List of all sessions with keyboard navigation and grab mode for reordering.
+    """List of all sessions with keyboard navigation and move mode for reordering.
 
     This widget is intentionally non-focusable - all navigation is handled
     by the MainScreen keybindings which delegate to SessionList methods.
@@ -77,7 +67,8 @@ class SessionList(Static, can_focus=False):
 
     sessions: reactive[list[Session]] = reactive(list, recompose=True)
     selected_index: reactive[int] = reactive(0)
-    grab_mode: reactive[bool] = reactive(False)
+    move_mode: reactive[bool] = reactive(False)
+    show_completed: reactive[bool] = reactive(False)
 
     DEFAULT_CSS = """
     SessionList {
@@ -101,47 +92,53 @@ class SessionList(Static, can_focus=False):
         margin-bottom: 1;
     }
 
-    SessionList .title.grab-mode {
+    SessionList .title.move-mode {
         color: $primary;
     }
     """
 
     def compose(self) -> ComposeResult:
-        if not self.sessions:
+        # Filter sessions based on show_completed
+        visible_sessions = self.sessions if self.show_completed else [s for s in self.sessions if s.is_active]
+
+        if not visible_sessions:
             yield Static("\n\n\n\n      ○\n\n    empty\n\n    n  new session", classes="empty-message")
             return
 
-        title_classes = "title grab-mode" if self.grab_mode else "title"
-        title_text = "≡ reorder" if self.grab_mode else "sessions"
+        title_classes = "title move-mode" if self.move_mode else "title"
+        title_text = "≡ move" if self.move_mode else "sessions"
         yield Static(title_text, classes=title_classes)
-        for i, session in enumerate(self.sessions):
+        for i, session in enumerate(visible_sessions):
             is_selected = i == self.selected_index
-            is_grabbed = is_selected and self.grab_mode
-            yield SessionListItem(session, selected=is_selected, grabbed=is_grabbed)
+            is_moving = is_selected and self.move_mode
+            yield SessionListItem(session, selected=is_selected, moving=is_moving)
 
     def watch_selected_index(self, index: int) -> None:
         """Emit selection event when index changes."""
-        if self.sessions and 0 <= index < len(self.sessions):
-            self.post_message(SessionSelected(self.sessions[index]))
+        visible_sessions = self.sessions if self.show_completed else [s for s in self.sessions if s.is_active]
+        if visible_sessions and 0 <= index < len(visible_sessions):
+            self.post_message(SessionSelected(visible_sessions[index]))
 
     def move_down(self) -> None:
-        """Move selection down, or move session down if in grab mode."""
-        if not self.sessions:
+        """Move selection down, or move session down if in move mode."""
+        visible_sessions = self.sessions if self.show_completed else [s for s in self.sessions if s.is_active]
+        if not visible_sessions:
             return
-        if self.grab_mode:
+        if self.move_mode:
             self._move_session_down()
         else:
-            self.selected_index = (self.selected_index + 1) % len(self.sessions)
+            self.selected_index = (self.selected_index + 1) % len(visible_sessions)
         self.refresh(recompose=True)
 
     def move_up(self) -> None:
-        """Move selection up, or move session up if in grab mode."""
-        if not self.sessions:
+        """Move selection up, or move session up if in move mode."""
+        visible_sessions = self.sessions if self.show_completed else [s for s in self.sessions if s.is_active]
+        if not visible_sessions:
             return
-        if self.grab_mode:
+        if self.move_mode:
             self._move_session_up()
         else:
-            self.selected_index = (self.selected_index - 1) % len(self.sessions)
+            self.selected_index = (self.selected_index - 1) % len(visible_sessions)
         self.refresh(recompose=True)
 
     def _move_session_down(self) -> None:
@@ -164,22 +161,23 @@ class SessionList(Static, can_focus=False):
         self.sessions = sessions
         self.selected_index = i - 1
 
-    def toggle_grab_mode(self) -> bool:
-        """Toggle grab mode for reordering. Returns new grab state."""
-        self.grab_mode = not self.grab_mode
+    def toggle_move_mode(self) -> bool:
+        """Toggle move mode for reordering. Returns new move state."""
+        self.move_mode = not self.move_mode
         self.refresh(recompose=True)
-        return self.grab_mode
+        return self.move_mode
 
-    def exit_grab_mode(self) -> None:
-        """Exit grab mode without toggling."""
-        if self.grab_mode:
-            self.grab_mode = False
+    def exit_move_mode(self) -> None:
+        """Exit move mode without toggling."""
+        if self.move_mode:
+            self.move_mode = False
             self.refresh(recompose=True)
 
     def get_selected(self) -> Session | None:
         """Get the currently selected session."""
-        if self.sessions and 0 <= self.selected_index < len(self.sessions):
-            return self.sessions[self.selected_index]
+        visible_sessions = self.sessions if self.show_completed else [s for s in self.sessions if s.is_active]
+        if visible_sessions and 0 <= self.selected_index < len(visible_sessions):
+            return visible_sessions[self.selected_index]
         return None
 
     def get_session_order(self) -> list[str]:
@@ -189,9 +187,10 @@ class SessionList(Static, can_focus=False):
     def update_sessions(self, sessions: list[Session]) -> None:
         """Update the session list."""
         self.sessions = sessions
-        # Clamp selection index
-        if self.selected_index >= len(sessions):
-            self.selected_index = max(0, len(sessions) - 1)
+        # Clamp selection index based on visible sessions
+        visible_sessions = sessions if self.show_completed else [s for s in sessions if s.is_active]
+        if self.selected_index >= len(visible_sessions):
+            self.selected_index = max(0, len(visible_sessions) - 1)
         # Force recompose to ensure UI reflects current session states
         # (reactive may not detect changes when list contents mutate in-place)
         self.refresh(recompose=True)

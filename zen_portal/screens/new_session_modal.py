@@ -8,8 +8,8 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, Checkbox, Collapsible, Input, Select, Static, TabbedContent, TabPane
 
 from ..models.session import SessionFeatures
-from ..models.new_session import NewSessionType, ResultType, NewSessionResult
-from ..services.config import ConfigManager, ClaudeModel, ALL_SESSION_TYPES
+from ..models.new_session import NewSessionType, AIProvider, ResultType, NewSessionResult
+from ..services.config import ConfigManager, ClaudeModel, ALL_SESSION_TYPES, ALL_AI_PROVIDERS
 from ..services.conflict import detect_conflicts, has_blocking_conflict, ConflictSeverity
 from ..services.discovery import DiscoveryService
 from ..services.openrouter_models import OpenRouterModelsService
@@ -86,7 +86,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
             counter += 1
         return f"{base}-{counter}"
 
-    def _get_default_name(self, session_type: NewSessionType) -> str:
+    def _get_default_name(self, session_type: NewSessionType, provider: AIProvider | None = None) -> str:
         """Generate a smart default name based on session type and context.
 
         Follows zen principles: use directory name for meaningful context,
@@ -96,14 +96,12 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         dir_name = self._initial_dir.name if self._initial_dir else ""
 
         # Fallback to session type if no directory context
-        type_fallbacks = {
-            NewSessionType.CLAUDE: "claude",
-            NewSessionType.CODEX: "codex",
-            NewSessionType.GEMINI: "gemini",
-            NewSessionType.SHELL: "shell",
-            NewSessionType.OPENROUTER: "openrouter",
-        }
-        fallback = type_fallbacks.get(session_type, "session")
+        if session_type == NewSessionType.AI and provider:
+            fallback = provider.value
+        elif session_type == NewSessionType.SHELL:
+            fallback = "shell"
+        else:
+            fallback = "session"
 
         base = dir_name or fallback
         return self._generate_unique_name(base)
@@ -137,7 +135,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         type_options = [
             (st.value, st) for st in NewSessionType if st in self._enabled_types
         ]
-        default_type = self._enabled_types[0] if self._enabled_types else NewSessionType.CLAUDE
+        default_type = self._enabled_types[0] if self._enabled_types else NewSessionType.AI
 
         # Type selector (hidden if only one type)
         if len(type_options) > 1:
@@ -146,10 +144,16 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         else:
             yield Select(type_options, value=default_type, id="type-select", classes="hidden")
 
+        # Provider selector (for AI sessions)
+        provider_options = [(p.value, p) for p in AIProvider]
+        default_provider = AIProvider.CLAUDE
+        yield Static("provider", classes="field-label", id="provider-label")
+        yield Select(provider_options, value=default_provider, id="provider-select")
+
         yield Static("name", classes="field-label")
         yield Input(
             placeholder="session name",
-            value=self._get_default_name(default_type),
+            value=self._get_default_name(default_type, default_provider if default_type == NewSessionType.AI else None),
             id="name-input",
             classes="field-input",
         )
@@ -211,21 +215,18 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         """Check for conflicts and update hint."""
         name = self.query_one("#name-input", Input).value.strip()
         type_select = self.query_one("#type-select", Select)
-        session_type = type_select.value if type_select.value is not Select.BLANK else NewSessionType.CLAUDE
+        session_type = type_select.value if type_select.value is not Select.BLANK else NewSessionType.AI
 
         # Convert NewSessionType to SessionType for conflict detection
         from ..models.session import SessionType
         session_type_map = {
-            NewSessionType.CLAUDE: SessionType.CLAUDE,
-            NewSessionType.CODEX: SessionType.CODEX,
-            NewSessionType.GEMINI: SessionType.GEMINI,
+            NewSessionType.AI: SessionType.AI,
             NewSessionType.SHELL: SessionType.SHELL,
-            NewSessionType.OPENROUTER: SessionType.OPENROUTER,
         }
 
         conflicts = detect_conflicts(
             name=name,
-            session_type=session_type_map.get(session_type, SessionType.CLAUDE),
+            session_type=session_type_map.get(session_type, SessionType.AI),
             existing=self._existing_sessions,
             max_sessions=self._max_sessions,
         )
@@ -266,14 +267,23 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
             return
 
         default_type = self._enabled_types[0]
-        is_ai = default_type in (NewSessionType.CLAUDE, NewSessionType.CODEX, NewSessionType.GEMINI, NewSessionType.OPENROUTER)
-        is_claude = default_type == NewSessionType.CLAUDE
+        is_ai = default_type == NewSessionType.AI
         is_shell = default_type == NewSessionType.SHELL
 
+        # Show provider selector only for AI sessions
+        self.query_one("#provider-label", Static).display = is_ai
+        self.query_one("#provider-select", Select).display = is_ai
+
+        # Show prompt for AI sessions
         self.query_one("#prompt-label", Static).display = is_ai
         self.query_one("#prompt-input", Input).display = is_ai
+
+        # Show advanced config only for Claude provider
+        provider_select = self.query_one("#provider-select", Select)
+        is_claude = is_ai and provider_select.value == AIProvider.CLAUDE
         self.query_one("#advanced-config", Collapsible).display = is_claude
 
+        # Show shell options only for shell sessions
         shell_options = self.query_one("#shell-options", Horizontal)
         shell_options.remove_class("hidden") if is_shell else shell_options.add_class("hidden")
 
@@ -286,24 +296,48 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         """Handle select changes."""
         if event.select.id == "type-select":
             self._handle_type_change(event.value)
+        elif event.select.id == "provider-select":
+            self._handle_provider_change(event.value)
 
     def _handle_type_change(self, value) -> None:
         """Handle session type changes."""
-        is_ai = value in (NewSessionType.CLAUDE, NewSessionType.CODEX, NewSessionType.GEMINI, NewSessionType.OPENROUTER)
-        is_claude = value == NewSessionType.CLAUDE
+        is_ai = value == NewSessionType.AI
         is_shell = value == NewSessionType.SHELL
 
+        # Show/hide provider selector
+        self.query_one("#provider-label", Static).display = is_ai
+        self.query_one("#provider-select", Select).display = is_ai
+
+        # Show/hide prompt for AI sessions
         self.query_one("#prompt-label", Static).display = is_ai
         self.query_one("#prompt-input", Input).display = is_ai
+
+        # Show/hide advanced config (only for Claude)
+        provider_select = self.query_one("#provider-select", Select)
+        is_claude = is_ai and provider_select.value == AIProvider.CLAUDE
         self.query_one("#advanced-config", Collapsible).display = is_claude
 
+        # Show/hide shell options
         shell_options = self.query_one("#shell-options", Horizontal)
         shell_options.remove_class("hidden") if is_shell else shell_options.add_class("hidden")
 
         # Auto-update name if not customized
         name_input = self.query_one("#name-input", Input)
+        provider = provider_select.value if is_ai else None
         if name_input.value.startswith("session") or name_input.value.startswith(self._initial_dir.name):
-            name_input.value = self._get_default_name(value)
+            name_input.value = self._get_default_name(value, provider)
+
+    def _handle_provider_change(self, value: AIProvider) -> None:
+        """Handle AI provider changes."""
+        # Show advanced config only for Claude
+        is_claude = value == AIProvider.CLAUDE
+        self.query_one("#advanced-config", Collapsible).display = is_claude
+
+        # Auto-update name if not customized
+        name_input = self.query_one("#name-input", Input)
+        if name_input.value.startswith("session") or name_input.value.startswith(self._initial_dir.name):
+            type_select = self.query_one("#type-select", Select)
+            name_input.value = self._get_default_name(type_select.value, value)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "browse-btn":
@@ -552,27 +586,32 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         type_select = self.query_one("#type-select", Select)
         session_type = type_select.value
         if session_type is Select.BLANK:
-            session_type = NewSessionType.CLAUDE
+            session_type = NewSessionType.AI
+
+        # Get provider for AI sessions
+        provider_select = self.query_one("#provider-select", Select)
+        provider = provider_select.value if provider_select.value is not Select.BLANK else AIProvider.CLAUDE
 
         prompt = ""
         model = None
         use_worktree = None
 
-        if session_type == NewSessionType.CLAUDE:
+        if session_type == NewSessionType.AI:
             prompt = self.query_one("#prompt-input", Input).value.strip()
-            model_select = self.query_one("#model-select", Select)
-            model = model_select.value if model_select.value is not Select.BLANK else None
-            worktree_check = self.query_one("#worktree-check", Checkbox)
-            use_worktree = worktree_check.value if worktree_check.value else None
 
-            # Handle billing mode / proxy settings
-            try:
-                self.query_one("#billing-widget", BillingWidget).save_settings()
-            except Exception:
-                pass
+            # Advanced options only for Claude
+            if provider == AIProvider.CLAUDE:
+                model_select = self.query_one("#model-select", Select)
+                model = model_select.value if model_select.value is not Select.BLANK else None
+                worktree_check = self.query_one("#worktree-check", Checkbox)
+                use_worktree = worktree_check.value if worktree_check.value else None
 
-        elif session_type in (NewSessionType.CODEX, NewSessionType.GEMINI, NewSessionType.OPENROUTER):
-            prompt = self.query_one("#prompt-input", Input).value.strip()
+                # Handle billing mode / proxy settings
+                try:
+                    self.query_one("#billing-widget", BillingWidget).save_settings()
+                except Exception:
+                    pass
+
         elif session_type == NewSessionType.SHELL:
             shell_worktree = self.query_one("#shell-worktree-check", Checkbox)
             use_worktree = shell_worktree.value if shell_worktree.value else None
@@ -591,7 +630,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         # Save as default if checked
         if self.query_one("#set-default-dir-check", Checkbox).value:
             from ..services.config import FeatureSettings
-            self._config.update_portal_features(FeatureSettings(working_dir=working_dir))
+            self._config.update_project_features(FeatureSettings(working_dir=working_dir))
 
         dangerous_check = self.query_one("#dangerous-check", Checkbox)
         features = SessionFeatures(
@@ -607,6 +646,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
             prompt=prompt,
             features=features,
             session_type=session_type,
+            provider=provider,
         ))
 
     def _submit_attach(self) -> None:

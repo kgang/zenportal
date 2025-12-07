@@ -22,29 +22,33 @@ _MAX_URL_LENGTH = 2048
 class SessionCommandBuilder:
     """Builds shell commands for different session types."""
 
-    # Binary required for each session type
-    BINARY_MAP = {
-        SessionType.CLAUDE: "claude",
-        SessionType.CODEX: "codex",
-        SessionType.GEMINI: "gemini",
-        SessionType.SHELL: "zsh",
-        SessionType.OPENROUTER: "orchat",
+    # Binary required for each AI provider
+    AI_PROVIDER_BINARY_MAP = {
+        "claude": "claude",
+        "codex": "codex",
+        "gemini": "gemini",
+        "openrouter": "orchat",
     }
 
-    def validate_binary(self, session_type: SessionType) -> str | None:
+    def validate_binary(self, session_type: SessionType, provider: str = "claude") -> str | None:
         """Check if the required binary exists for the session type.
 
         Returns error message if binary not found, None if valid.
         """
-        binary = self.BINARY_MAP.get(session_type)
-        if binary and not shutil.which(binary):
-            return f"Command '{binary}' not found in PATH"
+        if session_type == SessionType.AI:
+            binary = self.AI_PROVIDER_BINARY_MAP.get(provider)
+            if binary and not shutil.which(binary):
+                return f"Command '{binary}' not found in PATH"
+        elif session_type == SessionType.SHELL:
+            if not shutil.which("zsh"):
+                return "Command 'zsh' not found in PATH"
         return None
 
     def build_create_command(
         self,
         session_type: SessionType,
         working_dir: Path,
+        provider: str = "claude",
         model: ClaudeModel | None = None,
         prompt: str = "",
         dangerous_mode: bool = False,
@@ -52,38 +56,45 @@ class SessionCommandBuilder:
         """Build command args for creating a new session.
 
         Args:
-            session_type: Type of session to create
+            session_type: Type of session to create (AI or SHELL)
             working_dir: Working directory for the session
-            model: Claude model to use (Claude sessions only)
-            prompt: Initial prompt (Claude/Codex/Gemini only)
+            provider: AI provider (claude, codex, gemini, openrouter) for AI sessions
+            model: Claude model to use (Claude provider only)
+            prompt: Initial prompt (AI sessions only)
             dangerous_mode: Skip permissions (Claude only)
 
         Returns:
             List of command arguments
         """
-        if session_type == SessionType.CLAUDE:
-            command_args = ["claude"]
-            if model:
-                command_args.extend(["--model", model.value])
-            if dangerous_mode:
-                command_args.append("--dangerously-skip-permissions")
-            if prompt:
-                command_args.append(prompt)
+        if session_type == SessionType.AI:
+            if provider == "claude":
+                command_args = ["claude"]
+                if model:
+                    command_args.extend(["--model", model.value])
+                if dangerous_mode:
+                    command_args.append("--dangerously-skip-permissions")
+                if prompt:
+                    command_args.append(prompt)
 
-        elif session_type == SessionType.CODEX:
-            command_args = ["codex", "--cd", str(working_dir)]
-            if prompt:
-                command_args.append(prompt)
+            elif provider == "codex":
+                command_args = ["codex", "--cd", str(working_dir)]
+                if prompt:
+                    command_args.append(prompt)
 
-        elif session_type == SessionType.GEMINI:
-            command_args = ["gemini"]
-            if prompt:
-                command_args.extend(["-p", prompt])
+            elif provider == "gemini":
+                command_args = ["gemini"]
+                if prompt:
+                    command_args.extend(["-p", prompt])
 
-        elif session_type == SessionType.OPENROUTER:
-            command_args = ["orchat"]
-            # Note: model selection handled via orchat's /model command
-            # or --model flag if provided via config
+            elif provider == "openrouter":
+                command_args = ["orchat"]
+                # Note: model selection handled via orchat's /model command
+                # or --model flag if provided via config
+            else:
+                # Fallback to Claude
+                command_args = ["claude"]
+                if prompt:
+                    command_args.append(prompt)
 
         else:
             # Shell session - start user's default shell with login profile
@@ -108,36 +119,42 @@ class SessionCommandBuilder:
         if session.session_type == SessionType.SHELL:
             return ["zsh", "-l"]
 
-        elif session.session_type == SessionType.CODEX:
-            return ["codex", "resume", "--last"]
+        elif session.session_type == SessionType.AI:
+            provider = session.provider
 
-        elif session.session_type == SessionType.GEMINI:
-            return ["gemini", "--resume"]
+            if provider == "codex":
+                return ["codex", "resume", "--last"]
 
-        elif session.session_type == SessionType.OPENROUTER:
-            # orchat has session management via /sessions command
-            # Start fresh for revive
-            return ["orchat"]
+            elif provider == "gemini":
+                return ["gemini", "--resume"]
 
-        else:
-            # Claude session
-            if was_failed:
-                # Failed session - start fresh
-                command_args = ["claude"]
+            elif provider == "openrouter":
+                # orchat has session management via /sessions command
+                # Start fresh for revive
+                return ["orchat"]
+
             else:
-                # Completed/paused - try to resume
-                if session.claude_session_id:
-                    command_args = ["claude", "--resume", session.claude_session_id]
+                # Claude session (default)
+                if was_failed:
+                    # Failed session - start fresh
+                    command_args = ["claude"]
                 else:
-                    # No session ID - use --continue
-                    command_args = ["claude", "--continue"]
+                    # Completed/paused - try to resume
+                    if session.claude_session_id:
+                        command_args = ["claude", "--resume", session.claude_session_id]
+                    else:
+                        # No session ID - use --continue
+                        command_args = ["claude", "--continue"]
 
-            if session.resolved_model:
-                command_args.extend(["--model", session.resolved_model.value])
-            if session.dangerously_skip_permissions:
-                command_args.append("--dangerously-skip-permissions")
+                if session.resolved_model:
+                    command_args.extend(["--model", session.resolved_model.value])
+                if session.dangerously_skip_permissions:
+                    command_args.append("--dangerously-skip-permissions")
 
-            return command_args
+                return command_args
+
+        # Fallback to shell
+        return ["zsh", "-l"]
 
     def build_resume_command(
         self,

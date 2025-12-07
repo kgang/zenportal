@@ -1,6 +1,6 @@
 # HYDRATE.md
 
-> Quick context for Claude Code sessions. Last updated: 2025-12-07 (v0.4.13)
+> Quick context for Claude Code sessions. Last updated: 2025-12-07 (v0.5.0 - zen simplification)
 
 ## Essence
 
@@ -11,7 +11,7 @@ zen                              # run
 uv run pytest zen_portal/tests/  # test
 ```
 
-Supports Claude Code, OpenAI Codex, Google Gemini CLI, OpenRouter, and shell sessions with git worktree isolation.
+Two session types: **AI** (with provider: claude, codex, gemini, openrouter) and **Shell**.
 
 ---
 
@@ -40,14 +40,11 @@ zen_portal/
 
 ## Core Concepts
 
-**Session types**: `CLAUDE`, `CODEX`, `GEMINI`, `SHELL`, `OPENROUTER`
+**Session types**: `AI` (with provider field), `SHELL`
 
-**Session states**: `RUNNING` (●), `COMPLETED` (○), `PAUSED` (◐), `FAILED`/`KILLED` (·)
+**Session states**: `RUNNING` (▪), not running (▫) - binary indicators
 
-**Config tiers**: session > portal > config > defaults
-- Config: `~/.config/zen-portal/config.json`
-- Portal: `~/.config/zen-portal/portal.json`
-- State: `~/.zen_portal/state.json`
+**Config**: `~/.config/zen-portal/config.json`, State: `~/.zen_portal/state.json`
 
 ---
 
@@ -55,15 +52,19 @@ zen_portal/
 
 ```
 j/k     navigate          n    new session
-l/space grab mode         p    pause
+l       move mode         p    pause
 a       attach tmux       x    kill
 v       revive            d    clean
 e       rename            c    config
 i       insert            /    zen ai
-?       help              q    quit
+I       info panel        S    search output
+C       show completed    ?    help
+q       quit
 ```
 
-**Grab mode**: `l` or `space` to enter, `j/k` reorders, `esc` exits
+**Move mode**: `l` to enter, `j/k` reorders, `esc` exits
+
+**Completed sessions**: hidden by default, `C` to toggle visibility
 
 **Navigation invariants**: `j/k` vertical, `h/l` horizontal, `f` expand, `esc` cancel
 
@@ -106,21 +107,13 @@ i       insert            /    zen ai
 
 Parsed from Claude's JSONL at `~/.claude/projects/`. Format: `tokens  12.5k  (8.2k↓ 4.3k↑)`
 
+**Token drains** (research): Leverage unused token capacity for background tasks (session reflection, code review, docs). See `research/TOKEN_DRAINS.md`.
+
 ---
 
 ## Zen AI
 
-Press `/` for quick AI queries with context references:
-
-| ref | expands to |
-|-----|------------|
-| `@output` | last 100 lines |
-| `@error` | recent error |
-| `@git` | branch, status, commits |
-| `@session` | metadata |
-| `@all` | full context |
-
-Example: `why is @error happening?`
+Press `/` for quick AI queries. Context is automatically included (session output, errors, git status). Just ask naturally - no @ references needed.
 
 ---
 
@@ -132,7 +125,7 @@ Example: `why is @error happening?`
 
 **Colors**: `$text` primary, `$text-muted` secondary, `$text-disabled` hints
 
-**Session prefixes**: Claude (none), Shell `sh:`, Codex `cx:`, Gemini `gm:`, OpenRouter `or:`
+**Session display**: No prefixes - clean names only. Type indicated by context.
 
 **Elastic modals**: `height: auto; max-height: 90%` on dialog, `min-height: 0` on contents
 
@@ -140,20 +133,18 @@ Example: `why is @error happening?`
 
 ## Eye Strain Reduction
 
-Output view echoes selection: `● session-name  ·  active  ·  2h` in header.
+Output view echoes selection: `▪ session-name  active  2h` in header.
 Notifications bottom-left. Quick modals use `.modal-left` class.
+Completed sessions hidden by default (less visual clutter).
 
 ---
 
 ## Common Tasks
 
-### Add session type
-1. `models/session.py` - add to `SessionType` enum
-2. `models/new_session.py` - add to `NewSessionType`
-3. `services/session_commands.py` - add binary and commands
-4. `services/config.py` - add to `ALL_SESSION_TYPES`
-5. `screens/main.py` - add type mapping
-6. `widgets/session_list.py` - add prefix
+### Add AI provider
+1. `models/session.py` - add provider string option
+2. `services/session_commands.py` - add binary and commands for new provider
+3. `screens/new_session_modal.py` - add to provider dropdown
 
 ### Add keybinding
 1. `screens/main.py` - add to `BINDINGS`, implement `action_<name>()`

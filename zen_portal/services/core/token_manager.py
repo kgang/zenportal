@@ -30,7 +30,9 @@ class TokenManager:
         Returns:
             True if any stats were updated
         """
-        if session.session_type != SessionType.CLAUDE:
+        # Token tracking only for Claude AI sessions
+        if (session.session_type != SessionType.AI
+            or getattr(session, 'provider', 'claude') != 'claude'):
             return False
 
         # Auto-discover claude_session_id if missing

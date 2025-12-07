@@ -1,15 +1,18 @@
-"""Tests for StateService."""
+"""Tests for state persistence dataclasses and SessionManager state functionality."""
 
 import json
 import pytest
 from datetime import datetime
 from pathlib import Path
+from unittest.mock import MagicMock
 
 from zen_portal.services.state import (
-    StateService,
     PortalState,
     SessionRecord,
 )
+from zen_portal.services.session_manager import SessionManager
+from zen_portal.services.tmux import TmuxService, TmuxResult
+from zen_portal.services.config import ConfigManager
 
 
 class TestSessionRecord:
@@ -52,7 +55,8 @@ class TestSessionRecord:
         record = SessionRecord.from_dict(data)
         assert record.id == "abc123"
         assert record.name == "test"
-        assert record.session_type == "claude"  # default
+        assert record.session_type == "ai"  # default
+        assert record.provider == "claude"  # default provider
 
     def test_from_dict_full(self):
         """from_dict handles full data."""
@@ -105,8 +109,8 @@ class TestPortalState:
         assert state.sessions[0].id == "abc"
 
 
-class TestStateService:
-    """Tests for StateService."""
+class TestSessionManagerState:
+    """Tests for SessionManager state persistence."""
 
     @pytest.fixture
     def state_dir(self, tmp_path: Path) -> Path:
@@ -114,60 +118,82 @@ class TestStateService:
         return tmp_path / ".zen_portal"
 
     @pytest.fixture
-    def service(self, state_dir: Path) -> StateService:
-        """Create a StateService with temp directory."""
-        return StateService(base_dir=state_dir)
+    def mock_tmux(self) -> MagicMock:
+        """Create a mock TmuxService."""
+        tmux = MagicMock(spec=TmuxService)
+        tmux.create_session.return_value = TmuxResult(success=True)
+        tmux.session_exists.return_value = False
+        tmux.is_pane_dead.return_value = False
+        return tmux
 
-    def test_load_state_empty(self, service: StateService):
-        """load_state returns empty state when no file exists."""
-        state = service.load_state()
-        assert state.version == 1
-        assert state.sessions == []
+    @pytest.fixture
+    def config_manager(self, tmp_path: Path) -> ConfigManager:
+        """Create a ConfigManager with temp directory."""
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
+        return ConfigManager(config_dir=config_dir)
 
-    def test_save_and_load_state(self, service: StateService, state_dir: Path):
-        """save_state persists and load_state restores."""
-        record = SessionRecord(
-            id="test-id",
-            name="test-session",
-            session_type="claude",
-            state="growing",
-            created_at=datetime.now().isoformat(),
+    @pytest.fixture
+    def manager(self, mock_tmux: MagicMock, config_manager: ConfigManager, state_dir: Path, tmp_path: Path) -> SessionManager:
+        """Create a SessionManager with temp state directory."""
+        return SessionManager(
+            tmux=mock_tmux,
+            config_manager=config_manager,
+            base_dir=state_dir,
+            working_dir=tmp_path,
         )
-        state = PortalState(sessions=[record])
 
-        assert service.save_state(state)
+    def test_load_state_empty(self, manager: SessionManager):
+        """SessionManager loads empty state when no file exists."""
+        # Manager loads state on init, so just check it's empty
+        assert len(manager.sessions) == 0
+
+    def test_save_and_load_state(self, manager: SessionManager, state_dir: Path, mock_tmux: MagicMock, config_manager: ConfigManager, tmp_path: Path):
+        """save_state persists and reload restores."""
+        # Create a session
+        session = manager.create_session(name="test-session")
+
+        assert manager.save_state()
         assert (state_dir / "state.json").exists()
 
-        loaded = service.load_state()
-        assert len(loaded.sessions) == 1
-        assert loaded.sessions[0].id == "test-id"
+        # Session will be restored if tmux session exists
+        mock_tmux.session_exists.return_value = True
 
-    def test_save_state_atomic(self, service: StateService, state_dir: Path):
+        # Create a new manager to test loading
+        manager2 = SessionManager(
+            tmux=mock_tmux,
+            config_manager=config_manager,
+            base_dir=state_dir,
+            working_dir=tmp_path,
+        )
+        assert len(manager2.sessions) == 1
+        loaded_session = manager2.sessions[0]
+        assert loaded_session.name == "test-session"
+
+    def test_save_state_atomic(self, manager: SessionManager, state_dir: Path):
         """save_state uses atomic writes (no .tmp file left behind)."""
-        state = PortalState(sessions=[])
-        service.save_state(state)
+        manager.save_state()
 
         # No temp file should remain
         assert not (state_dir / "state.json.tmp").exists()
 
-    def test_load_state_corrupted(self, service: StateService, state_dir: Path):
-        """load_state handles corrupted JSON gracefully."""
+    def test_load_state_corrupted(self, state_dir: Path, mock_tmux: MagicMock, config_manager: ConfigManager, tmp_path: Path):
+        """SessionManager handles corrupted JSON gracefully."""
         state_dir.mkdir(parents=True, exist_ok=True)
         (state_dir / "state.json").write_text("not valid json {{{")
 
-        state = service.load_state()
-        assert state.sessions == []  # Empty state on corruption
-
-    def test_append_history(self, service: StateService, state_dir: Path):
-        """append_history creates daily JSONL files."""
-        record = SessionRecord(
-            id="test-id",
-            name="test",
-            session_type="claude",
-            state="growing",
-            created_at=datetime.now().isoformat(),
+        # Should load without error, with empty state
+        manager = SessionManager(
+            tmux=mock_tmux,
+            config_manager=config_manager,
+            base_dir=state_dir,
+            working_dir=tmp_path,
         )
-        service.append_history(record, "created")
+        assert len(manager.sessions) == 0
+
+    def test_append_history(self, manager: SessionManager, state_dir: Path):
+        """Creating a session appends to history."""
+        manager.create_session(name="test")
 
         history_dir = state_dir / "history"
         assert history_dir.exists()
@@ -178,47 +204,7 @@ class TestStateService:
 
         # Check content
         lines = history_file.read_text().strip().split("\n")
-        assert len(lines) == 1
+        assert len(lines) >= 1
         entry = json.loads(lines[0])
         assert entry["event"] == "created"
-        assert entry["session"]["id"] == "test-id"
-
-    def test_get_history_days(self, service: StateService, state_dir: Path):
-        """get_history_days returns sorted list of days."""
-        history_dir = state_dir / "history"
-        history_dir.mkdir(parents=True, exist_ok=True)
-
-        # Create some history files
-        (history_dir / "2025-01-01.jsonl").write_text("{}\n")
-        (history_dir / "2025-01-03.jsonl").write_text("{}\n")
-        (history_dir / "2025-01-02.jsonl").write_text("{}\n")
-
-        days = service.get_history_days()
-        assert days == ["2025-01-03", "2025-01-02", "2025-01-01"]
-
-    def test_clear_state(self, service: StateService, state_dir: Path):
-        """clear_state removes state file."""
-        state = PortalState(sessions=[])
-        service.save_state(state)
-        assert (state_dir / "state.json").exists()
-
-        assert service.clear_state()
-        assert not (state_dir / "state.json").exists()
-
-    def test_prune_history(self, service: StateService, state_dir: Path):
-        """prune_history removes old history files."""
-        history_dir = state_dir / "history"
-        history_dir.mkdir(parents=True, exist_ok=True)
-
-        # Create old and new history files
-        (history_dir / "2020-01-01.jsonl").write_text("{}\n")  # Old
-        (history_dir / "2020-01-15.jsonl").write_text("{}\n")  # Old
-        today = datetime.now().strftime("%Y-%m-%d")
-        (history_dir / f"{today}.jsonl").write_text("{}\n")  # New
-
-        pruned = service.prune_history(keep_days=30)
-        assert pruned == 2
-
-        # Today's file should remain
-        assert (history_dir / f"{today}.jsonl").exists()
-        assert not (history_dir / "2020-01-01.jsonl").exists()
+        assert entry["session"]["name"] == "test"

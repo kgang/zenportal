@@ -232,12 +232,12 @@ class BillingWidget(Static):
                     default_model=self.get_model(),
                 )
                 config = self._config.config
-                config.features.openrouter_proxy = proxy_settings
+                config.defaults.openrouter_proxy = proxy_settings
                 self._config.save_config(config)
             else:
                 config = self._config.config
-                if config.features.openrouter_proxy:
-                    config.features.openrouter_proxy.enabled = False
+                if config.defaults.openrouter_proxy:
+                    config.defaults.openrouter_proxy.enabled = False
                     self._config.save_config(config)
         except Exception:
             pass  # Non-critical - continue with session creation

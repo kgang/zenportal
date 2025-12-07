@@ -19,7 +19,8 @@ class CreateContext:
     # Input parameters
     name: str
     prompt: str = ""
-    session_type: SessionType = SessionType.CLAUDE
+    session_type: SessionType = SessionType.AI
+    provider: str = "claude"  # AI provider for AI sessions
     features: SessionFeatures | None = None
 
     # Resolved configuration
@@ -64,7 +65,7 @@ class ResolveConfig:
         if ctx.features and ctx.features.has_overrides():
             session_override = FeatureSettings(
                 working_dir=ctx.features.working_dir,
-                model=ctx.features.model if ctx.session_type == SessionType.CLAUDE else None,
+                model=ctx.features.model if ctx.session_type == SessionType.AI and ctx.provider == "claude" else None,
             )
 
         resolved = self._config.resolve_features(session_override)
@@ -72,9 +73,10 @@ class ResolveConfig:
         ctx.working_dir = resolved.working_dir or self._fallback
         ctx.dangerous_mode = ctx.features.dangerously_skip_permissions if ctx.features else False
 
-        # Check if using proxy
+        # Check if using proxy (only for Claude AI sessions)
         ctx.uses_proxy = bool(
-            ctx.session_type == SessionType.CLAUDE
+            ctx.session_type == SessionType.AI
+            and ctx.provider == "claude"
             and resolved.openrouter_proxy
             and resolved.openrouter_proxy.enabled
         )
@@ -88,16 +90,17 @@ class CreateSessionModel:
     def invoke(self, ctx: CreateContext) -> StepResult[CreateContext]:
         session = Session(
             name=ctx.name,
-            prompt=ctx.prompt if ctx.session_type == SessionType.CLAUDE else "",
+            prompt=ctx.prompt if ctx.session_type == SessionType.AI else "",
             session_type=ctx.session_type,
+            provider=ctx.provider if ctx.session_type == SessionType.AI else "claude",
             features=ctx.features or SessionFeatures(),
             resolved_working_dir=ctx.working_dir,
-            resolved_model=ctx.resolved_config.model if ctx.session_type == SessionType.CLAUDE else None,
+            resolved_model=ctx.resolved_config.model if ctx.session_type == SessionType.AI and ctx.provider == "claude" else None,
             dangerously_skip_permissions=ctx.dangerous_mode,
             uses_proxy=ctx.uses_proxy,
         )
 
-        if ctx.session_type == SessionType.CLAUDE:
+        if ctx.session_type == SessionType.AI and ctx.provider == "claude":
             session.claude_session_id = ""  # Discovered later
 
         ctx.session = session
@@ -129,7 +132,7 @@ class ValidateBinary:
         self._commands = commands
 
     def invoke(self, ctx: CreateContext) -> StepResult[CreateContext]:
-        error = self._commands.validate_binary(ctx.session_type)
+        error = self._commands.validate_binary(ctx.session_type, ctx.provider)
         if error:
             return StepResult.fail(error)
         return StepResult.success(ctx)
@@ -143,7 +146,8 @@ class ValidateProxy:
             return StepResult.success(ctx)
 
         proxy = ctx.resolved_config.openrouter_proxy
-        if ctx.session_type != SessionType.CLAUDE or not proxy:
+        # Only validate proxy for Claude AI sessions
+        if ctx.session_type != SessionType.AI or ctx.provider != "claude" or not proxy:
             return StepResult.success(ctx)
 
         validator = ProxyValidator(proxy)
@@ -167,14 +171,15 @@ class BuildCommand:
         command_args = self._commands.build_create_command(
             session_type=ctx.session_type,
             working_dir=ctx.working_dir,
+            provider=ctx.provider,
             model=ctx.resolved_config.model,
             prompt=ctx.prompt,
             dangerous_mode=ctx.dangerous_mode,
         )
 
-        # Build env vars for proxy
+        # Build env vars for proxy (only for Claude AI sessions)
         env_vars = None
-        if ctx.session_type == SessionType.CLAUDE and ctx.resolved_config.openrouter_proxy:
+        if ctx.session_type == SessionType.AI and ctx.provider == "claude" and ctx.resolved_config.openrouter_proxy:
             env_vars = self._commands.build_proxy_env_vars(ctx.resolved_config.openrouter_proxy)
 
         ctx.command = self._commands.wrap_with_banner(

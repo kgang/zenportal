@@ -202,7 +202,8 @@ class TestGatherContext:
         """Gather basic session context."""
         session = MagicMock(spec=Session)
         session.display_name = "zen-test"
-        session.session_type = SessionType.CLAUDE
+        session.session_type = SessionType.AI
+        session.provider = "claude"
         session.state = SessionState.RUNNING
         session.age_display = "5m"
         session.resolved_model = MagicMock(value="sonnet")
@@ -223,7 +224,8 @@ class TestGatherContext:
         """Gather output context calls manager."""
         session = MagicMock(spec=Session)
         session.display_name = "test"
-        session.session_type = SessionType.CLAUDE
+        session.session_type = SessionType.AI
+        session.provider = "claude"
         session.state = SessionState.RUNNING
         session.age_display = "1m"
         session.resolved_model = None
@@ -242,7 +244,8 @@ class TestGatherContext:
         """Gather error context from session."""
         session = MagicMock(spec=Session)
         session.display_name = "test"
-        session.session_type = SessionType.CLAUDE
+        session.session_type = SessionType.AI
+        session.provider = "claude"
         session.state = SessionState.FAILED
         session.age_display = "1m"
         session.resolved_model = None
