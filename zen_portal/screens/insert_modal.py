@@ -46,6 +46,7 @@ SPECIAL_KEYS = {
     "ctrl+l": ("C-l", "^L"),
     "ctrl+a": ("C-a", "^A"),
     "ctrl+e": ("C-e", "^E"),
+    "ctrl+t": ("C-t", "^T"),
     "ctrl+up": ("C-Up", "^↑"),
     "ctrl+down": ("C-Down", "^↓"),
     "ctrl+left": ("C-Left", "^←"),

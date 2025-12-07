@@ -111,6 +111,7 @@ class SessionPersistence:
             resolved_working_dir=Path(record.working_dir) if record.working_dir else None,
             worktree_path=Path(record.worktree_path) if record.worktree_path else None,
             worktree_branch=record.worktree_branch,
+            uses_proxy=record.uses_proxy,
         )
 
         # Override the auto-generated ID with the persisted one
@@ -172,6 +173,7 @@ class SessionPersistence:
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cache_tokens=cache_tokens,
+            uses_proxy=session.uses_proxy,
         )
 
     def save_state(self, sessions: dict[str, Session]) -> bool:

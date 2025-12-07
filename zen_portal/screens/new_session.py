@@ -723,7 +723,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         """Create a new session."""
         name = self.query_one("#name-input", Input).value.strip()
         if not name:
-            self.app.notify("enter a session name", severity="warning")
+            self.post_message(self.app.notifications.warning("enter a session name"))
             return
 
         type_select = self.query_one("#type-select", Select)
@@ -818,7 +818,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         """Attach to external tmux session."""
         session = self._attach_list.get_selected()
         if not session:
-            self.app.notify("no sessions to attach", severity="warning")
+            self.post_message(self.app.notifications.warning("no sessions to attach"))
             return
         self.dismiss(NewSessionResult(result_type=ResultType.ATTACH, tmux_session=session))
 
@@ -826,6 +826,6 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         """Resume a Claude session."""
         session = self._resume_list.get_selected()
         if not session:
-            self.app.notify("no sessions to resume", severity="warning")
+            self.post_message(self.app.notifications.warning("no sessions to resume"))
             return
         self.dismiss(NewSessionResult(result_type=ResultType.RESUME, claude_session=session))

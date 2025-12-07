@@ -167,7 +167,7 @@ class AttachSessionModal(ModalScreen[AttachSessionResult | None]):
 
     def action_select(self) -> None:
         if not self._sessions:
-            self.app.notify("no session to attach", severity="warning")
+            self.post_message(self.app.notifications.warning("no session to attach"))
             return
 
         if self._selected_index >= len(self._sessions):

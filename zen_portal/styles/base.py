@@ -110,5 +110,54 @@ COMMON_CSS = """
 }
 """
 
+# Notification styles - zen minimalism
+NOTIFICATION_CSS = """
+/* Notification rack positioning */
+ZenNotificationRack {
+    dock: bottom;
+    align: right bottom;
+    height: auto;
+    max-height: 3;
+    layer: notification;
+    margin: 0 2 2 0;
+    width: auto;
+    max-width: 50%;
+}
+
+/* Base notification styling */
+ZenNotification {
+    height: 1;
+    padding: 0 2;
+    background: $surface;
+    border: round $surface-lighten-1;
+    color: $text-muted;
+}
+
+/* Severity variants */
+ZenNotification.-success {
+    border: round $surface-lighten-1;
+    color: $text-muted;
+}
+
+ZenNotification.-warning {
+    border: round $warning-darken-2;
+    color: $warning;
+}
+
+ZenNotification.-error {
+    border: round $error-darken-2;
+    color: $error;
+}
+
+/* Fade animation */
+ZenNotification {
+    opacity: 1;
+}
+
+ZenNotification.-dismissing {
+    opacity: 0;
+}
+"""
+
 # Combined base CSS for import
-BASE_CSS = MODAL_CSS + COMMON_CSS
+BASE_CSS = MODAL_CSS + COMMON_CSS + NOTIFICATION_CSS

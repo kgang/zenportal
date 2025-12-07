@@ -6,6 +6,37 @@ from datetime import datetime
 from pathlib import Path
 
 
+# OpenRouter pricing per token (as of Dec 2024)
+# Format: {model_pattern: (input_price, output_price, cache_read_price, cache_write_price)}
+OPENROUTER_PRICING: dict[str, tuple[float, float, float, float]] = {
+    # Claude Opus 4.5 - $5/$25 per 1M tokens
+    "claude-opus-4": (0.000005, 0.000025, 0.0000005, 0.00000625),
+    "claude-4-opus": (0.000005, 0.000025, 0.0000005, 0.00000625),
+    # Claude Sonnet 4 - $3/$15 per 1M tokens
+    "claude-sonnet-4": (0.000003, 0.000015, 0.0000003, 0.00000375),
+    "claude-4-sonnet": (0.000003, 0.000015, 0.0000003, 0.00000375),
+    "claude-4.5-sonnet": (0.000003, 0.000015, 0.0000003, 0.00000375),
+    # Claude Haiku 4.5 - $1/$5 per 1M tokens
+    "claude-haiku-4": (0.000001, 0.000005, 0.0000001, 0.00000125),
+    "claude-4-haiku": (0.000001, 0.000005, 0.0000001, 0.00000125),
+    "claude-4.5-haiku": (0.000001, 0.000005, 0.0000001, 0.00000125),
+    # Claude 3.5 Sonnet - $3/$15 per 1M tokens
+    "claude-3.5-sonnet": (0.000003, 0.000015, 0.0000003, 0.00000375),
+    "claude-3-5-sonnet": (0.000003, 0.000015, 0.0000003, 0.00000375),
+    # Default fallback (Sonnet pricing)
+    "default": (0.000003, 0.000015, 0.0000003, 0.00000375),
+}
+
+
+def _get_pricing(model: str) -> tuple[float, float, float, float]:
+    """Get pricing tuple for a model name."""
+    model_lower = model.lower()
+    for pattern, pricing in OPENROUTER_PRICING.items():
+        if pattern != "default" and pattern in model_lower:
+            return pricing
+    return OPENROUTER_PRICING["default"]
+
+
 @dataclass
 class TokenUsage:
     """Token usage statistics for a session or message."""
@@ -24,6 +55,23 @@ class TokenUsage:
     def cache_tokens(self) -> int:
         """Total cache-related tokens."""
         return self.cache_creation_tokens + self.cache_read_tokens
+
+    def estimate_cost(self, model: str = "") -> float:
+        """Estimate OpenRouter cost in USD based on model pricing.
+
+        Args:
+            model: Model name to look up pricing (e.g., "claude-sonnet-4")
+
+        Returns:
+            Estimated cost in USD
+        """
+        input_price, output_price, cache_read_price, cache_write_price = _get_pricing(model)
+        return (
+            self.input_tokens * input_price
+            + self.output_tokens * output_price
+            + self.cache_read_tokens * cache_read_price
+            + self.cache_creation_tokens * cache_write_price
+        )
 
     def __add__(self, other: "TokenUsage") -> "TokenUsage":
         """Combine two token usages."""

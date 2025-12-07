@@ -173,25 +173,9 @@ class SessionInfoView(Static):
         if s.resolved_model:
             lines.append(f"[dim]model[/dim]  {s.resolved_model.value}")
 
-        # Tokens - detailed breakdown for Claude
+        # Tokens - zen breakdown for Claude sessions
         if s.session_type.value == "claude" and s.token_stats:
-            lines.append("")
-            ts = s.token_stats
-            # Format token counts (K for thousands)
-            def fmt(n: int) -> str:
-                return f"{n/1000:.1f}k" if n >= 1000 else str(n)
-
-            # Main line: total with input/output breakdown
-            lines.append(f"[dim]tokens[/dim]  {fmt(ts.total_tokens)}  [dim]({fmt(ts.input_tokens)}↓ {fmt(ts.output_tokens)}↑)[/dim]")
-
-            # Cache line - only if cache tokens exist
-            if ts.cache_tokens > 0:
-                cache_parts = []
-                if ts.cache_read_tokens > 0:
-                    cache_parts.append(f"{fmt(ts.cache_read_tokens)} read")
-                if ts.cache_creation_tokens > 0:
-                    cache_parts.append(f"{fmt(ts.cache_creation_tokens)} write")
-                lines.append(f"[dim]cache[/dim]  {' / '.join(cache_parts)}")
+            lines.extend(self._render_token_section(s))
 
         # Prompt preview - truncated
         if s.prompt:
@@ -213,6 +197,61 @@ class SessionInfoView(Static):
             lines.append(f"[yellow]proxy[/yellow]  {s.proxy_warning}")
 
         return "\n".join(lines)
+
+    def _render_token_section(self, s: Session) -> list[str]:
+        """Render token analytics section with zen minimalism.
+
+        Shows:
+        - Token counts (input/output) in compact format
+        - Cache efficiency when significant
+        - Cost estimate when using proxy billing
+        """
+        lines = [""]
+        ts = s.token_stats
+
+        # Format helpers
+        def fmt_tokens(n: int) -> str:
+            """Format tokens: 1.2k for thousands, raw for small."""
+            if n >= 1_000_000:
+                return f"{n/1_000_000:.1f}M"
+            if n >= 1000:
+                return f"{n/1000:.1f}k"
+            return str(n)
+
+        def fmt_cost(cost: float) -> str:
+            """Format cost: $0.00 or $0.000 for sub-cent."""
+            if cost >= 0.01:
+                return f"${cost:.2f}"
+            if cost >= 0.001:
+                return f"${cost:.3f}"
+            return f"${cost:.4f}"
+
+        # Main token line: total with breakdown
+        # Format: "tokens  15.2k  (12.1k↓ 3.1k↑)"
+        lines.append(
+            f"[dim]tokens[/dim]  {fmt_tokens(ts.total_tokens)}  "
+            f"[dim]({fmt_tokens(ts.input_tokens)}↓ {fmt_tokens(ts.output_tokens)}↑)[/dim]"
+        )
+
+        # Cache line - only if meaningful (>1k tokens)
+        if ts.cache_tokens > 1000:
+            # Show cache efficiency as ratio of reads to total
+            cache_read = fmt_tokens(ts.cache_read_tokens)
+            cache_write = fmt_tokens(ts.cache_creation_tokens)
+            if ts.cache_read_tokens > 0 and ts.cache_creation_tokens > 0:
+                lines.append(f"[dim]cache[/dim]  {cache_read} read / {cache_write} write")
+            elif ts.cache_read_tokens > 0:
+                lines.append(f"[dim]cache[/dim]  {cache_read} read")
+            elif ts.cache_creation_tokens > 0:
+                lines.append(f"[dim]cache[/dim]  {cache_write} write")
+
+        # Cost estimate - only for proxy billing sessions
+        if s.uses_proxy:
+            model_name = s.resolved_model.value if s.resolved_model else ""
+            cost = ts.estimate_cost(model_name)
+            lines.append(f"[dim]cost[/dim]  ~{fmt_cost(cost)}  [dim]openrouter[/dim]")
+
+        return lines
 
     def _format_state(self, state: SessionState) -> str:
         """Format state with description."""

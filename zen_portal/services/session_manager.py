@@ -118,6 +118,13 @@ class SessionManager:
         working_dir = resolved.working_dir or self._fallback_working_dir
         dangerous_mode = features.dangerously_skip_permissions if features else False
 
+        # Determine if using proxy billing
+        uses_proxy = bool(
+            session_type == SessionType.CLAUDE
+            and resolved.openrouter_proxy
+            and resolved.openrouter_proxy.enabled
+        )
+
         # Create session model
         session = Session(
             name=name,
@@ -127,6 +134,7 @@ class SessionManager:
             resolved_working_dir=working_dir,
             resolved_model=resolved.model if session_type == SessionType.CLAUDE else None,
             dangerously_skip_permissions=dangerous_mode,
+            uses_proxy=uses_proxy,
         )
 
         # Handle worktree creation if enabled

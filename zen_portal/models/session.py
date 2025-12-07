@@ -89,6 +89,8 @@ class Session:
     error_message: str = ""
     # Token tracking (populated from Claude JSONL parsing)
     token_stats: TokenUsage | None = None
+    # Proxy tracking - whether session uses OpenRouter billing (pay-per-token)
+    uses_proxy: bool = False
     # Proxy warning (set when proxy validation finds issues)
     proxy_warning: str = ""
 

@@ -13,9 +13,11 @@ from ..models.session import Session, SessionState, SessionType
 from ..services.session_manager import SessionManager, SessionLimitError
 from ..services.config import ConfigManager
 from ..services.profile import ProfileManager
+from ..services.notification import NotificationRequest
 from ..widgets.session_list import SessionList
 from ..widgets.output_view import OutputView
 from ..widgets.session_info import SessionInfoView
+from ..widgets.notification import ZenNotificationRack
 from .main_actions import MainScreenActionsMixin, MainScreenExitMixin
 
 
@@ -115,6 +117,7 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, Screen):
             info_view = SessionInfoView(id="info-view")
             info_view.display = False
             yield info_view
+        yield ZenNotificationRack(id="notifications")
         yield Static("j/k nav  n new  a attach  ? help  q quit", id="hint", classes="hint")
 
     def on_mount(self) -> None:
@@ -330,7 +333,7 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, Screen):
                     session_list.selected_index = 0
                     session_list.refresh(recompose=True)
                     self._start_rapid_refresh()
-                    self.notify(f"Created {session_type.value}: {session.display_name}", timeout=3)
+                    self.zen_notify(f"created {session_type.value}: {session.display_name}")
 
                 elif result.result_type == ResultType.ATTACH:
                     tmux_session = result.tmux_session
@@ -359,12 +362,12 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, Screen):
                         # Show appropriate notification based on session state
                         if session.state == SessionState.FAILED:
                             error_msg = session.error_message or "Resume failed"
-                            self.notify(error_msg, severity="error", timeout=5)
+                            self.zen_notify(error_msg, "error")
                         else:
-                            self.notify(f"Resumed: {session.display_name}", timeout=3)
+                            self.zen_notify(f"resumed: {session.display_name}")
 
             except SessionLimitError as e:
-                self.notify(str(e), severity="error", timeout=5)
+                self.zen_notify(str(e), "error")
 
         existing_names = {s.name for s in self._manager.sessions}
         known_claude_ids = {s.claude_session_id for s in self._manager.sessions if s.claude_session_id}
@@ -387,7 +390,7 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, Screen):
 
     def action_toggle_streaming(self) -> None:
         self._streaming = not self._streaming
-        self.notify(f"Output mode: {'streaming' if self._streaming else 'snapshot'}", timeout=2)
+        self.zen_notify(f"output mode: {'streaming' if self._streaming else 'snapshot'}")
         self._update_hint()
 
     def action_toggle_info(self) -> None:
@@ -401,7 +404,7 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, Screen):
             info_view.display = info_mode
             self._refresh_selected_output()
             self._update_hint()
-            self.notify(f"View: {'info' if info_mode else 'output'}", timeout=1)
+            self.zen_notify(f"view: {'info' if info_mode else 'output'}")
         except Exception:
             pass
 
@@ -428,3 +431,19 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, Screen):
 
     def on_mouse_scroll_up(self, event: MouseScrollUp) -> None:
         event.stop()
+
+    def on_notification_request(self, event: NotificationRequest) -> None:
+        """Handle notification requests from anywhere in the app."""
+        rack = self.query_one("#notifications", ZenNotificationRack)
+        rack.show(event.message, event.severity, event.timeout)
+
+    def zen_notify(self, message: str, severity: str = "success") -> None:
+        """Helper method for sending zen-styled notifications."""
+        from ..services.notification import NotificationSeverity
+        svc = self.app.notifications
+        if severity == "warning":
+            self.post_message(svc.warning(message))
+        elif severity == "error":
+            self.post_message(svc.error(message))
+        else:
+            self.post_message(svc.success(message))

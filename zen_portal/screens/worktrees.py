@@ -203,7 +203,7 @@ class WorktreesScreen(ModalScreen[WorktreeAction | None]):
 
         # Don't allow deleting main repo
         if self._is_main_repo(wt):
-            self.app.notify("Cannot delete main repository", severity="warning")
+            self.post_message(self.app.notifications.warning("cannot delete main repository"))
             return
 
         self.dismiss(WorktreeAction(action="delete", worktree=wt))

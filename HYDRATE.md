@@ -39,6 +39,7 @@ zen_portal/
 │   ├── session_persistence.py # State loading/saving
 │   ├── session_commands.py # Command building for session types
 │   ├── proxy_validation.py # Proxy connectivity/credential checks
+│   ├── notification.py    # Centralized notification service
 │   ├── tmux.py            # Low-level tmux commands
 │   ├── worktree.py        # Git worktree isolation
 │   ├── config.py          # 3-tier config system
@@ -52,6 +53,7 @@ zen_portal/
 │   ├── session_list.py    # Session list with selection
 │   ├── output_view.py     # Session output display
 │   ├── session_info.py    # Metadata panel
+│   ├── notification.py    # Zen-styled notification widget
 │   ├── directory_browser.py
 │   ├── session_type_dropdown.py # Collapsible session type selector
 │   ├── path_input.py      # Validated path input
@@ -224,13 +226,18 @@ uv run pytest zen_portal/tests/ -v
 uv run pytest zen_portal/tests/ --cov=zen_portal
 ```
 
-Tests use mocked tmux operations. Key test files:
-- `test_session_manager.py`
-- `test_session_commands.py` - Proxy env var validation
+Tests use mocked tmux operations. Test files:
+- `test_session_manager.py` - Session lifecycle
+- `test_session_commands.py` - Command building, proxy env vars
 - `test_proxy_validation.py` - Proxy connectivity/credential checks
-- `test_config.py`
-- `test_tmux.py`
-- `test_worktree.py`
+- `test_config.py` - 3-tier config resolution
+- `test_tmux.py` - Tmux command wrappers
+- `test_worktree.py` - Git worktree operations
+- `test_state.py` - State persistence
+- `test_validation.py` - Input validation
+- `test_banner.py` - Session banners
+- `test_profile.py` - User profiles
+- `test_insert_modal.py` - Insert mode UI
 
 ## Common Tasks
 
@@ -275,24 +282,32 @@ Tests use mocked tmux operations. Key test files:
 Token usage is parsed from Claude's JSONL session files at `~/.claude/projects/`.
 
 **Key components:**
-- `services/token_parser.py` - `TokenParser` class parses JSONL files
-- `models/session.py` - `Session.token_stats: TokenUsage | None`
-- `services/state.py` - `SessionRecord.{input_tokens, output_tokens, cache_tokens}`
-- `widgets/session_info.py` - Displays tokens in info panel
+- `services/token_parser.py` - `TokenParser` parses JSONL, `TokenUsage.estimate_cost()` for pricing
+- `models/session.py` - `Session.token_stats`, `Session.uses_proxy`
+- `services/state.py` - `SessionRecord.{input_tokens, output_tokens, cache_tokens, uses_proxy}`
+- `widgets/session_info.py` - `_render_token_section()` displays tokens
 
 **Info panel display format:**
 ```
 tokens  12.5k  (8.2k↓ 4.3k↑)
 cache   2.1k read / 0.5k write
+cost    ~$0.32  openrouter        # Only for proxy billing
 ```
 - ↓ = input tokens, ↑ = output tokens
-- Cache line only shown when cache tokens > 0
+- Cache line: shown when >1k tokens
+- Cost line: shown when `uses_proxy=True`
+
+**Token formatting:** `1234` (raw) → `12.5k` (thousands) → `1.2M` (millions)
+
+**Cost estimation:**
+- `OPENROUTER_PRICING` dict has per-token prices (Dec 2024)
+- Supports opus-4, sonnet-4, haiku-4, 3.5-sonnet; defaults to Sonnet
 
 **Data flow:**
-1. `refresh_states()` calls `update_session_tokens()` for Claude sessions
-2. `TokenParser.get_session_stats()` reads Claude's JSONL files
-3. Token counts stored in `session.token_stats`
-4. Persisted to history via `SessionRecord` fields
+1. `refresh_states()` → `update_session_tokens()` for Claude sessions
+2. `TokenParser.get_session_stats()` reads Claude's JSONL
+3. Stored in `session.token_stats`, persisted via `SessionRecord`
+4. Cost displayed when `uses_proxy=True`
 
 ## Error Handling
 
@@ -302,6 +317,38 @@ Failed sessions now capture and display error reasons:
 - `tmux.py` validates working directory exists before creating session
 - `session_manager.py` validates binary exists (claude, codex, gemini, zsh)
 - Error displayed in red in dead session info panel
+
+## Notification System
+
+Custom zen-styled notifications with centralized service:
+
+**Components:**
+- `services/notification.py` - `NotificationService` + `NotificationRequest` message
+- `widgets/notification.py` - `ZenNotification` + `ZenNotificationRack`
+- CSS in `styles/base.py` - `NOTIFICATION_CSS`
+
+**Severity levels:**
+| Severity | Timeout | Border Color | Text Color |
+|----------|---------|--------------|------------|
+| SUCCESS | 3s | `$surface-lighten-1` | `$text-muted` |
+| WARNING | 4s | `$warning-darken-2` | `$warning` |
+| ERROR | 5s | `$error-darken-2` | `$error` |
+
+**Usage in screens:**
+```python
+# MainScreen has zen_notify() helper
+self.zen_notify("session created")
+self.zen_notify("no session selected", "warning")
+self.zen_notify("could not revive", "error")
+
+# Modals use post_message
+self.post_message(self.app.notifications.warning("enter a name"))
+```
+
+**Message format:**
+- Lowercase first letter
+- Past tense for success: "created", "renamed", "deleted"
+- Declarative for warnings: "no session selected"
 
 ## New Session Modal Features
 

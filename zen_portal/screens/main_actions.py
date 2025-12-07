@@ -15,34 +15,31 @@ class MainScreenActionsMixin:
         session_list = self.query_one("#session-list", SessionList)
         selected = session_list.get_selected()
         if not selected:
-            self.notify("No session selected", severity="warning")
+            self.zen_notify("no session selected", "warning")
             return
 
         if not selected.is_active:
-            self.notify("Session already ended", severity="warning")
+            self.zen_notify("session already ended", "warning")
             return
 
         self._manager.pause_session(selected.id)
         self._refresh_sessions()
 
         if selected.worktree_path:
-            self.notify(
-                f"Paused: {selected.display_name} (worktree preserved at {selected.worktree_path})",
-                timeout=5,
-            )
+            self.zen_notify(f"paused: {selected.display_name} (worktree preserved)")
         else:
-            self.notify(f"Paused: {selected.display_name}", timeout=3)
+            self.zen_notify(f"paused: {selected.display_name}")
 
     def action_kill(self) -> None:
         """Kill selected session and remove its worktree."""
         session_list = self.query_one("#session-list", SessionList)
         selected = session_list.get_selected()
         if not selected:
-            self.notify("No session selected", severity="warning")
+            self.zen_notify("no session selected", "warning")
             return
 
         if not selected.is_active:
-            self.notify("Session already ended", severity="warning")
+            self.zen_notify("session already ended", "warning")
             return
 
         had_worktree = selected.worktree_path is not None
@@ -50,20 +47,20 @@ class MainScreenActionsMixin:
         self._refresh_sessions()
 
         if had_worktree:
-            self.notify(f"Killed: {selected.display_name} (worktree removed)", timeout=3)
+            self.zen_notify(f"killed: {selected.display_name} (worktree removed)")
         else:
-            self.notify(f"Killed: {selected.display_name}", timeout=3)
+            self.zen_notify(f"killed: {selected.display_name}")
 
     def action_clean(self) -> None:
         """Clean up an ended session (remove worktree and session from list)."""
         session_list = self.query_one("#session-list", SessionList)
         selected = session_list.get_selected()
         if not selected:
-            self.notify("No session selected", severity="warning")
+            self.zen_notify("no session selected", "warning")
             return
 
         if selected.is_active:
-            self.notify("Cannot clean active session - use 'p' to pause or 'x' to kill first", severity="warning")
+            self.zen_notify("cannot clean active session - pause or kill first", "warning")
             return
 
         had_worktree = selected.worktree_path is not None
@@ -71,39 +68,39 @@ class MainScreenActionsMixin:
         self._refresh_sessions()
 
         if had_worktree:
-            self.notify(f"Cleaned: {selected.display_name} (worktree removed)", timeout=3)
+            self.zen_notify(f"cleaned: {selected.display_name} (worktree removed)")
         else:
-            self.notify(f"Cleaned: {selected.display_name}", timeout=3)
+            self.zen_notify(f"cleaned: {selected.display_name}")
 
     def action_nav_worktree(self) -> None:
         """Navigate to a session's worktree."""
         session_list = self.query_one("#session-list", SessionList)
         selected = session_list.get_selected()
         if not selected:
-            self.notify("No session selected", severity="warning")
+            self.zen_notify("no session selected", "warning")
             return
 
         if selected.is_active:
-            self.notify("Session is still active - use 'a' to attach directly", severity="warning")
+            self.zen_notify("session still active - use 'a' to attach", "warning")
             return
 
         if not selected.worktree_path:
-            self.notify("Session has no worktree", severity="warning")
+            self.zen_notify("session has no worktree", "warning")
             return
 
         new_session = self._manager.navigate_to_worktree(selected.id)
         if new_session:
             self._refresh_sessions()
-            self.notify(f"Created shell session in worktree: {new_session.display_name}", timeout=3)
+            self.zen_notify(f"created shell in worktree: {new_session.display_name}")
         else:
-            self.notify("Could not create session in worktree", severity="error")
+            self.zen_notify("could not create session in worktree", "error")
 
     def action_view_worktrees(self) -> None:
         """Open worktrees view."""
         from .worktrees import WorktreesScreen, WorktreeAction
 
         if not self._manager._worktree:
-            self.notify("Worktrees not configured", severity="warning")
+            self.zen_notify("worktrees not configured", "warning")
             return
 
         def handle_result(result: WorktreeAction | None) -> None:
@@ -127,16 +124,16 @@ class MainScreenActionsMixin:
                     session_list.selected_index = 0
                     session_list.refresh(recompose=True)
                     self._start_rapid_refresh()
-                    self.notify(f"Shell in worktree: {wt.branch}", timeout=3)
+                    self.zen_notify(f"shell in worktree: {wt.branch}")
                 except Exception as e:
-                    self.notify(f"Error: {e}", severity="error", timeout=5)
+                    self.zen_notify(f"error: {e}", "error")
 
             elif result.action == "delete":
                 wt_result = self._manager._worktree.remove_worktree(wt.path, force=True)
                 if wt_result.success:
-                    self.notify(f"Deleted worktree: {wt.branch}", timeout=3)
+                    self.zen_notify(f"deleted worktree: {wt.branch}")
                 else:
-                    self.notify(f"Failed: {wt_result.error}", severity="error", timeout=5)
+                    self.zen_notify(f"failed: {wt_result.error}", "error")
 
         self.app.push_screen(
             WorktreesScreen(
@@ -151,11 +148,11 @@ class MainScreenActionsMixin:
         session_list = self.query_one("#session-list", SessionList)
         selected = session_list.get_selected()
         if not selected:
-            self.notify("No session selected", severity="warning")
+            self.zen_notify("no session selected", "warning")
             return
 
         if not selected.is_active:
-            self.notify("Cannot attach to ended session - use 'v' to revive first", severity="warning")
+            self.zen_notify("cannot attach to ended session - revive first", "warning")
             return
 
         tmux_name = self._manager.get_tmux_session_name(selected.id)
@@ -193,13 +190,13 @@ class MainScreenActionsMixin:
                 self._start_rapid_refresh()
 
                 if is_reconnection:
-                    self.notify(f"Reconnected: {session.display_name}", timeout=3)
+                    self.zen_notify(f"reconnected: {session.display_name}")
                 elif result.has_claude:
-                    self.notify(f"Adopted: {session.display_name} (claude synced)", timeout=3)
+                    self.zen_notify(f"adopted: {session.display_name} (claude synced)")
                 else:
-                    self.notify(f"Adopted: {session.display_name}", timeout=3)
+                    self.zen_notify(f"adopted: {session.display_name}")
             except Exception as e:
-                self.notify(f"Error: {e}", severity="error", timeout=5)
+                self.zen_notify(f"error: {e}", "error")
 
         self.app.push_screen(
             AttachSessionModal(
@@ -215,17 +212,17 @@ class MainScreenActionsMixin:
         session_list = self.query_one("#session-list", SessionList)
         selected = session_list.get_selected()
         if not selected:
-            self.notify("No session selected", severity="warning")
+            self.zen_notify("no session selected", "warning")
             return
 
         if selected.is_active:
-            self.notify("Session is already running", severity="warning")
+            self.zen_notify("session already running", "warning")
         elif self._manager.revive_session(selected.id):
             self._refresh_sessions()
             self._start_rapid_refresh()
-            self.notify(f"Revived: {selected.display_name}", timeout=3)
+            self.zen_notify(f"revived: {selected.display_name}")
         else:
-            self.notify("Could not revive session", severity="error")
+            self.zen_notify("could not revive session", "error")
 
     def action_rename(self) -> None:
         """Rename the selected session."""
@@ -234,7 +231,7 @@ class MainScreenActionsMixin:
         session_list = self.query_one("#session-list", SessionList)
         selected = session_list.get_selected()
         if not selected:
-            self.notify("No session selected", severity="warning")
+            self.zen_notify("no session selected", "warning")
             return
 
         def handle_result(new_name: str | None) -> None:
@@ -243,9 +240,9 @@ class MainScreenActionsMixin:
 
             if self._manager.rename_session(selected.id, new_name):
                 self._refresh_sessions()
-                self.notify(f"Renamed to: {new_name}", timeout=2)
+                self.zen_notify(f"renamed to: {new_name}")
             else:
-                self.notify("Could not rename session", severity="error")
+                self.zen_notify("could not rename session", "error")
 
         self.app.push_screen(RenameModal(selected.name), handle_result)
 
@@ -256,11 +253,11 @@ class MainScreenActionsMixin:
         session_list = self.query_one("#session-list", SessionList)
         selected = session_list.get_selected()
         if not selected:
-            self.notify("No session selected", severity="warning")
+            self.zen_notify("no session selected", "warning")
             return
 
         if not selected.is_active:
-            self.notify("Session is not active", severity="warning")
+            self.zen_notify("session is not active", "warning")
             return
 
         def handle_result(result: InsertResult | None) -> None:
@@ -279,7 +276,7 @@ class MainScreenActionsMixin:
                             preview_parts.append(item.display)
                     preview = "".join(preview_parts)[:20]
                     suffix = "..." if len(result.keys) > 10 or len(preview) > 20 else ""
-                    self.notify(f"Sent: {preview}{suffix}", timeout=2)
+                    self.zen_notify(f"sent: {preview}{suffix}")
 
         self.app.push_screen(InsertModal(selected.display_name), handle_result)
 
