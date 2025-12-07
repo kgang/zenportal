@@ -1,7 +1,7 @@
 # HYDRATE.md - Claude Code Context Document
 
 > Quick context for future Claude Code sessions working on this codebase.
-> Last updated: 2025-12-07 (v0.4.5) - Removed command palette, fixed tmux scrollback.
+> Last updated: 2025-12-07 (v0.4.6) - Comprehensive code health refactoring.
 
 ## What is Zenportal?
 
@@ -36,16 +36,23 @@ zen_portal/
 │   ├── events.py          # Custom Textual messages
 │   └── new_session.py     # Data models for new session modal
 ├── services/              # Business logic (no UI)
-│   ├── session_manager.py # Core lifecycle (create, revive, pause, kill)
+│   ├── session_manager.py # Core lifecycle (create, revive, pause, kill) - 624 lines
+│   ├── core/              # Extracted managers from SessionManager
+│   │   ├── worktree_manager.py  # Git worktree setup/cleanup
+│   │   ├── token_manager.py     # Claude token statistics
+│   │   └── state_refresher.py   # Session state polling
+│   ├── git/               # Unified git operations
+│   │   └── git_service.py       # GitService: branch, status, log, repo info
+│   ├── openrouter/        # OpenRouter integration package
+│   │   ├── validation.py        # Proxy connectivity/credential checks
+│   │   ├── monitor.py           # Real-time proxy monitoring
+│   │   ├── billing.py           # Usage and cost tracking
+│   │   └── models.py            # Fetch/cache model list
 │   ├── session_persistence.py # State loading/saving
 │   ├── session_commands.py # Command building for session types
-│   ├── proxy_validation.py # Proxy connectivity/credential checks
-│   ├── proxy_monitor.py   # Real-time proxy monitoring with billing integration
-│   ├── billing_tracker.py # OpenRouter billing and usage tracking
-│   ├── openrouter_models.py # Fetch/cache OpenRouter model list
 │   ├── notification.py    # Centralized notification service
 │   ├── zen_ai.py          # Lightweight AI invocation (claude -p / OpenRouter)
-│   ├── context_parser.py  # @ref syntax parsing for AI context
+│   ├── context_parser.py  # @ref syntax parsing for AI context (uses GitService)
 │   ├── tmux.py            # Low-level tmux commands
 │   ├── worktree.py        # Git worktree isolation
 │   ├── config.py          # 3-tier config system
@@ -56,25 +63,31 @@ zen_portal/
 │   ├── validation.py      # Input validation
 │   └── token_parser.py    # Parse Claude JSONL for token usage
 ├── widgets/               # Reusable UI components
+│   ├── zen_dropdown.py    # Base class for collapsible dropdowns (j/k/h/l/f nav)
 │   ├── session_list.py    # Session list with selection
 │   ├── output_view.py     # Session output display
-│   ├── session_info.py    # Metadata panel with enhanced proxy status
+│   ├── session_info.py    # Metadata panel (uses GitService)
 │   ├── proxy_status.py    # Real-time proxy monitoring widget
 │   ├── notification.py    # Zen-styled notification widget
 │   ├── model_selector.py  # Autocomplete model selector for OpenRouter
 │   ├── directory_browser.py
-│   ├── session_type_dropdown.py # Collapsible session type selector
+│   ├── session_type_dropdown.py # Extends ZenDropdown
+│   ├── zen_ai_dropdown.py # Extends ZenDropdown
 │   ├── path_input.py      # Validated path input
 │   ├── zen_mirror.py      # Context-aware AI companion panel
 │   └── status.py
 ├── screens/               # Modal dialogs and full screens
-│   ├── base.py            # ZenScreen base class with notification support
+│   ├── base.py            # ZenScreen + ZenModalScreen base classes
 │   ├── main.py            # Primary interface
 │   ├── main_actions.py    # MainScreen action handlers (mixin)
-│   ├── new_session.py     # Create/attach/resume modal
-│   ├── new_session_lists.py # Attach/resume list builders
+│   ├── new_session/       # New session modal package (555 lines total)
+│   │   ├── __init__.py          # Re-exports NewSessionModal
+│   │   ├── css.py               # Extracted modal CSS
+│   │   └── billing_widget.py    # Billing mode selector widget
+│   ├── new_session_modal.py     # Create/attach/resume modal (main class)
+│   ├── new_session_lists.py     # Attach/resume list builders
 │   ├── attach_session.py  # Attach to external tmux session
-│   ├── rename_modal.py    # Rename session modal
+│   ├── rename_modal.py    # Rename session modal (extends ZenModalScreen)
 │   ├── worktrees.py       # Git worktree management
 │   ├── insert_modal.py    # Send keystrokes
 │   ├── config_screen.py   # Configuration UI
@@ -102,12 +115,17 @@ See feature-specific sections below for details.
 
 Files are kept under ~500 lines for progressive disclosure in AI-assisted development:
 
-| Core Module | Supporting Modules |
-|-------------|-------------------|
-| `session_manager.py` | `session_persistence.py`, `session_commands.py` |
-| `main.py` | `main_actions.py` |
-| `new_session.py` | `new_session_lists.py`, `models/new_session.py` |
-| `config_screen.py` | `widgets/session_type_dropdown.py`, `widgets/path_input.py`, `widgets/zen_ai_dropdown.py` |
+| Core Module | Supporting Modules | Lines |
+|-------------|-------------------|-------|
+| `session_manager.py` | `core/{worktree,token,state}_manager.py` | 624 |
+| `main.py` | `main_actions.py` | 529 |
+| `new_session_modal.py` | `new_session/{css,billing_widget}.py` | 555 |
+| `config_screen.py` | `widgets/{session_type,zen_ai}_dropdown.py` | 547 |
+
+**Base classes for code reuse:**
+- `ZenDropdown` - Collapsible dropdown with j/k/h/l/f navigation
+- `ZenModalScreen` - Modal with focus trapping, escape handling, notifications
+- `GitService` - Unified git operations (branch, status, log, repo info)
 
 ## Core Concepts
 
@@ -300,19 +318,19 @@ These patterns MUST be followed consistently across all screens:
 | File | Purpose |
 |------|---------|
 | `services/session_manager.py` | Core session lifecycle logic |
-| `services/proxy_monitor.py` | Real-time proxy health monitoring and metrics |
-| `services/billing_tracker.py` | OpenRouter billing and usage analytics |
+| `services/core/` | Extracted managers (worktree, token, state_refresher) |
+| `services/git/git_service.py` | Unified git operations |
+| `services/openrouter/` | Proxy validation, monitoring, billing, models |
 | `services/tmux.py` | All tmux command wrappers |
 | `services/config.py` | 3-tier config resolution |
-| `services/proxy_validation.py` | Proxy connectivity/credential checks |
 | `services/token_parser.py` | Parse Claude JSONL for token stats |
-| `services/openrouter_models.py` | Fetch/cache OpenRouter model list |
 | `screens/main.py` | Primary UI with keybindings + proxy monitoring |
-| `screens/new_session.py` | Session creation modal + billing settings |
+| `screens/new_session_modal.py` | Session creation modal + billing settings |
+| `screens/base.py` | ZenScreen + ZenModalScreen base classes |
 | `screens/config_screen.py` | Settings UI (theme, exit behavior, session types) |
+| `widgets/zen_dropdown.py` | Base class for collapsible dropdowns |
 | `widgets/session_info.py` | Session metadata with enhanced proxy status + token sparklines |
 | `widgets/output_view.py` | Session output display with search functionality |
-| `widgets/proxy_status.py` | Real-time proxy monitoring widget |
 | `widgets/model_selector.py` | Autocomplete model selector for OpenRouter |
 | `models/session.py` | Session dataclass + enums |
 
@@ -378,7 +396,7 @@ Tests use mocked tmux operations. Test files:
 
 - **Services** have no UI dependencies - can be tested in isolation
 - **Widgets** are reusable Textual components
-- **Screens** inherit from `ZenScreen` (not `Screen`) for notification support
+- **Screens** inherit from `ZenScreen` (regular) or `ZenModalScreen` (modals) for notification support
 - **Models** are pure data structures
 - State is managed reactively via Textual's reactive properties
 - **NEVER use `_notifications` as attribute name** - Textual's App uses it internally for toast rack
