@@ -81,6 +81,7 @@ class Session:
     # Worktree tracking (if created)
     worktree_path: Path | None = None  # Path to worktree directory
     worktree_branch: str | None = None  # Branch name in worktree
+    worktree_source_repo: Path | None = None  # Source repo worktree was created from
     # Dangerous mode
     dangerously_skip_permissions: bool = False
     # Revive tracking - prevents immediate COMPLETED detection after revive

@@ -7,7 +7,6 @@ from unittest.mock import MagicMock
 from zen_portal.services.tmux import TmuxService, TmuxResult
 from zen_portal.services.session_manager import SessionManager
 from zen_portal.services.config import ConfigManager
-from zen_portal.services.worktree import WorktreeService, WorktreeResult
 from zen_portal.services.state import StateService
 
 
@@ -22,18 +21,6 @@ def mock_tmux() -> MagicMock:
     tmux.kill_session.return_value = TmuxResult(success=True)
     tmux.clear_history.return_value = TmuxResult(success=True)
     return tmux
-
-
-@pytest.fixture
-def mock_worktree(tmp_path: Path) -> MagicMock:
-    """Create a mock WorktreeService."""
-    worktree = MagicMock(spec=WorktreeService)
-    worktree_path = tmp_path / "worktrees" / "test-worktree"
-    worktree.create_worktree.return_value = WorktreeResult(
-        success=True, path=worktree_path, branch="test-branch"
-    )
-    worktree.remove_worktree.return_value = WorktreeResult(success=True)
-    return worktree
 
 
 @pytest.fixture
@@ -62,24 +49,6 @@ def session_manager(
     return SessionManager(
         tmux=mock_tmux,
         config_manager=config_manager,
-        state_service=state_service,
-        working_dir=tmp_path,
-    )
-
-
-@pytest.fixture
-def session_manager_with_worktree(
-    mock_tmux: MagicMock,
-    mock_worktree: MagicMock,
-    config_manager: ConfigManager,
-    state_service: StateService,
-    tmp_path: Path,
-) -> SessionManager:
-    """Create a SessionManager with mock tmux, worktree, config, and fresh state."""
-    return SessionManager(
-        tmux=mock_tmux,
-        config_manager=config_manager,
-        worktree_service=mock_worktree,
         state_service=state_service,
         working_dir=tmp_path,
     )

@@ -46,7 +46,17 @@ class WorktreeManager:
         working_dir = session.resolved_working_dir
 
         use_worktree = self._should_use_worktree(features, worktree_settings)
-        if not use_worktree or not self._worktree:
+        if not use_worktree:
+            return working_dir
+
+        # Create a WorktreeService for the session's working directory
+        # This ensures worktrees are created from the correct source repo
+        base_dir = None
+        if worktree_settings and worktree_settings.base_dir:
+            base_dir = worktree_settings.base_dir
+
+        worktree_service = WorktreeService(source_repo=working_dir, base_dir=base_dir)
+        if not worktree_service.is_git_repo():
             return working_dir
 
         # Determine branch and from_branch
@@ -61,7 +71,7 @@ class WorktreeManager:
 
         # Create worktree
         worktree_name = f"{session.name}-{session.id[:8]}"
-        wt_result = self._worktree.create_worktree(
+        wt_result = worktree_service.create_worktree(
             name=worktree_name,
             branch=branch_name,
             from_branch=from_branch,
@@ -71,6 +81,7 @@ class WorktreeManager:
         if wt_result.success and wt_result.path:
             session.worktree_path = wt_result.path
             session.worktree_branch = wt_result.branch
+            session.worktree_source_repo = working_dir  # Store source for cleanup
             session.resolved_working_dir = wt_result.path
             return wt_result.path
 
@@ -98,10 +109,19 @@ class WorktreeManager:
         Returns:
             True if worktree was removed or didn't exist
         """
-        if not session.worktree_path or not self._worktree:
+        if not session.worktree_path:
             return True
 
-        result = self._worktree.remove_worktree(session.worktree_path, force=force)
+        # Use the source repo stored during worktree creation
+        source_repo = session.worktree_source_repo
+        if not source_repo:
+            return True
+
+        worktree_service = WorktreeService(source_repo=source_repo)
+        if not worktree_service.is_git_repo():
+            return True
+
+        result = worktree_service.remove_worktree(session.worktree_path, force=force)
         return result.success
 
     def can_navigate(self, session: Session) -> bool:
