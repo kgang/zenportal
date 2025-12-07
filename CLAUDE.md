@@ -1,2 +1,3 @@
-* Try to keep code files under 500 lines
-* Fragment code for optimal progressive disclosure for ai agent development
+- Keep files under 500 lines
+- Split large modules into `core/` subdirectories
+- Progressive disclosure: essential code first, details extracted
