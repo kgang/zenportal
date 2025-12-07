@@ -69,21 +69,58 @@ class SessionInfoView(Static, can_focus=False):
         # Single line: name, state, time
         state_display = self._format_state(s.state)
         lines.append(f"{s.status_glyph} {s.display_name}  {state_display}  {s.age_display}")
+        lines.append("")
 
-        # Directory - only if meaningful
+        # Session identifiers section
+        lines.append("[dim]identifiers[/dim]")
+        if s.tmux_name:
+            lines.append(f"  tmux     {s.tmux_name}")
+        lines.append(f"  zen id   {s.id[:8]}")
+        if s.claude_session_id:
+            lines.append(f"  claude   {s.claude_session_id[:8]}")
+        lines.append("")
+
+        # Session type and provider
+        lines.append("[dim]type[/dim]")
+        if s.session_type.value == "ai":
+            lines.append(f"  provider  {s.provider}")
+            if s.resolved_model:
+                lines.append(f"  model     {s.resolved_model.value}")
+        else:
+            lines.append(f"  {s.session_type.value}")
+        lines.append("")
+
+        # Directory
         working_path = s.worktree_path or s.resolved_working_dir
         if working_path:
+            lines.append("[dim]directory[/dim]")
             path_str = str(working_path)
             # Show just the last 2 path components for brevity
             parts = path_str.split("/")
             if len(parts) > 2:
                 path_str = ".../" + "/".join(parts[-2:])
-            lines.append(f"[dim]dir[/dim]  {path_str}")
+            lines.append(f"  {path_str}")
+            if s.worktree_branch:
+                lines.append(f"  branch  {s.worktree_branch}")
+            lines.append("")
+
+        # Token stats if available
+        if s.token_stats:
+            lines.append("[dim]tokens[/dim]")
+            lines.append(f"  input   {s.token_stats.input_tokens:,}")
+            lines.append(f"  output  {s.token_stats.output_tokens:,}")
+            if s.message_count:
+                lines.append(f"  turns   {s.message_count}")
+            lines.append("")
 
         # Error message for failed sessions
         if s.error_message:
-            lines.append("")
             lines.append(f"[red]error[/red]  {s.error_message}")
+            lines.append("")
+
+        # Timestamps
+        lines.append("[dim]created[/dim]")
+        lines.append(f"  {s.created_at.strftime('%Y-%m-%d %H:%M')}")
 
         return "\n".join(lines)
 

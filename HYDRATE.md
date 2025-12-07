@@ -1,6 +1,6 @@
 # HYDRATE.md
 
-> Quick context for Claude Code sessions. Last updated: 2025-12-07 (v0.5.1 - post-simplification)
+> Quick context for Claude Code sessions. Last updated: 2025-12-07 (v0.5.2 - info panel enhancement)
 
 ## Essence
 
@@ -134,6 +134,17 @@ Press `/` for quick AI queries. Context is automatically included (session outpu
 Output view echoes selection: `▪ session-name  active  2h` in header.
 Notifications bottom-left. Quick modals use `.modal-left` class.
 Completed sessions hidden by default (less visual clutter).
+
+---
+
+## Info Panel (I key)
+
+Shows detailed session metadata:
+- **identifiers**: tmux name (`zen-xxxxx`), zen id, claude session id
+- **type**: provider (claude/codex/gemini/openrouter), model
+- **directory**: working dir, worktree branch
+- **tokens**: input/output counts, turn count (if available)
+- **created**: timestamp
 
 ---
 
