@@ -52,6 +52,7 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, ZenScreen):
         ("?", "show_help", "Help"),
         ("q", "quit", "Quit"),
         Binding("/", "zen_prompt", "Ask AI", show=False),
+        Binding("A", "analyze", "Analyze", show=False),
         Binding("R", "restart_app", "Restart", show=False),
     ]
 

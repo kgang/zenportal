@@ -57,9 +57,9 @@ a       attach tmux       x    kill
 v       revive            d    clean
 e       rename            c    config
 i       insert            /    zen ai
-I       info panel        S    search output
-C       show completed    ?    help
-q       quit
+I       info panel        A    analyze session
+C       show completed    S    search output
+?       help              q    quit
 ```
 
 **Move mode**: `l` to enter, `j/k` reorders, `esc` exits

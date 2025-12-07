@@ -65,11 +65,13 @@ class ZenPromptModal(ModalScreen[str | None]):
         zen_ai: ZenAI,
         session: Session | None = None,
         session_manager=None,
+        preset_prompt: str | None = None,
     ) -> None:
         super().__init__()
         self._zen_ai = zen_ai
         self._session = session
         self._session_manager = session_manager
+        self._preset_prompt = preset_prompt
         self._is_querying = False
 
     def compose(self) -> ComposeResult:
@@ -91,8 +93,13 @@ class ZenPromptModal(ModalScreen[str | None]):
     def on_mount(self) -> None:
         """Setup modal."""
         self.trap_focus = True
-        # Focus the input
-        self.query_one("#prompt-input", Input).focus()
+        prompt_input = self.query_one("#prompt-input", Input)
+        prompt_input.focus()
+
+        # Auto-execute preset prompt if provided
+        if self._preset_prompt:
+            prompt_input.value = self._preset_prompt
+            self._execute_query(self._preset_prompt)
 
     def watch_has_response(self, has_response: bool) -> None:
         """Show response area when we have a response."""

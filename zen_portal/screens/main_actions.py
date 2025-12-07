@@ -282,6 +282,16 @@ class MainScreenActionsMixin:
 
     def action_zen_prompt(self) -> None:
         """Open Zen AI prompt modal for quick queries."""
+        self._open_zen_ai_modal()
+
+    def action_analyze(self) -> None:
+        """Analyze the selected session with AI reflection."""
+        self._open_zen_ai_modal(
+            preset_prompt="Analyze this session. What patterns do you see? Any suggestions?"
+        )
+
+    def _open_zen_ai_modal(self, preset_prompt: str | None = None) -> None:
+        """Open Zen AI modal, optionally with a preset prompt."""
         from .zen_prompt import ZenPromptModal
         from ..services.zen_ai import ZenAI
         from ..services.config import ZenAIConfig
@@ -311,7 +321,7 @@ class MainScreenActionsMixin:
             pass  # Modal handles display
 
         self.app.push_screen(
-            ZenPromptModal(zen_ai, selected, self._manager),
+            ZenPromptModal(zen_ai, selected, self._manager, preset_prompt),
             handle_result,
         )
 

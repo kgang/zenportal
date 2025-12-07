@@ -15,7 +15,8 @@ HELP_TEXT = """
     l    move mode      p  pause            v  revive
     r    refresh        x  kill             e  rename
     s    stream         d  clean            i  insert
-    c    config         /  zen ai           q  quit
+    c    config         /  zen ai           A  analyze
+                                            q  quit
 
     states: ▪ running   ▫ not running
 """
