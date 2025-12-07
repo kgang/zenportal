@@ -13,6 +13,7 @@ from ..services.session_manager import SessionManager, SessionLimitError
 from ..services.config import ConfigManager
 from ..services.profile import ProfileManager
 from ..services.proxy_monitor import ProxyMonitor, ProxyStatusEvent
+from ..services.git import GitService
 from ..widgets.session_list import SessionList
 from ..widgets.output_view import OutputView
 from ..widgets.session_info import SessionInfoView
@@ -171,10 +172,9 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, ZenScreen):
                 output_view = self.query_one("#output-view", OutputView)
                 if not selected.is_active:
                     content = self._build_dead_session_info(selected)
-                    output_view.update_output(selected.display_name, content)
                 else:
-                    output = self._manager.get_output(selected.id)
-                    output_view.update_output(selected.display_name, output)
+                    content = self._manager.get_output(selected.id)
+                self._update_output_with_context(output_view, selected, content)
 
     def _refresh_sessions(self) -> None:
         """Update session list widget (skipped during grab mode to preserve reordering)."""
@@ -220,10 +220,9 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, ZenScreen):
             output_view = self.query_one("#output-view", OutputView)
             if not session.is_active:
                 content = self._build_dead_session_info(session)
-                output_view.update_output(session.display_name, content)
             else:
-                output = self._manager.get_output(session.id)
-                output_view.update_output(session.display_name, output)
+                content = self._manager.get_output(session.id)
+            self._update_output_with_context(output_view, session, content)
 
     def _build_dead_session_info(self, session: Session) -> str:
         """Build informational content for a dead session."""
@@ -299,6 +298,43 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, ZenScreen):
             ])
 
         return "\n".join(lines)
+
+    def _update_output_with_context(
+        self, output_view: OutputView, session: Session, content: str
+    ) -> None:
+        """Update output view with session context for eye strain reduction.
+
+        Provides immediate visual echo of selection in the output panel header,
+        reducing the need to scan back to the session list.
+        """
+        # Get state description
+        state_map = {
+            SessionState.RUNNING: "active",
+            SessionState.COMPLETED: "complete",
+            SessionState.FAILED: "failed",
+            SessionState.PAUSED: "paused",
+            SessionState.KILLED: "killed",
+        }
+        state = state_map.get(session.state, session.state.value)
+
+        # Get git info if available
+        working_path = session.worktree_path or session.resolved_working_dir
+        git_info = ""
+        if working_path and working_path.exists():
+            info = GitService.get_info(working_path)
+            if info:
+                git_info = info.display
+
+        output_view.update_session(
+            session_name=session.display_name,
+            output=content,
+            glyph=session.status_glyph,
+            state=state,
+            age=session.age_display,
+            session_type=session.session_type.value,
+            git_info=git_info,
+            working_dir=str(working_path) if working_path else "",
+        )
 
     # Navigation actions
     def action_move_down(self) -> None:

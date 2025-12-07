@@ -1,4 +1,10 @@
-"""OutputView widget for displaying session output with search."""
+"""OutputView widget for displaying session output with search.
+
+Eye Strain Optimization:
+- Enhanced title echoes session selection (glyph + state + age)
+- Context bar provides immediate feedback without scanning right
+- Reduces horizontal saccade from session list to output content
+"""
 
 from textual.app import ComposeResult
 from textual.events import Key
@@ -24,6 +30,14 @@ class OutputView(Static, can_focus=False):
     search_active: reactive[bool] = reactive(False)
     search_query: reactive[str] = reactive("")
 
+    # Session echo properties (eye strain reduction)
+    session_glyph: reactive[str] = reactive("")
+    session_state: reactive[str] = reactive("")
+    session_age: reactive[str] = reactive("")
+    session_type: reactive[str] = reactive("")
+    git_info: reactive[str] = reactive("")
+    working_dir: reactive[str] = reactive("")
+
     DEFAULT_CSS = """
     OutputView {
         width: 100%;
@@ -36,6 +50,11 @@ class OutputView(Static, can_focus=False):
         height: 1;
         color: $text-disabled;
         text-align: left;
+    }
+
+    OutputView #session-context {
+        height: 1;
+        color: $text-disabled;
         margin-bottom: 1;
     }
 
@@ -68,8 +87,14 @@ class OutputView(Static, can_focus=False):
             yield Static("\n\n\n\n      ·\n\n    select a session", classes="empty-message")
             return
 
-        title = self.session_name if self.session_name else "output"
-        yield Static(title, classes="title")
+        # Enhanced title: glyph + name + state + age (eye strain reduction)
+        title = self._render_title()
+        yield Static(title, classes="title", markup=True)
+
+        # Context bar: type + git + dir (additional echo)
+        context = self._render_context()
+        if context:
+            yield Static(context, id="session-context", markup=True)
 
         # Search input - non-focusable by default to prevent focus stealing
         # Only becomes focusable when search is explicitly activated via Ctrl+F
@@ -157,6 +182,55 @@ class OutputView(Static, can_focus=False):
             event.stop()
             self.action_close_search()
 
+    def _render_title(self) -> str:
+        """Render enhanced title with session echo.
+
+        Format: "● session-name  ·  active  ·  2h"
+        Provides immediate visual confirmation of selection.
+        """
+        name = self.session_name if self.session_name else "output"
+
+        if not self.session_glyph:
+            return name
+
+        parts = [f"{self.session_glyph}  {name}"]
+
+        if self.session_state:
+            parts.append(self.session_state)
+        if self.session_age:
+            parts.append(self.session_age)
+
+        if len(parts) > 1:
+            return f"{parts[0]}  [dim]·  {'  ·  '.join(parts[1:])}[/dim]"
+        return parts[0]
+
+    def _render_context(self) -> str:
+        """Render context bar with session metadata.
+
+        Format: "claude  ·  main ✓  ·  .../project"
+        Reduces need to look left for session context.
+        """
+        parts = []
+
+        if self.session_type:
+            parts.append(self.session_type)
+        if self.git_info:
+            parts.append(self.git_info)
+        if self.working_dir:
+            parts.append(self._format_path(self.working_dir))
+
+        if not parts:
+            return ""
+
+        return "[dim]" + "  ·  ".join(parts) + "[/dim]"
+
+    def _format_path(self, path: str) -> str:
+        """Format path for display (last 2 components)."""
+        parts = path.split("/")
+        if len(parts) > 2:
+            return ".../" + "/".join(parts[-2:])
+        return path
+
     def watch_output(self, new_output: str) -> None:
         """Update display when output changes."""
         self.refresh(recompose=True)
@@ -169,3 +243,35 @@ class OutputView(Static, can_focus=False):
         """Update both session name and output."""
         self.session_name = session_name
         self.output = output
+
+    def update_session(
+        self,
+        session_name: str,
+        output: str,
+        glyph: str = "",
+        state: str = "",
+        age: str = "",
+        session_type: str = "",
+        git_info: str = "",
+        working_dir: str = "",
+    ) -> None:
+        """Update output with full session context for eye strain reduction.
+
+        Args:
+            session_name: Display name of the session
+            output: Session output content
+            glyph: Status glyph (●, ○, ◐, ·)
+            state: State description (active, complete, paused)
+            age: Age display (2h, 3d)
+            session_type: Type name (claude, shell, codex)
+            git_info: Git status (main ✓ +2)
+            working_dir: Working directory path
+        """
+        self.session_name = session_name
+        self.output = output
+        self.session_glyph = glyph
+        self.session_state = state
+        self.session_age = age
+        self.session_type = session_type
+        self.git_info = git_info
+        self.working_dir = working_dir

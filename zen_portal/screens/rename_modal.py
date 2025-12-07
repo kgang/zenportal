@@ -25,7 +25,8 @@ class RenameModal(ZenModalScreen[str | None]):
         self._current_name = current_name
 
     def compose(self) -> ComposeResult:
-        self.add_class("modal-base", "modal-sm")
+        # Use modal-left for eye strain reduction (opens near session list)
+        self.add_class("modal-left", "modal-sm")
         with Vertical(id="dialog"):
             yield Static("rename session", classes="dialog-title")
             yield Input(

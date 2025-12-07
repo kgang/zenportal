@@ -83,7 +83,8 @@ class ZenPromptModal(ModalScreen[str | None]):
         self._animation_timer = None
 
     def compose(self) -> ComposeResult:
-        self.add_class("modal-base", "modal-md")
+        # Use modal-left for eye strain reduction (opens near session list)
+        self.add_class("modal-left", "modal-md")
         with Vertical(id="dialog"):
             yield Static("/", classes="dialog-title")
             yield Input(

@@ -41,6 +41,16 @@ MODAL_CSS = """
     min-width: 70;
     max-width: 90;
 }
+
+/* Left-anchored modals for eye strain reduction */
+/* Quick actions (rename, insert, zen AI) open near session list */
+.modal-left {
+    align: left middle;
+}
+
+.modal-left #dialog {
+    margin-left: 2;
+}
 """
 
 # Elastic container system for proper content-based sizing
@@ -137,12 +147,13 @@ COMMON_CSS = """
 """
 
 # Notification styles - zen minimalism
+# Eye strain optimization: left-aligned near session list (action source)
 NOTIFICATION_CSS = """
-/* Notification rack - full width container, content aligned right */
+/* Notification rack - full width container, content aligned left */
 ZenNotificationRack {
     height: auto;
     width: 100%;
-    align-horizontal: right;
+    align-horizontal: left;
 }
 
 /* Base notification styling */
@@ -150,7 +161,7 @@ ZenNotification {
     width: auto;
     height: 3;
     padding: 0 2;
-    margin-right: 1;
+    margin-left: 2;
     content-align: center middle;
     text-align: center;
     background: $surface;

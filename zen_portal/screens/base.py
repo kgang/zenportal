@@ -19,7 +19,7 @@ class ZenScreen(Screen):
     notification support across the application.
 
     The notification rack is mounted in an overlay layer and
-    positioned at bottom-right, above any hint bars.
+    positioned at bottom-left (near session list) to reduce eye strain.
     """
 
     DEFAULT_CSS = """
@@ -32,7 +32,7 @@ class ZenScreen(Screen):
         layer: notification;
         height: auto;
         width: 100%;
-        align: right bottom;
+        align: left bottom;
         margin-bottom: 2;
     }
     """
