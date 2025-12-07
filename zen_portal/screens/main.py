@@ -164,8 +164,10 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, ZenScreen):
                     output_view.update_output(selected.display_name, output)
 
     def _refresh_sessions(self) -> None:
-        """Update session list widget."""
+        """Update session list widget (skipped during grab mode to preserve reordering)."""
         session_list = self.query_one("#session-list", SessionList)
+        if session_list.grab_mode:
+            return  # Don't overwrite user's reordering
         session_list.update_sessions(self._manager.sessions)
 
     def _poll_sessions(self) -> None:
