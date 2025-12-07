@@ -1,7 +1,7 @@
 # HYDRATE.md - Claude Code Context Document
 
 > Quick context for future Claude Code sessions working on this codebase.
-> Last updated: 2025-12-06 (v0.3.0) - Current and comprehensive.
+> Last updated: 2025-12-06 (v0.3.1) - Added tmux scrollback fix.
 
 ## What is Zenportal?
 
@@ -148,6 +148,12 @@ Key settings: `exit_behavior`, `working_dir`, `model`, `worktree.*`, `enabled_se
 - Interval: 1 second (`MainScreen._poll_sessions`)
 - Grace period: 5 seconds after revival
 - Exit code detection: Non-zero exit → `FAILED` with error message; zero exit → `COMPLETED`
+
+### tmux Scrollback
+- History limit: 50,000 lines (set via `history-limit` on session creation)
+- Standard tmux scrolling works: `Ctrl+B [` enters copy mode, then j/k/PgUp/PgDn
+- The 100-line `capture_pane` is only for zen-portal's output view widget, not the actual scrollback
+- Scrollback preserved when attaching via `a` key or external `tmux attach`
 
 ### Event System (Textual Messages)
 ```python

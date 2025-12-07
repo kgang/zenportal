@@ -18,11 +18,13 @@ class TmuxService:
     """Low-level tmux operations. No business logic."""
 
     DEFAULT_TIMEOUT = 5
+    DEFAULT_HISTORY_LIMIT = 50000  # Lines of scrollback to preserve
 
-    def __init__(self, socket_path: Path | None = None):
-        """Initialize with optional dedicated socket."""
+    def __init__(self, socket_path: Path | None = None, history_limit: int | None = None):
+        """Initialize with optional dedicated socket and history limit."""
         self._socket = socket_path
         self._timeout = self.DEFAULT_TIMEOUT
+        self._history_limit = history_limit or self.DEFAULT_HISTORY_LIMIT
 
     def _base_cmd(self) -> list[str]:
         """Base tmux command with optional socket."""
@@ -86,9 +88,12 @@ class TmuxService:
 
         result = self._run(args)
 
-        # Keep session alive after command exits (for viewing output)
+        # Configure session options after creation
         if result.success:
+            # Keep session alive after command exits (for viewing output)
             self._run(["set-option", "-t", name, "remain-on-exit", "on"])
+            # Set scrollback history limit for full conversation preservation
+            self._run(["set-option", "-t", name, "history-limit", str(self._history_limit)])
 
         return result
 

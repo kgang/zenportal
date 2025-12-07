@@ -150,8 +150,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         margin-top: 1;
     }
 
-    NewSessionModal #proxy-config.hidden,
-    NewSessionModal #proxy-config[display="none"] {
+    NewSessionModal #proxy-config.hidden {
         display: none;
         height: 0;
     }
