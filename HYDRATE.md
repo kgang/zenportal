@@ -1,6 +1,6 @@
 # HYDRATE.md
 
-> Quick context for Claude Code sessions. Last updated: 2025-12-07 (v0.4.11)
+> Quick context for Claude Code sessions. Last updated: 2025-12-07 (v0.4.12)
 
 ## Essence
 
@@ -117,11 +117,30 @@ Example: `why is @error happening?`
 
 **Modal sizes**: `.modal-sm` (50vw), `.modal-md` (60vw), `.modal-lg` (70vw), `.modal-xl` (80vw)
 
+**Modal anchors**: `.modal-base` (center), `.modal-left` (left-anchored for quick actions)
+
 **Colors**: `$text` primary, `$text-muted` secondary, `$text-disabled` hints
 
 **Session prefixes**: Claude (none), Shell `sh:`, Codex `cx:`, Gemini `gm:`, OpenRouter `or:`
 
 **Elastic modals**: `height: auto; max-height: 90%` on dialog, `min-height: 0` on contents
+
+---
+
+## Eye Strain Reduction (v0.4.12)
+
+Output view echoes selection to minimize horizontal eye movement:
+
+```
+● session-name  ·  active  ·  2h     ← title with glyph/state/age
+claude  ·  main ✓  ·  .../project    ← context bar
+[output content...]
+```
+
+**Key changes**:
+- `OutputView.update_session()` - accepts full session context
+- Notifications: bottom-left (near session list, was bottom-right)
+- Quick modals: `.modal-left` class (rename, insert, zen AI)
 
 ---
 
