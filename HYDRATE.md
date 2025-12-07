@@ -1,7 +1,7 @@
 # HYDRATE.md - Claude Code Context Document
 
 > Quick context for future Claude Code sessions working on this codebase.
-> Last updated: 2025-12-06 (v0.3.7) - Focus architecture fix: visibility AND focusability must be controlled together.
+> Last updated: 2025-12-07 (v0.3.8) - Login shell fix for tmux scrollback in TUI sessions.
 
 ## What is Zenportal?
 
@@ -46,6 +46,8 @@ zen_portal/
 │   ├── billing_tracker.py # OpenRouter billing and usage tracking
 │   ├── openrouter_models.py # Fetch/cache OpenRouter model list
 │   ├── notification.py    # Centralized notification service
+│   ├── zen_ai.py          # Lightweight AI invocation (claude -p / OpenRouter)
+│   ├── context_parser.py  # @ref syntax parsing for AI context
 │   ├── tmux.py            # Low-level tmux commands
 │   ├── worktree.py        # Git worktree isolation
 │   ├── config.py          # 3-tier config system
@@ -65,6 +67,7 @@ zen_portal/
 │   ├── directory_browser.py
 │   ├── session_type_dropdown.py # Collapsible session type selector
 │   ├── path_input.py      # Validated path input
+│   ├── zen_mirror.py      # Context-aware AI companion panel
 │   └── status.py
 ├── screens/               # Modal dialogs and full screens
 │   ├── base.py            # ZenScreen base class with notification support
@@ -78,14 +81,16 @@ zen_portal/
 │   ├── insert_modal.py    # Send keystrokes
 │   ├── config_screen.py   # Configuration UI
 │   ├── exit_modal.py      # Quit confirmation modal
+│   ├── zen_prompt.py      # Zen AI quick query modal
 │   └── help.py            # Keybindings display
 └── tests/                 # pytest + pytest-asyncio
 ```
 
-## Recent Enhancements (v0.3.x)
+## Recent Enhancements (v0.3.x - v0.4.x)
 
 | Feature | Files | Key |
 |---------|-------|-----|
+| **Zen AI** | `zen_ai.py`, `context_parser.py`, `zen_prompt.py` | `/` |
 | Textual 6.x Upgrade | `pyproject.toml`, all modals | - |
 | Modal Focus Trapping | all `screens/*.py` modals | `trap_focus=True` |
 | Flat Cancel Buttons | `exit_modal.py`, `config_screen.py` | `.flat` CSS class |
@@ -174,6 +179,7 @@ Key settings: `exit_behavior`, `working_dir`, `model`, `worktree.*`, `enabled_se
 - Standard tmux scrolling works: `Ctrl+B [` enters copy mode, then j/k/PgUp/PgDn
 - The 100-line `capture_pane` is only for zen-portal's output view widget, not the actual scrollback
 - Scrollback preserved when attaching via `a` key or external `tmux attach`
+- Sessions use `bash -l -c` (login shell) for proper terminal environment with TUI apps
 
 ### Event System (Textual Messages)
 ```python
