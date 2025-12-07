@@ -1,7 +1,7 @@
 # HYDRATE.md - Claude Code Context Document
 
 > Quick context for future Claude Code sessions working on this codebase.
-> Last updated: 2025-12-06 (v0.3.2) - Added proxy monitoring and billing integration.
+> Last updated: 2025-12-06 (v0.3.2) - Enhanced OpenRouter proxy integration with real-time monitoring, billing tracking, and comprehensive dashboard.
 
 ## What is Zenportal?
 
