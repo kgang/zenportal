@@ -142,8 +142,8 @@ class TemplatePicker(ZenModalScreen[TemplatePickerResult | None]):
         """Filter templates as user types."""
         query = event.value.strip()
         self._filtered = self._manager.search(query)
-        self.selected_index = 0
         self._update_list()
+        self.selected_index = 0
 
     def _update_list(self) -> None:
         """Rebuild the template list display."""

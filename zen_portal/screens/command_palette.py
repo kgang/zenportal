@@ -143,8 +143,8 @@ class CommandPalette(ZenModalScreen[str | None]):
             self._filtered_commands = [
                 id_to_command[id_] for id_, _, score in ranked if id_ in id_to_command
             ]
-        self.selected_index = 0
         self._update_results()
+        self.selected_index = 0
 
     def _update_results(self) -> None:
         """Rebuild the results list."""
