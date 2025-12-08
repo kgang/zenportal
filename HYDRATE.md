@@ -49,9 +49,12 @@ zen_portal/
 
 **Session types**: `AI` (with provider field), `SHELL`
 
+**AI providers**: `CLAUDE`, `CODEX`, `GEMINI`, `OPENROUTER`
+
 **Session states**: `RUNNING` (▪), not running (▫) - binary indicators
 
 **Config**: `~/.config/zen-portal/config.json`, State: `~/.zen_portal/state.json`
+- `enabled_session_types`: `["ai", "shell"]` (types, not providers)
 
 ---
 
