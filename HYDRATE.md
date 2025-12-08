@@ -192,7 +192,8 @@ Shows detailed session metadata:
 
 ### Add keybinding
 1. `screens/main.py` - add to `BINDINGS`, implement `action_<name>()`
-2. `screens/help.py` - update if visible
+2. `services/command_registry.py` - register command for palette
+3. `screens/help.py` - update if visible
 
 ### Add config option
 1. `services/config.py` - add to dataclass
