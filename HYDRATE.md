@@ -1,8 +1,8 @@
 # HYDRATE.md
 
-> Quick context for Claude Code sessions. Last updated: 2025-12-07 (v0.6.0 - command palette & templates)
+> Quick context for Claude Code sessions. Last updated: 2025-12-07 (v0.3.1 - Phase 1 refactoring)
 
-**Status**: Command palette (`:`) and session templates (`T`) fully implemented. Both features compound - templates discoverable via palette. Guard flag pattern prevents reactive watcher race conditions in searchable modals.
+**Status**: Phase 1 foundation refactoring complete. SessionStateService extracted (thread-safe), Services container for DI, logging infrastructure added. SessionManager reduced 832→636 lines. See ZEN_CODE_DESIGN.md for architecture roadmap.
 
 ---
 
@@ -23,22 +23,26 @@ Two session types: **AI** (with provider: claude, codex, gemini, openrouter) and
 
 ```
 zen_portal/
-├── app.py                    # entry point
+├── app.py                    # entry point + Services container (DI)
 ├── models/                   # data: Session, Template, events, enums
 ├── services/                 # business logic (no UI)
-│   ├── session_manager.py    # core lifecycle
+│   ├── session_manager.py    # core lifecycle (636 lines, refactored)
+│   ├── session_state.py      # thread-safe state persistence (NEW)
 │   ├── template_manager.py   # template CRUD
 │   ├── command_registry.py   # palette commands
 │   ├── fuzzy.py              # fuzzy matching
-│   ├── pipelines/            # composable multi-step operations
+│   ├── core/                 # detection, state_refresher, token_manager, worktree_manager
+│   ├── pipelines/            # create.py - composable multi-step operations
+│   ├── git/                  # git_service.py
+│   ├── openrouter/           # validation, billing, models, monitor
 │   ├── conflict.py           # pre-creation conflict detection
-│   ├── core/                 # worktree, token, state, detection
-│   ├── git/                  # GitService
-│   ├── openrouter/           # proxy validation, billing, models
 │   └── state.py              # persistence dataclasses only
 ├── widgets/                  # reusable UI components
 ├── screens/                  # modals and full screens
-└── tests/
+│   ├── main.py               # MainScreen (uses mixins)
+│   ├── main_actions.py       # ActionsMixin, ExitMixin
+│   └── main_templates.py     # TemplateMixin, PaletteMixin
+└── tests/                    # 294 tests, all passing
 ```
 
 **File limit**: ~500 lines. Large modules split into `core/` or supporting files.
@@ -97,6 +101,18 @@ C       show completed    S    search output
 
 ## Architecture Patterns
 
+**Services Container** (`app.py`): Dependency injection via dataclass.
+- `Services.create()` wires up all dependencies
+- Clear dependency graph: tmux → state → sessions
+- Enables testing with mock injection
+- Single source of truth for service lifetime
+
+**State Persistence** (`services/session_state.py`): Thread-safe operations.
+- RLock for concurrent access safety
+- Atomic file writes (temp + rename)
+- Separate from lifecycle (SessionManager)
+- JSONL history appends
+
 **Pipelines** (`services/pipelines/`): Multi-step operations as composable steps.
 - Each step: `T → StepResult[U]`
 - `CreateSessionPipeline` orchestrates session creation
@@ -119,6 +135,11 @@ C       show completed    S    search output
 - `MainScreenPaletteMixin` - command palette
 - Pattern keeps main.py focused on UI composition and orchestration
 
+**Logging**: All services use Python logging.
+- `logger = logging.getLogger(__name__)`
+- No silent failures - all errors logged
+- Levels: debug (verbose), warning (recoverable), error (critical)
+
 **Reactive watchers**: Guard against race conditions during DOM updates.
 ```python
 # Pattern: use flag to prevent watcher firing during rebuild
@@ -134,6 +155,15 @@ def watch_selected_index(self, new_index: int) -> None:
     if self._updating:
         return  # Skip during rebuild
     # Update visual selection
+```
+
+**Widget IDs**: NEVER use `id=` for widgets mounted in methods called multiple times.
+```python
+# ✓ CORRECT - use classes for reusable widgets
+container.mount(Static("empty", classes="empty-list"))
+
+# ✗ WRONG - static IDs cause DuplicateIds errors
+container.mount(Static("empty", id="empty-list"))
 ```
 
 ---
@@ -261,3 +291,27 @@ uv run pytest zen_portal/tests/ --cov=zen_portal
 ```
 
 Tests mock tmux operations. Key test files mirror service/widget structure.
+
+---
+
+## Refactoring Roadmap
+
+See **ZEN_CODE_DESIGN.md** for comprehensive architecture guide.
+
+**Phase 1 (Foundation) - COMPLETE ✓**
+- SessionStateService extracted (thread-safe, 271 lines)
+- Services container for DI (app.py)
+- Logging infrastructure (no silent failures)
+- SessionManager: 832 → 636 lines (-24%)
+
+**Phase 2 (Simplification) - NEXT**
+- Consolidate WorktreeService + WorktreeManager (425 → 300 lines)
+- Cache widget references (152 DOM queries → ~15)
+- Config schema with dataclasses (type-safe)
+
+**Phase 3 (Architecture)**
+- Extract validators from screens (business logic → services)
+- Exception hierarchy (ZenError base class)
+- Event bus for pub/sub (decouple services from UI)
+
+All 294 tests passing. Zen code principles: simplicity, clarity, separation, testability.
