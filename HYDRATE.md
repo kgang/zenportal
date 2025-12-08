@@ -2,6 +2,10 @@
 
 > Quick context for Claude Code sessions. Last updated: 2025-12-07 (v0.6.0 - command palette & templates)
 
+**Status**: Command palette (`:`) and session templates (`T`) fully implemented. Both features compound - templates discoverable via palette. Guard flag pattern prevents reactive watcher race conditions in searchable modals.
+
+---
+
 ## Essence
 
 **Zenportal** is a contemplative TUI for managing AI assistant sessions in parallel.
