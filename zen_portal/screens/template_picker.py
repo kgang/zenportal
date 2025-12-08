@@ -121,6 +121,7 @@ class TemplatePicker(ZenModalScreen[TemplatePickerResult | None]):
         self._manager = manager
         self._templates: list[SessionTemplate] = []
         self._filtered: list[SessionTemplate] = []
+        self._updating = False  # Guard flag for DOM updates
 
     def compose(self) -> ComposeResult:
         self.add_class("modal-base", "modal-md")
@@ -147,21 +148,27 @@ class TemplatePicker(ZenModalScreen[TemplatePickerResult | None]):
 
     def _update_list(self) -> None:
         """Rebuild the template list display."""
-        list_container = self.query_one("#template-list", Vertical)
-        list_container.remove_children()
+        self._updating = True
+        try:
+            list_container = self.query_one("#template-list", Vertical)
+            list_container.remove_children()
 
-        if not self._filtered:
-            list_container.mount(Static("no templates found", id="empty-list"))
-            return
+            if not self._filtered:
+                list_container.mount(Static("no templates found", id="empty-list"))
+                return
 
-        for i, template in enumerate(self._filtered):
-            item = TemplateItem(template, id=f"tpl-{i}")
-            if i == self.selected_index:
-                item.add_class("selected")
-            list_container.mount(item)
+            for i, template in enumerate(self._filtered):
+                item = TemplateItem(template, id=f"tpl-{i}")
+                if i == self.selected_index:
+                    item.add_class("selected")
+                list_container.mount(item)
+        finally:
+            self._updating = False
 
     def watch_selected_index(self, new_index: int) -> None:
         """Update visual selection."""
+        if self._updating:
+            return  # Skip during DOM rebuild
         try:
             list_container = self.query_one("#template-list", Vertical)
             for i, child in enumerate(list_container.children):

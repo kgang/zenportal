@@ -110,6 +110,7 @@ class CommandPalette(ZenModalScreen[str | None]):
         self._has_selection = has_selection
         self._commands: list[Command] = []
         self._filtered_commands: list[Command] = []
+        self._updating = False  # Guard flag for DOM updates
 
     def compose(self) -> ComposeResult:
         self.add_class("modal-base", "modal-md")
@@ -148,21 +149,27 @@ class CommandPalette(ZenModalScreen[str | None]):
 
     def _update_results(self) -> None:
         """Rebuild the results list."""
-        results = self.query_one("#results", Vertical)
-        results.remove_children()
+        self._updating = True
+        try:
+            results = self.query_one("#results", Vertical)
+            results.remove_children()
 
-        if not self._filtered_commands:
-            results.mount(Static("no matching commands", id="empty-results"))
-            return
+            if not self._filtered_commands:
+                results.mount(Static("no matching commands", id="empty-results"))
+                return
 
-        for i, command in enumerate(self._filtered_commands):
-            item = CommandItem(command, id=f"cmd-{i}")
-            if i == self.selected_index:
-                item.add_class("selected")
-            results.mount(item)
+            for i, command in enumerate(self._filtered_commands):
+                item = CommandItem(command, id=f"cmd-{i}")
+                if i == self.selected_index:
+                    item.add_class("selected")
+                results.mount(item)
+        finally:
+            self._updating = False
 
     def watch_selected_index(self, new_index: int) -> None:
         """Update visual selection."""
+        if self._updating:
+            return  # Skip during DOM rebuild
         try:
             results = self.query_one("#results", Vertical)
             for i, child in enumerate(results.children):

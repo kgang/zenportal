@@ -105,6 +105,24 @@ C       show completed    S    search output
 - Severities: INFO, WARNING, ERROR
 - New session modal shows warnings before creation
 
+**Mixins** (`screens/main_*.py`): MainScreen uses mixins for organization.
+- `MainScreenActionsMixin` - session operations (pause, kill, revive, etc.)
+- `MainScreenExitMixin` - exit/cleanup logic
+- `MainScreenTemplateMixin` - template management
+- `MainScreenPaletteMixin` - command palette
+- Pattern keeps main.py focused on UI composition and orchestration
+
+**Reactive watchers**: Update DOM before setting reactive values to prevent race conditions.
+```python
+# Good: update results, then set index
+self._update_results()
+self.selected_index = 0
+
+# Bad: watcher fires on stale DOM
+self.selected_index = 0
+self._update_results()
+```
+
 ---
 
 ## Token Tracking
