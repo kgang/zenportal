@@ -1,6 +1,6 @@
 # HYDRATE.md
 
-> Quick context for Claude Code sessions. Last updated: 2025-12-07 (v0.5.4 - analyze keybinding)
+> Quick context for Claude Code sessions. Last updated: 2025-12-07 (v0.6.0 - command palette & templates)
 
 ## Essence
 
@@ -20,9 +20,12 @@ Two session types: **AI** (with provider: claude, codex, gemini, openrouter) and
 ```
 zen_portal/
 ├── app.py                    # entry point
-├── models/                   # data: Session, events, enums
+├── models/                   # data: Session, Template, events, enums
 ├── services/                 # business logic (no UI)
 │   ├── session_manager.py    # core lifecycle
+│   ├── template_manager.py   # template CRUD
+│   ├── command_registry.py   # palette commands
+│   ├── fuzzy.py              # fuzzy matching
 │   ├── pipelines/            # composable multi-step operations
 │   ├── conflict.py           # pre-creation conflict detection
 │   ├── core/                 # worktree, token, state, detection
@@ -59,6 +62,7 @@ e       rename            c    config
 i       insert            /    zen ai
 I       info panel        A    analyze session
 C       show completed    S    search output
+:       command palette   T    templates
 ?       help              q    quit
 ```
 
@@ -117,6 +121,31 @@ Key files:
 ## Zen AI
 
 Press `/` for quick AI queries, `A` for instant session analysis. Context is automatically included (session output, errors, git status). Just ask naturally - no @ references needed.
+
+---
+
+## Command Palette
+
+Press `:` or `Ctrl+P` to open. Fuzzy search across all commands with keybinding hints.
+
+Key files:
+- `services/command_registry.py` - command definitions
+- `services/fuzzy.py` - fuzzy matching
+- `screens/command_palette.py` - modal UI
+
+---
+
+## Session Templates
+
+Press `T` to open template picker. Templates save session configurations for quick reuse.
+
+Supports directory placeholders: `$CWD`, `$GIT_ROOT`
+
+Key files:
+- `models/template.py` - SessionTemplate dataclass
+- `services/template_manager.py` - CRUD + persistence (~/.config/zen-portal/templates.json)
+- `screens/template_picker.py` - selection modal
+- `screens/template_editor.py` - create/edit form
 
 ---
 

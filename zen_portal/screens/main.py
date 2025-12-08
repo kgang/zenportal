@@ -12,6 +12,8 @@ from ..models.session import Session, SessionState, SessionType
 from ..services.session_manager import SessionManager, SessionLimitError
 from ..services.config import ConfigManager
 from ..services.profile import ProfileManager
+from ..services.command_registry import create_default_registry
+from ..services.template_manager import TemplateManager
 from ..services.proxy_monitor import ProxyMonitor, ProxyStatusEvent
 from ..services.git import GitService
 from ..widgets.session_list import SessionList
@@ -19,9 +21,10 @@ from ..widgets.output_view import OutputView
 from ..widgets.session_info import SessionInfoView
 from .base import ZenScreen
 from .main_actions import MainScreenActionsMixin, MainScreenExitMixin
+from .main_templates import MainScreenTemplateMixin, MainScreenPaletteMixin
 
 
-class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, ZenScreen):
+class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActionsMixin, MainScreenExitMixin, ZenScreen):
     """Main application screen with session list and output preview."""
 
     BINDINGS = [
@@ -54,6 +57,9 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, ZenScreen):
         Binding("/", "zen_prompt", "Ask AI", show=False),
         Binding("A", "analyze", "Analyze", show=False),
         Binding("R", "restart_app", "Restart", show=False),
+        Binding(":", "command_palette", "Commands", show=False),
+        Binding("ctrl+p", "command_palette", "Commands", show=False),
+        Binding("T", "templates", "Templates", show=False),
     ]
 
     info_mode: reactive[bool] = reactive(False)
@@ -117,6 +123,12 @@ class MainScreen(MainScreenActionsMixin, MainScreenExitMixin, ZenScreen):
         self._streaming = False
         self._rapid_refresh_timer = None
         self._rapid_refresh_count = 0
+
+        # Initialize command registry for palette
+        self._command_registry = create_default_registry()
+
+        # Initialize template manager
+        self._template_manager = TemplateManager()
 
         # Initialize proxy monitoring
         proxy_settings = self._config.get_proxy_settings()

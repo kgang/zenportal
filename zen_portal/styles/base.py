@@ -228,5 +228,28 @@ SCROLLBAR_CSS = """
 }
 """
 
+# Command palette styles
+PALETTE_CSS = """
+/* Command palette - slightly elevated with primary accent */
+CommandPalette #dialog {
+    border: round $primary;
+}
+
+/* Command item rows */
+CommandPalette CommandItem {
+    width: 100%;
+    height: 1;
+    padding: 0 1;
+}
+
+CommandPalette CommandItem:hover {
+    background: $surface-lighten-1;
+}
+
+CommandPalette CommandItem.selected {
+    background: $surface-lighten-1;
+}
+"""
+
 # Combined base CSS for import
-BASE_CSS = MODAL_CSS + CONTAINER_CSS + COMMON_CSS + NOTIFICATION_CSS + FLAT_BUTTON_CSS + SCROLLBAR_CSS
+BASE_CSS = MODAL_CSS + CONTAINER_CSS + COMMON_CSS + NOTIFICATION_CSS + FLAT_BUTTON_CSS + SCROLLBAR_CSS + PALETTE_CSS
