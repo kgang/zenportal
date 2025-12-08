@@ -112,15 +112,21 @@ C       show completed    S    search output
 - `MainScreenPaletteMixin` - command palette
 - Pattern keeps main.py focused on UI composition and orchestration
 
-**Reactive watchers**: Update DOM before setting reactive values to prevent race conditions.
+**Reactive watchers**: Guard against race conditions during DOM updates.
 ```python
-# Good: update results, then set index
-self._update_results()
-self.selected_index = 0
+# Pattern: use flag to prevent watcher firing during rebuild
+self._updating = True
+try:
+    results.remove_children()
+    for item in items:
+        results.mount(item)
+finally:
+    self._updating = False
 
-# Bad: watcher fires on stale DOM
-self.selected_index = 0
-self._update_results()
+def watch_selected_index(self, new_index: int) -> None:
+    if self._updating:
+        return  # Skip during rebuild
+    # Update visual selection
 ```
 
 ---
