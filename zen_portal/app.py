@@ -6,6 +6,7 @@ Main Textual application.
 import os
 import shutil
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 from textual.app import App
@@ -14,11 +15,73 @@ from textual.binding import Binding
 from zen_portal.screens.main import MainScreen
 from zen_portal.services.tmux import TmuxService
 from zen_portal.services.session_manager import SessionManager
+from zen_portal.services.session_state import SessionStateService
 from zen_portal.services.config import ConfigManager
 from zen_portal.services.worktree import WorktreeService
 from zen_portal.services.profile import ProfileManager
 from zen_portal.services.notification import NotificationService
+from zen_portal.services.discovery import DiscoveryService
 from zen_portal.styles import BASE_CSS
+
+
+@dataclass
+class Services:
+    """Application service container for dependency injection."""
+
+    tmux: TmuxService
+    config: ConfigManager
+    profile: ProfileManager
+    notification: NotificationService
+    sessions: SessionManager
+    state: SessionStateService
+    worktree: WorktreeService | None
+    discovery: DiscoveryService
+
+    @classmethod
+    def create(cls, working_dir: Path | None = None) -> "Services":
+        """Wire up all services with proper dependencies.
+
+        Args:
+            working_dir: Working directory for session creation (defaults to cwd)
+
+        Returns:
+            Services container with all dependencies injected
+        """
+        working_dir = working_dir or Path.cwd()
+
+        # Core services (no dependencies)
+        tmux = TmuxService()
+        config = ConfigManager()
+        profile = ProfileManager()
+        notification = NotificationService()
+        discovery = DiscoveryService(working_dir)
+
+        # State directory
+        base_dir = Path.home() / ".zen_portal"
+        state = SessionStateService(base_dir)
+
+        # Worktree service (conditional on git repo)
+        worktree = _create_worktree_service(config, working_dir)
+
+        # Session manager (depends on tmux, config, state, worktree)
+        sessions = SessionManager(
+            tmux=tmux,
+            config_manager=config,
+            worktree_service=worktree,
+            working_dir=working_dir,
+            state_service=state,
+        )
+
+        return cls(
+            tmux=tmux,
+            config=config,
+            profile=profile,
+            notification=notification,
+            sessions=sessions,
+            state=state,
+            worktree=worktree,
+            discovery=discovery,
+        )
 
 
 def _clear_pycache() -> None:
@@ -120,53 +183,41 @@ class ZenPortalApp(App):
 
     def __init__(
         self,
-        session_manager: SessionManager | None = None,
-        config_manager: ConfigManager | None = None,
-        profile_manager: ProfileManager | None = None,
-        working_dir: Path | None = None,
+        services: Services | None = None,
         focus_tmux_session: str | None = None,
         **kwargs,
     ):
+        """Initialize the app with injected services.
+
+        Args:
+            services: Service container (created if not provided for backward compat)
+            focus_tmux_session: Optional tmux session to focus on mount
+            **kwargs: Additional Textual app arguments
+        """
         super().__init__(**kwargs)
 
-        # Config manager must be created first (SessionManager depends on it)
-        self._config = config_manager or ConfigManager()
-        self._profile = profile_manager or ProfileManager()
-        self._notification_service = NotificationService()
+        # Use injected services or create for backward compatibility
+        self.services = services or Services.create()
         self._focus_tmux_session = focus_tmux_session
-
-        # Use provided session manager or create one
-        if session_manager:
-            self._manager = session_manager
-        else:
-            working_dir = working_dir or Path.cwd()
-            tmux = TmuxService()
-            worktree = _create_worktree_service(self._config, working_dir)
-            self._manager = SessionManager(
-                tmux=tmux,
-                config_manager=self._config,
-                worktree_service=worktree,
-                working_dir=working_dir,
-            )
 
     def on_mount(self) -> None:
         """Push the main screen and apply saved theme."""
         # Apply theme from profile
-        saved_theme = self._profile.profile.theme
+        saved_theme = self.services.profile.profile.theme
         if saved_theme:
             self.theme = saved_theme
 
         self.push_screen(MainScreen(
-            self._manager,
-            self._config,
-            self._profile,
+            self.services.sessions,
+            self.services.config,
+            self.services.profile,
             focus_tmux_session=self._focus_tmux_session,
         ))
 
     @property
     def notification_service(self) -> NotificationService:
         """Access notification service."""
-        return self._notification_service
+        return self.services.notification
 
 
 def main():
@@ -176,25 +227,13 @@ def main():
     # Check dependencies before starting
     check_dependencies()
 
-    # Create managers once - persist across attach/detach cycles
-    working_dir = Path.cwd()
-    config = ConfigManager()
-    profile = ProfileManager()
-    tmux = TmuxService()
-    worktree = _create_worktree_service(config, working_dir)
-    manager = SessionManager(
-        tmux=tmux,
-        config_manager=config,
-        worktree_service=worktree,
-        working_dir=working_dir,
-    )
+    # Create services once - persist across attach/detach cycles
+    services = Services.create(working_dir=Path.cwd())
 
     focus_tmux_session = None
     while True:
         app = ZenPortalApp(
-            session_manager=manager,
-            config_manager=config,
-            profile_manager=profile,
+            services=services,
             focus_tmux_session=focus_tmux_session,
         )
         result = app.run()

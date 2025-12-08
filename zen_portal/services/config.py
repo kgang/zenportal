@@ -12,12 +12,17 @@ Security notes:
 - Values are validated before use in shell commands (see SessionCommandBuilder)
 """
 
+import errno
 import json
+import logging
 import os
 import stat
 from dataclasses import dataclass, field
 from pathlib import Path
 from enum import Enum
+
+
+logger = logging.getLogger(__name__)
 
 
 def _secure_write_json(path: Path, data: dict) -> None:
@@ -38,13 +43,17 @@ def _secure_write_json(path: Path, data: dict) -> None:
             os.close(fd)
         # Atomic rename
         temp_path.rename(path)
-    except Exception:
+    except Exception as e:
         # Fallback: write normally then chmod
+        logger.warning(f"Failed to create temp file with restricted permissions: {e}")
         path.write_text(content)
         try:
             path.chmod(stat.S_IRUSR | stat.S_IWUSR)  # 0600
-        except OSError:
-            pass  # Best effort on systems that don't support chmod
+        except OSError as e:
+            if e.errno == errno.ENOTSUP:
+                logger.debug("chmod not supported on this filesystem")
+            else:
+                logger.warning(f"Failed to set file permissions to 0600: {e}")
 
 
 class ExitBehavior(Enum):

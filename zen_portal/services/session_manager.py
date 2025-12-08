@@ -1,6 +1,6 @@
 """SessionManager: Core session lifecycle management."""
 
-import json
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, Any
@@ -11,12 +11,14 @@ from .tmux import TmuxService
 from .config import ConfigManager, FeatureSettings, WorktreeSettings, OpenRouterProxySettings, ClaudeModel
 from .worktree import WorktreeService
 from .discovery import DiscoveryService
-from .state import SessionRecord, PortalState
-from .token_parser import TokenParser
+from .session_state import SessionStateService
 from .session_commands import SessionCommandBuilder
 from .proxy_validation import ProxyValidator, ProxyValidationResult
 from .core import WorktreeManager, TokenManager, StateRefresher
 from .pipelines import CreateContext, CreateSessionPipeline
+
+
+logger = logging.getLogger(__name__)
 
 
 class SessionLimitError(Exception):
@@ -44,6 +46,7 @@ class SessionManager:
         working_dir: Path | None = None,
         on_event: Callable | None = None,
         base_dir: Path | None = None,
+        state_service: SessionStateService | None = None,
     ):
         self._tmux = tmux
         self._config = config_manager
@@ -54,13 +57,13 @@ class SessionManager:
         self._session_order: list[str] = []  # Custom display order
         self._commands = SessionCommandBuilder()
 
-        # State persistence paths
+        # State persistence service (injected or created)
         if base_dir:
             self._base_dir = base_dir
         else:
             self._base_dir = Path.home() / ".zen_portal"
-        self._state_file = self._base_dir / self.STATE_FILE
-        self._history_dir = self._base_dir / self.HISTORY_DIR
+
+        self._state = state_service or SessionStateService(self._base_dir)
 
         # Initialize extracted managers
         self._worktree_mgr = WorktreeManager(worktree_service)
@@ -535,221 +538,18 @@ class SessionManager:
         return True
 
     # -------------------------------------------------------------------------
-    # State Persistence (merged from StateService)
+    # State Persistence (delegates to SessionStateService)
     # -------------------------------------------------------------------------
 
-    def _ensure_dirs(self) -> None:
-        """Ensure required directories exist."""
-        self._base_dir.mkdir(parents=True, exist_ok=True)
-        self._history_dir.mkdir(parents=True, exist_ok=True)
-
-    def _load_state(self) -> PortalState:
-        """Load state from disk.
-
-        Returns empty state if file doesn't exist or is corrupted.
-        """
-        if not self._state_file.exists():
-            return PortalState()
-
-        try:
-            with open(self._state_file) as f:
-                data = json.load(f)
-            return PortalState.from_dict(data)
-        except (json.JSONDecodeError, KeyError, TypeError):
-            # Corrupted state - return empty
-            return PortalState()
-
     def _save_state(self) -> bool:
-        """Save state to disk atomically.
-
-        Uses temp file + rename for atomic writes.
-        Returns True on success.
-        """
-        self._ensure_dirs()
-
-        records = [self._session_to_record(s) for s in self._sessions.values()]
-        state = PortalState(sessions=records, session_order=self._session_order)
-        state.last_updated = datetime.now().isoformat()
-
-        # Write to temp file first
-        temp_file = self._state_file.with_suffix(".tmp")
-        try:
-            with open(temp_file, "w") as f:
-                json.dump(state.to_dict(), f, indent=2)
-
-            # Atomic rename
-            temp_file.rename(self._state_file)
-            return True
-        except OSError:
-            # Clean up temp file if it exists
-            if temp_file.exists():
-                temp_file.unlink()
-            return False
+        """Save state to disk atomically."""
+        sessions = list(self._sessions.values())
+        return self._state.save(sessions, self._session_order)
 
     def _save_state_with_order(self, order: list[str]) -> bool:
         """Save state with custom order."""
         self._session_order = order
         return self._save_state()
-
-    def _append_history(self, record: SessionRecord, event: str = "update") -> None:
-        """Append a session event to today's history log.
-
-        History is stored as JSONL (one JSON object per line) for easy
-        streaming reads and appends.
-
-        Args:
-            record: Session record to log
-            event: Event type (created, updated, ended, cleaned)
-        """
-        self._ensure_dirs()
-
-        today = datetime.now().strftime("%Y-%m-%d")
-        history_file = self._history_dir / f"{today}.jsonl"
-
-        entry = {
-            "timestamp": datetime.now().isoformat(),
-            "event": event,
-            "session": record.to_dict(),
-        }
-
-        try:
-            with open(history_file, "a") as f:
-                f.write(json.dumps(entry) + "\n")
-        except OSError:
-            pass  # History is optional, don't fail on errors
-
-    def _session_to_record(self, session: Session) -> SessionRecord:
-        """Convert a Session to a persistable record."""
-        external_name = None
-        if hasattr(session, "_external_tmux_name"):
-            external_name = session._external_tmux_name
-
-        # Extract token stats if available
-        input_tokens = 0
-        output_tokens = 0
-        cache_tokens = 0
-        if session.token_stats:
-            input_tokens = session.token_stats.input_tokens
-            output_tokens = session.token_stats.output_tokens
-            cache_tokens = session.token_stats.cache_tokens
-
-        return SessionRecord(
-            id=session.id,
-            name=session.name,
-            session_type=session.session_type.value,
-            provider=session.provider,
-            state=session.state.value,
-            created_at=session.created_at.isoformat(),
-            ended_at=session.ended_at.isoformat() if session.ended_at else None,
-            claude_session_id=session.claude_session_id,
-            worktree_path=str(session.worktree_path) if session.worktree_path else None,
-            worktree_branch=session.worktree_branch,
-            working_dir=str(session.resolved_working_dir) if session.resolved_working_dir else None,
-            model=session.resolved_model.value if session.resolved_model else None,
-            external_tmux_name=external_name,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            cache_tokens=cache_tokens,
-            message_count=session.message_count,
-            uses_proxy=session.uses_proxy,
-            token_history=session.token_history,
-        )
-
-    def _session_from_record(self, record: SessionRecord) -> Session | None:
-        """Reconstruct a Session from a persisted record.
-
-        Returns None if the session should not be restored (no valid resources).
-        """
-        # Parse state
-        try:
-            state = SessionState(record.state)
-        except ValueError:
-            state = SessionState.COMPLETED
-
-        # Parse session type
-        try:
-            session_type = SessionType(record.session_type)
-        except ValueError:
-            session_type = SessionType.AI
-
-        # Parse created_at
-        try:
-            created_at = datetime.fromisoformat(record.created_at)
-        except ValueError:
-            created_at = datetime.now()
-
-        # Parse ended_at
-        ended_at = None
-        if record.ended_at:
-            try:
-                ended_at = datetime.fromisoformat(record.ended_at)
-            except ValueError:
-                pass
-
-        # Determine tmux name for this session
-        if record.external_tmux_name:
-            tmux_name = record.external_tmux_name
-        else:
-            tmux_name = self._tmux_name(record.id)
-
-        # Check if tmux session still exists
-        tmux_exists = self._tmux.session_exists(tmux_name)
-        tmux_dead = tmux_exists and self._tmux.is_pane_dead(tmux_name)
-
-        # Check if worktree still exists
-        worktree_exists = (
-            record.worktree_path
-            and Path(record.worktree_path).exists()
-        )
-
-        # Decide whether to restore this session
-        # Restore if: tmux exists (alive or dead) OR worktree exists
-        if not tmux_exists and not worktree_exists:
-            return None
-
-        # Reconstruct session
-        session = Session(
-            name=record.name,
-            claude_session_id=record.claude_session_id,
-            session_type=session_type,
-            provider=record.provider,
-            created_at=created_at,
-            ended_at=ended_at,
-            resolved_working_dir=Path(record.working_dir) if record.working_dir else None,
-            worktree_path=Path(record.worktree_path) if record.worktree_path else None,
-            worktree_branch=record.worktree_branch,
-            uses_proxy=record.uses_proxy,
-            message_count=record.message_count,
-            token_history=record.token_history,
-        )
-
-        # Override the auto-generated ID with the persisted one
-        session.id = record.id
-
-        # Set tmux name (computed or external)
-        session.tmux_name = tmux_name
-        if record.external_tmux_name:
-            session._external_tmux_name = record.external_tmux_name
-
-        # Set model if available
-        if record.model:
-            try:
-                session.resolved_model = ClaudeModel(record.model)
-            except ValueError:
-                pass
-
-        # Update state based on current tmux status
-        if tmux_exists and not tmux_dead:
-            session.state = SessionState.RUNNING
-        elif state == SessionState.PAUSED:
-            # Keep paused state if worktree exists
-            session.state = SessionState.PAUSED if worktree_exists else SessionState.COMPLETED
-        elif state == SessionState.KILLED:
-            session.state = SessionState.KILLED
-        else:
-            session.state = SessionState.COMPLETED
-
-        return session
 
     def _load_persisted_sessions_with_order(self) -> tuple[dict[str, Session], list[str]]:
         """Load sessions and custom order from persisted state.
@@ -757,11 +557,16 @@ class SessionManager:
         Returns:
             Tuple of (sessions dict, session order list)
         """
-        state = self._load_state()
+        state = self._state.load()
         sessions = {}
 
         for record in state.sessions:
-            session = self._session_from_record(record)
+            session = self._state.session_from_record(
+                record,
+                tmux_name_func=self._tmux_name,
+                tmux_exists_func=self._tmux.session_exists,
+                is_pane_dead_func=self._tmux.is_pane_dead,
+            )
             if session:
                 sessions[session.id] = session
 
@@ -772,8 +577,7 @@ class SessionManager:
     def _persist_change(self, session: Session, event: str = "update") -> None:
         """Persist state after a session change."""
         self._save_state()
-        record = self._session_to_record(session)
-        self._append_history(record, event)
+        self._state.append_history(session, event)
 
     # Public interface (for backward compatibility and tests)
     def save_state(self) -> bool:
@@ -783,7 +587,7 @@ class SessionManager:
     @property
     def base_dir(self) -> Path:
         """Get the base directory path."""
-        return self._base_dir
+        return self._state.base_dir
 
     def validate_proxy(
         self,

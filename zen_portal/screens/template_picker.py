@@ -107,7 +107,7 @@ class TemplatePicker(ZenModalScreen[TemplatePickerResult | None]):
         overflow-y: auto;
     }
 
-    TemplatePicker #empty-list {
+    TemplatePicker .empty-list {
         color: $text-disabled;
         text-align: center;
         padding: 2;
@@ -154,7 +154,7 @@ class TemplatePicker(ZenModalScreen[TemplatePickerResult | None]):
             list_container.remove_children()
 
             if not self._filtered:
-                list_container.mount(Static("no templates found", id="empty-list"))
+                list_container.mount(Static("no templates found", classes="empty-list"))
                 return
 
             for i, template in enumerate(self._filtered):

@@ -91,7 +91,7 @@ class CommandPalette(ZenModalScreen[str | None]):
         overflow-y: auto;
     }
 
-    CommandPalette #empty-results {
+    CommandPalette .empty-results {
         color: $text-disabled;
         text-align: center;
         padding: 1;
@@ -155,7 +155,7 @@ class CommandPalette(ZenModalScreen[str | None]):
             results.remove_children()
 
             if not self._filtered_commands:
-                results.mount(Static("no matching commands", id="empty-results"))
+                results.mount(Static("no matching commands", classes="empty-results"))
                 return
 
             for i, command in enumerate(self._filtered_commands):

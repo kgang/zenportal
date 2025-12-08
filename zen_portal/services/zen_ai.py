@@ -9,6 +9,7 @@ Designed for quick, ephemeral interactions within Zenportal.
 
 import asyncio
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -18,6 +19,9 @@ from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 
 from .config import ProxySettings, ZenAIConfig, ZenAIModel, ZenAIProvider
+
+
+logger = logging.getLogger(__name__)
 
 
 # OpenRouter model IDs for each tier
@@ -262,8 +266,8 @@ class ZenAI:
                 error_data = json.loads(body)
                 if "error" in error_data:
                     error_msg = error_data["error"].get("message", error_msg)[:100]
-            except Exception:
-                pass
+            except Exception as parse_error:
+                logger.debug(f"Failed to parse API error response: {parse_error}")
             return ZenAIResult(
                 success=False,
                 response="",
