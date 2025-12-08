@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 from zen_portal.services.tmux import TmuxService, TmuxResult
 from zen_portal.services.session_manager import SessionManager
 from zen_portal.services.config import ConfigManager
+from zen_portal.services.worktree import WorktreeService, WorktreeResult
 
 
 @pytest.fixture
@@ -52,3 +53,35 @@ def working_dir(tmp_path: Path) -> Path:
     work_dir = tmp_path / "zen-work"
     work_dir.mkdir()
     return work_dir
+
+
+@pytest.fixture
+def real_worktree_service(tmp_path: Path) -> WorktreeService:
+    """Create a REAL WorktreeService for testing.
+
+    Tests use module-level patches to intercept WorktreeService instantiation
+    within setup_for_session(), so we need a real service, not a mock.
+    """
+    return WorktreeService(source_repo=tmp_path)
+
+
+@pytest.fixture
+def session_manager_with_worktree(
+    mock_tmux: MagicMock,
+    config_manager: ConfigManager,
+    real_worktree_service: WorktreeService,
+    tmp_path: Path,
+) -> SessionManager:
+    """Create a SessionManager with REAL worktree service.
+
+    The real service allows tests to patch WorktreeService at module level
+    and intercept instance creation within setup_for_session().
+    """
+    state_dir = tmp_path / ".zen_portal"
+    return SessionManager(
+        tmux=mock_tmux,
+        config_manager=config_manager,
+        worktree_service=real_worktree_service,
+        base_dir=state_dir,
+        working_dir=tmp_path,
+    )

@@ -265,11 +265,11 @@ class TestSessionManagerWithWorktree:
     operations now create services dynamically based on session working directory.
     """
 
-    @patch("zen_portal.services.core.worktree_manager.WorktreeService")
+    @patch("zen_portal.services.worktree.WorktreeService")
     def test_create_session_with_worktree_enabled(
         self,
         mock_worktree_class: MagicMock,
-        session_manager: SessionManager,
+        session_manager_with_worktree: SessionManager,
         mock_tmux: MagicMock,
         tmp_path: Path,
     ):
@@ -282,18 +282,18 @@ class TestSessionManagerWithWorktree:
         )
 
         features = SessionFeatures(use_worktree=True, working_dir=tmp_path)
-        session = session_manager.create_session("test", features=features)
+        session = session_manager_with_worktree.create_session("test", features=features)
 
         assert session.worktree_path == worktree_path
         assert session.worktree_branch == "test-branch"
         assert session.worktree_source_repo == tmp_path  # Source repo stored
         mock_instance.create_worktree.assert_called_once()
 
-    @patch("zen_portal.services.core.worktree_manager.WorktreeService")
+    @patch("zen_portal.services.worktree.WorktreeService")
     def test_create_session_with_worktree_branch(
         self,
         mock_worktree_class: MagicMock,
-        session_manager: SessionManager,
+        session_manager_with_worktree: SessionManager,
         mock_tmux: MagicMock,
         tmp_path: Path,
     ):
@@ -306,32 +306,32 @@ class TestSessionManagerWithWorktree:
         )
 
         features = SessionFeatures(use_worktree=True, worktree_branch="my-feature")
-        session = session_manager.create_session("test", features=features)
+        session = session_manager_with_worktree.create_session("test", features=features)
 
         mock_instance.create_worktree.assert_called_once()
         call_kwargs = mock_instance.create_worktree.call_args[1]
         assert call_kwargs["branch"] == "my-feature"
 
-    @patch("zen_portal.services.core.worktree_manager.WorktreeService")
+    @patch("zen_portal.services.worktree.WorktreeService")
     def test_create_session_without_worktree(
         self,
         mock_worktree_class: MagicMock,
-        session_manager: SessionManager,
+        session_manager_with_worktree: SessionManager,
         mock_tmux: MagicMock,
     ):
         """Create session without worktree (default)."""
-        session = session_manager.create_session("test")
+        session = session_manager_with_worktree.create_session("test")
 
         assert session.worktree_path is None
         assert session.worktree_branch is None
         # WorktreeService should not be instantiated when use_worktree is not set
         mock_worktree_class.assert_not_called()
 
-    @patch("zen_portal.services.core.worktree_manager.WorktreeService")
+    @patch("zen_portal.services.worktree.WorktreeService")
     def test_create_session_worktree_failure_graceful_degradation(
         self,
         mock_worktree_class: MagicMock,
-        session_manager: SessionManager,
+        session_manager_with_worktree: SessionManager,
         mock_tmux: MagicMock,
         tmp_path: Path,
     ):
@@ -343,18 +343,18 @@ class TestSessionManagerWithWorktree:
         )
 
         features = SessionFeatures(use_worktree=True)
-        session = session_manager.create_session("test", features=features)
+        session = session_manager_with_worktree.create_session("test", features=features)
 
         # Session should still be created successfully
         assert session.state == SessionState.RUNNING
         assert session.worktree_path is None  # Falls back to regular working dir
         mock_tmux.create_session.assert_called_once()
 
-    @patch("zen_portal.services.core.worktree_manager.WorktreeService")
+    @patch("zen_portal.services.worktree.WorktreeService")
     def test_kill_session_cleans_worktree(
         self,
         mock_worktree_class: MagicMock,
-        session_manager: SessionManager,
+        session_manager_with_worktree: SessionManager,
         mock_tmux: MagicMock,
         tmp_path: Path,
     ):
@@ -368,32 +368,32 @@ class TestSessionManagerWithWorktree:
         mock_instance.remove_worktree.return_value = WorktreeResult(success=True)
 
         features = SessionFeatures(use_worktree=True)
-        session = session_manager.create_session("test", features=features)
+        session = session_manager_with_worktree.create_session("test", features=features)
 
-        session_manager.kill_session(session.id)
+        session_manager_with_worktree.kill_session(session.id)
 
         mock_instance.remove_worktree.assert_called_once_with(worktree_path, force=True)
 
-    @patch("zen_portal.services.core.worktree_manager.WorktreeService")
+    @patch("zen_portal.services.worktree.WorktreeService")
     def test_kill_session_without_worktree(
         self,
         mock_worktree_class: MagicMock,
-        session_manager: SessionManager,
+        session_manager_with_worktree: SessionManager,
         mock_tmux: MagicMock,
     ):
         """Kill session doesn't clean worktree when none exists."""
-        session = session_manager.create_session("test")
+        session = session_manager_with_worktree.create_session("test")
 
-        session_manager.kill_session(session.id)
+        session_manager_with_worktree.kill_session(session.id)
 
         # WorktreeService not instantiated for cleanup when no worktree exists
         mock_worktree_class.assert_not_called()
 
-    @patch("zen_portal.services.core.worktree_manager.WorktreeService")
+    @patch("zen_portal.services.worktree.WorktreeService")
     def test_session_tracks_resolved_working_dir_with_worktree(
         self,
         mock_worktree_class: MagicMock,
-        session_manager: SessionManager,
+        session_manager_with_worktree: SessionManager,
         mock_tmux: MagicMock,
         tmp_path: Path,
     ):
@@ -406,29 +406,29 @@ class TestSessionManagerWithWorktree:
         )
 
         features = SessionFeatures(use_worktree=True)
-        session = session_manager.create_session("test", features=features)
+        session = session_manager_with_worktree.create_session("test", features=features)
 
         assert session.resolved_working_dir == worktree_path
 
-    @patch("zen_portal.services.core.worktree_manager.WorktreeService")
+    @patch("zen_portal.services.worktree.WorktreeService")
     def test_session_explicit_use_worktree_false(
         self,
         mock_worktree_class: MagicMock,
-        session_manager: SessionManager,
+        session_manager_with_worktree: SessionManager,
         mock_tmux: MagicMock,
     ):
         """Session can explicitly disable worktree even if config enables it."""
         features = SessionFeatures(use_worktree=False)
-        session = session_manager.create_session("test", features=features)
+        session = session_manager_with_worktree.create_session("test", features=features)
 
         mock_worktree_class.assert_not_called()
         assert session.worktree_path is None
 
-    @patch("zen_portal.services.core.worktree_manager.WorktreeService")
+    @patch("zen_portal.services.worktree.WorktreeService")
     def test_worktree_uses_session_working_dir(
         self,
         mock_worktree_class: MagicMock,
-        session_manager: SessionManager,
+        session_manager_with_worktree: SessionManager,
         mock_tmux: MagicMock,
         tmp_path: Path,
     ):
@@ -443,7 +443,7 @@ class TestSessionManagerWithWorktree:
         )
 
         features = SessionFeatures(use_worktree=True, working_dir=custom_dir)
-        session = session_manager.create_session("test", features=features)
+        session = session_manager_with_worktree.create_session("test", features=features)
 
         # WorktreeService should be created with the session's working directory
         mock_worktree_class.assert_called_once()

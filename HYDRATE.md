@@ -1,8 +1,8 @@
 # HYDRATE.md
 
-> Quick context for Claude Code sessions. Last updated: 2025-12-07 (v0.3.1 - Phase 1 refactoring)
+> Quick context for Claude Code sessions. Last updated: 2025-12-07 (v0.3.2 - Phase 2 simplification)
 
-**Status**: Phase 1 foundation refactoring complete. SessionStateService extracted (thread-safe), Services container for DI, logging infrastructure added. SessionManager reduced 832→636 lines. See ZEN_CODE_DESIGN.md for architecture roadmap.
+**Status**: Phase 2 simplification complete. WorktreeManager consolidated into WorktreeService (441→434 lines, single API). Phase 1 complete: SessionStateService extracted, Services container, logging. SessionManager at 641 lines. See ZEN_CODE_DESIGN.md for architecture roadmap.
 
 ---
 
@@ -26,12 +26,13 @@ zen_portal/
 ├── app.py                    # entry point + Services container (DI)
 ├── models/                   # data: Session, Template, events, enums
 ├── services/                 # business logic (no UI)
-│   ├── session_manager.py    # core lifecycle (636 lines, refactored)
-│   ├── session_state.py      # thread-safe state persistence (NEW)
+│   ├── session_manager.py    # core lifecycle (641 lines)
+│   ├── session_state.py      # thread-safe state persistence (282 lines)
+│   ├── worktree.py           # git worktree operations (434 lines, consolidated)
 │   ├── template_manager.py   # template CRUD
 │   ├── command_registry.py   # palette commands
 │   ├── fuzzy.py              # fuzzy matching
-│   ├── core/                 # detection, state_refresher, token_manager, worktree_manager
+│   ├── core/                 # detection, state_refresher, token_manager
 │   ├── pipelines/            # create.py - composable multi-step operations
 │   ├── git/                  # git_service.py
 │   ├── openrouter/           # validation, billing, models, monitor
@@ -299,19 +300,19 @@ Tests mock tmux operations. Key test files mirror service/widget structure.
 See **ZEN_CODE_DESIGN.md** for comprehensive architecture guide.
 
 **Phase 1 (Foundation) - COMPLETE ✓**
-- SessionStateService extracted (thread-safe, 271 lines)
+- SessionStateService extracted (thread-safe, 282 lines)
 - Services container for DI (app.py)
 - Logging infrastructure (no silent failures)
 - SessionManager: 832 → 636 lines (-24%)
 
-**Phase 2 (Simplification) - NEXT**
-- Consolidate WorktreeService + WorktreeManager (425 → 300 lines)
-- Cache widget references (152 DOM queries → ~15)
-- Config schema with dataclasses (type-safe)
+**Phase 2 (Simplification) - IN PROGRESS**
+- ✓ Consolidate WorktreeService + WorktreeManager (441 → 434 lines, single API)
+- TODO: Cache widget references (152 DOM queries → ~15)
+- TODO: Config schema with dataclasses (type-safe)
 
 **Phase 3 (Architecture)**
 - Extract validators from screens (business logic → services)
 - Exception hierarchy (ZenError base class)
 - Event bus for pub/sub (decouple services from UI)
 
-All 294 tests passing. Zen code principles: simplicity, clarity, separation, testability.
+All 296 tests passing. Zen code principles: simplicity, clarity, separation, testability.

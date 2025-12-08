@@ -14,7 +14,7 @@ from .discovery import DiscoveryService
 from .session_state import SessionStateService
 from .session_commands import SessionCommandBuilder
 from .proxy_validation import ProxyValidator, ProxyValidationResult
-from .core import WorktreeManager, TokenManager, StateRefresher
+from .core import TokenManager, StateRefresher
 from .pipelines import CreateContext, CreateSessionPipeline
 
 
@@ -66,7 +66,6 @@ class SessionManager:
         self._state = state_service or SessionStateService(self._base_dir)
 
         # Initialize extracted managers
-        self._worktree_mgr = WorktreeManager(worktree_service)
         self._token_mgr = TokenManager()
         self._state_refresher = StateRefresher(
             tmux=tmux,
@@ -75,7 +74,6 @@ class SessionManager:
         )
 
         # Public access for screens that need direct manager access
-        self.worktree = self._worktree_mgr
         self.tokens = self._token_mgr
 
         # Load persisted state on startup
@@ -155,7 +153,7 @@ class SessionManager:
             tmux=self._tmux,
             config_manager=self._config,
             commands=self._commands,
-            worktree_mgr=self._worktree_mgr,
+            worktree_service=self._worktree,
             tmux_name_func=self._tmux_name,
             max_sessions=self.MAX_SESSIONS,
             current_count=len(self._sessions),
@@ -336,7 +334,9 @@ class SessionManager:
             self._tmux.clear_history(tmux_name)
             self._tmux.kill_session(tmux_name)
 
-        self._worktree_mgr.cleanup(session)
+        # Cleanup worktree if service is available
+        if self._worktree and session.worktree_path:
+            self._worktree.cleanup_session(session)
 
         session.state = SessionState.KILLED
         session.ended_at = datetime.now()
@@ -351,7 +351,9 @@ class SessionManager:
         if not session or session.is_active:
             return False
 
-        self._worktree_mgr.cleanup(session)
+        # Cleanup worktree if service is available
+        if self._worktree and session.worktree_path:
+            self._worktree.cleanup_session(session)
 
         record = self._session_to_record(session)
         del self._sessions[session_id]
@@ -364,10 +366,13 @@ class SessionManager:
     def navigate_to_worktree(self, session_id: str) -> Session | None:
         """Create a new shell session in a paused session's worktree."""
         session = self._sessions.get(session_id)
-        if not session or not self._worktree_mgr.can_navigate(session):
+        if not session or not self._worktree:
             return None
 
-        worktree_path = self._worktree_mgr.get_worktree_path(session)
+        if not self._worktree.can_navigate_to_session(session):
+            return None
+
+        worktree_path = self._worktree.get_session_worktree_path(session)
         if not worktree_path:
             return None
 

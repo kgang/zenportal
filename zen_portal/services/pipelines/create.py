@@ -7,7 +7,7 @@ from ..pipeline import StepResult
 from ..config import ConfigManager, FeatureSettings, ProxySettings
 from ..session_commands import SessionCommandBuilder
 from ..tmux import TmuxService
-from ..core.worktree_manager import WorktreeManager
+from ..worktree import WorktreeService
 from ..proxy_validation import ProxyValidator
 from ...models.session import Session, SessionState, SessionFeatures, SessionType
 
@@ -110,18 +110,23 @@ class CreateSessionModel:
 class SetupWorktree:
     """Step: Set up git worktree if enabled."""
 
-    def __init__(self, worktree_mgr: WorktreeManager):
-        self._worktree = worktree_mgr
+    def __init__(self, worktree_service: WorktreeService | None):
+        self._worktree = worktree_service
 
     def invoke(self, ctx: CreateContext) -> StepResult[CreateContext]:
         if not ctx.session or not ctx.resolved_config:
             return StepResult.fail("Session or config not initialized")
 
-        ctx.working_dir = self._worktree.setup_for_session(
-            ctx.session,
-            ctx.features,
-            ctx.resolved_config.worktree,
-        )
+        # Only setup worktree if service is available
+        if self._worktree:
+            ctx.working_dir = self._worktree.setup_for_session(
+                ctx.session,
+                ctx.features,
+                ctx.resolved_config.worktree,
+            )
+        else:
+            ctx.working_dir = ctx.session.resolved_working_dir
+
         return StepResult.success(ctx)
 
 
@@ -232,7 +237,7 @@ class CreateSessionPipeline:
         tmux: TmuxService,
         config_manager: ConfigManager,
         commands: SessionCommandBuilder,
-        worktree_mgr: WorktreeManager,
+        worktree_service: WorktreeService | None,
         tmux_name_func,
         max_sessions: int,
         current_count: int,
@@ -242,7 +247,7 @@ class CreateSessionPipeline:
             ValidateLimit(max_sessions, current_count),
             ResolveConfig(config_manager, fallback_dir),
             CreateSessionModel(),
-            SetupWorktree(worktree_mgr),
+            SetupWorktree(worktree_service),
             ValidateBinary(commands),
             ValidateProxy(),
             BuildCommand(commands),
