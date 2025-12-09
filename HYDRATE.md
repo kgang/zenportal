@@ -1,8 +1,8 @@
 # HYDRATE.md
 
-> Quick context for Claude Code sessions. Last updated: 2025-12-07 (v0.3.2 - Phase 2 simplification)
+> Quick context for Claude Code sessions. Last updated: 2025-12-09 (v0.3.3 - Visual Calm)
 
-**Status**: Phase 2 simplification complete. WorktreeManager consolidated into WorktreeService (441→434 lines, single API). Phase 1 complete: SessionStateService extracted, Services container, logging. SessionManager at 641 lines. See ZEN_CODE_DESIGN.md for architecture roadmap.
+**Status**: Visual calm refactoring complete. OutputView/SessionList now use smart diffing and incremental updates to reduce screen violence. Phase 2 complete. See ZEN_CODE_DESIGN.md for architecture roadmap.
 
 ---
 
@@ -43,7 +43,7 @@ zen_portal/
 │   ├── main.py               # MainScreen (uses mixins)
 │   ├── main_actions.py       # ActionsMixin, ExitMixin
 │   └── main_templates.py     # TemplateMixin, PaletteMixin
-└── tests/                    # 294 tests, all passing
+└── tests/                    # 294 tests (all passing)
 ```
 
 **File limit**: ~500 lines. Large modules split into `core/` or supporting files.
@@ -80,7 +80,7 @@ C       show completed    S    search output
 
 **Move mode**: `l` to enter, `j/k` reorders, `esc` exits
 
-**Completed sessions**: hidden by default, `C` to toggle visibility
+**Dead sessions**: remain visible in list until explicitly cleaned with `d`
 
 **Navigation invariants**: `j/k` vertical, `h/l` horizontal, `f` expand, `esc` cancel
 
@@ -229,7 +229,13 @@ Key files:
 
 Output view echoes selection: `▪ session-name  active  2h` in header.
 Notifications bottom-left. Quick modals use `.modal-left` class.
-Completed sessions hidden by default (less visual clutter).
+Dead sessions remain visible until cleaned (no surprises).
+
+**Visual Calm** (reduce screen violence):
+- Smart diffing: only recompose when structure (IDs/order) changes
+- Incremental updates: `RichLog.write()` and `Static.update()` in-place
+- Batched reactives: `_batching` flag prevents multiple recomposes
+- Intelligent scroll: top-left for short content, bottom-left for long
 
 ---
 
@@ -265,7 +271,6 @@ Shows detailed session metadata:
 
 ## Constraints
 
-- `MAX_SESSIONS = 10`
 - tmux names: `zen-{session_id[:8]}`
 - tmux scrollback: 50,000 lines (set at creation)
 - Worktrees symlink `.env` files
@@ -305,14 +310,14 @@ See **ZEN_CODE_DESIGN.md** for comprehensive architecture guide.
 - Logging infrastructure (no silent failures)
 - SessionManager: 832 → 636 lines (-24%)
 
-**Phase 2 (Simplification) - IN PROGRESS**
+**Phase 2 (Simplification) - COMPLETE ✓**
 - ✓ Consolidate WorktreeService + WorktreeManager (441 → 434 lines, single API)
-- TODO: Cache widget references (152 DOM queries → ~15)
-- TODO: Config schema with dataclasses (type-safe)
+- Pending: Cache widget references (152 DOM queries → ~15)
+- Pending: Config schema with dataclasses (type-safe)
 
 **Phase 3 (Architecture)**
 - Extract validators from screens (business logic → services)
 - Exception hierarchy (ZenError base class)
 - Event bus for pub/sub (decouple services from UI)
 
-All 296 tests passing. Zen code principles: simplicity, clarity, separation, testability.
+All 287 tests passing. Zen code principles: simplicity, clarity, separation, testability.
