@@ -4,6 +4,11 @@ Eye Strain Optimization:
 - Enhanced title echoes session selection (glyph + state + age)
 - Context bar provides immediate feedback without scanning right
 - Reduces horizontal saccade from session list to output content
+
+Visual Calm (reduce screen violence):
+- Batched updates avoid multiple recomposes per update cycle
+- Incremental RichLog updates when only output content changes
+- Header/context updates in-place without full DOM rebuild
 """
 
 from textual.app import ComposeResult
@@ -23,20 +28,36 @@ class OutputView(Static, can_focus=False):
 
     The pattern: visibility AND focusability must be controlled together.
     CSS display:none alone does not prevent focus stealing.
+
+    Visual Calm Strategy:
+    - Batch updates: update_session() sets all properties without triggering
+      multiple recomposes - only a single refresh at the end
+    - Incremental updates: when only output changes (same session), update
+      RichLog content in-place rather than recomposing entire widget tree
+    - Header updates: title/context changes update Static widgets directly
     """
 
-    output: reactive[str] = reactive("")
-    session_name: reactive[str] = reactive("")
+    # Core content - not reactive (we control updates manually for visual calm)
+    output: reactive[str] = reactive("", always_update=True)
+    session_name: reactive[str] = reactive("", always_update=True)
     search_active: reactive[bool] = reactive(False)
     search_query: reactive[str] = reactive("")
 
-    # Session echo properties (eye strain reduction)
-    session_glyph: reactive[str] = reactive("")
-    session_state: reactive[str] = reactive("")
-    session_age: reactive[str] = reactive("")
-    session_type: reactive[str] = reactive("")
-    git_info: reactive[str] = reactive("")
-    working_dir: reactive[str] = reactive("")
+    # Session echo properties (eye strain reduction) - not reactive
+    session_glyph: reactive[str] = reactive("", always_update=True)
+    session_state: reactive[str] = reactive("", always_update=True)
+    session_age: reactive[str] = reactive("", always_update=True)
+    session_type: reactive[str] = reactive("", always_update=True)
+    git_info: reactive[str] = reactive("", always_update=True)
+    working_dir: reactive[str] = reactive("", always_update=True)
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        # Track previous session for incremental updates
+        self._prev_session_name: str = ""
+        self._prev_output: str = ""
+        # Batching flag to prevent watchers from triggering during batch update
+        self._batching: bool = False
 
     DEFAULT_CSS = """
     OutputView {
@@ -232,17 +253,51 @@ class OutputView(Static, can_focus=False):
         return path
 
     def watch_output(self, new_output: str) -> None:
-        """Update display when output changes."""
+        """Update display when output changes.
+
+        Visual calm: skip if we're in a batch update - the batch will handle refresh.
+        """
+        if self._batching:
+            return
         self.refresh(recompose=True)
+        self.call_after_refresh(self._apply_intelligent_scroll)
 
     def watch_session_name(self, name: str) -> None:
-        """Update title when session changes."""
+        """Update title when session changes.
+
+        Visual calm: skip if we're in a batch update - the batch will handle refresh.
+        """
+        if self._batching:
+            return
         self.refresh(recompose=True)
+
+    def _apply_intelligent_scroll(self) -> None:
+        """Apply intelligent scroll positioning based on content size.
+
+        Eye strain optimization:
+        - Little content (fits in view): scroll to top-left (avoid eye drift)
+        - Much content (overflows): scroll to bottom-left (see latest output)
+
+        Always scroll left horizontally to start reading from the beginning.
+        """
+        try:
+            log = self.query_one(RichLog)
+            # Always reset horizontal scroll to left
+            log.scroll_x = 0
+
+            # Check if content overflows vertically
+            if log.max_scroll_y > 0:
+                # Content overflows - scroll to bottom to show latest
+                log.scroll_end(animate=False)
+            else:
+                # Content fits - scroll to top
+                log.scroll_home(animate=False)
+        except Exception:
+            pass  # RichLog may not exist (empty state)
 
     def update_output(self, session_name: str, output: str) -> None:
         """Update both session name and output."""
-        self.session_name = session_name
-        self.output = output
+        self.update_session(session_name=session_name, output=output)
 
     def update_session(
         self,
@@ -257,6 +312,11 @@ class OutputView(Static, can_focus=False):
     ) -> None:
         """Update output with full session context for eye strain reduction.
 
+        Visual Calm Strategy:
+        - Same session, only output changed: incremental RichLog update (no flash)
+        - Same session, header changed: update Static widgets in-place
+        - Different session: full recompose (necessary for structural change)
+
         Args:
             session_name: Display name of the session
             output: Session output content
@@ -267,11 +327,79 @@ class OutputView(Static, can_focus=False):
             git_info: Git status (main ✓ +2)
             working_dir: Working directory path
         """
-        self.session_name = session_name
-        self.output = output
-        self.session_glyph = glyph
-        self.session_state = state
-        self.session_age = age
-        self.session_type = session_type
-        self.git_info = git_info
-        self.working_dir = working_dir
+        # Determine what changed
+        same_session = session_name == self._prev_session_name
+        output_changed = output != self._prev_output
+        is_empty_to_content = not self._prev_session_name and session_name
+
+        # Enable batching to prevent watchers from triggering multiple recomposes
+        self._batching = True
+        try:
+            # Update all properties
+            self.session_name = session_name
+            self.output = output
+            self.session_glyph = glyph
+            self.session_state = state
+            self.session_age = age
+            self.session_type = session_type
+            self.git_info = git_info
+            self.working_dir = working_dir
+        finally:
+            self._batching = False
+
+        # Track for next comparison
+        self._prev_session_name = session_name
+        self._prev_output = output
+
+        # Choose update strategy for visual calm
+        if is_empty_to_content or not same_session:
+            # Structural change: full recompose required
+            self.refresh(recompose=True)
+            self.call_after_refresh(self._apply_intelligent_scroll)
+        elif output_changed:
+            # Same session, output changed: incremental update
+            self._incremental_output_update()
+        else:
+            # Same session, only header metadata changed: update in-place
+            self._update_header_in_place()
+
+    def _incremental_output_update(self) -> None:
+        """Update RichLog content without full recompose.
+
+        Visual calm: clears and rewrites RichLog content in-place,
+        avoiding the flash of a full widget tree rebuild.
+        """
+        try:
+            # Update header in-place first
+            self._update_header_in_place()
+
+            # Update log content incrementally
+            log = self.query_one(RichLog)
+            log.clear()
+            log.write(self._get_filtered_output())
+
+            # Apply scroll positioning
+            self._apply_intelligent_scroll()
+        except Exception:
+            # Fallback to full recompose if incremental fails
+            self.refresh(recompose=True)
+            self.call_after_refresh(self._apply_intelligent_scroll)
+
+    def _update_header_in_place(self) -> None:
+        """Update title and context Static widgets without recompose.
+
+        Visual calm: directly updates widget content, no DOM rebuild.
+        """
+        try:
+            # Update title
+            title_widget = self.query_one(".title", Static)
+            title_widget.update(self._render_title())
+
+            # Update context bar if it exists
+            try:
+                context_widget = self.query_one("#session-context", Static)
+                context_widget.update(self._render_context())
+            except Exception:
+                pass  # Context bar may not exist
+        except Exception:
+            pass  # Widgets may not exist in empty state

@@ -1,4 +1,10 @@
-"""SessionList widget for displaying sessions with selection."""
+"""SessionList widget for displaying sessions with selection.
+
+Visual Calm Strategy:
+- Smart diffing: only recompose when session structure actually changes
+- In-place updates: update SessionListItem content without rebuilding DOM
+- Reduced polling impact: frequent state checks don't cause visual flicker
+"""
 
 from textual.app import ComposeResult
 from textual.reactive import reactive
@@ -9,7 +15,11 @@ from ..models.events import SessionSelected
 
 
 class SessionListItem(Static):
-    """A single session row in the list."""
+    """A single session row in the list.
+
+    Supports in-place updates for visual calm - can update session data
+    without requiring parent to rebuild entire widget tree.
+    """
 
     DEFAULT_CSS = """
     SessionListItem {
@@ -46,6 +56,8 @@ class SessionListItem(Static):
     def __init__(self, session: Session, selected: bool = False, moving: bool = False) -> None:
         super().__init__()
         self.session = session
+        self._selected = selected
+        self._moving = moving
         if selected:
             self.add_class("selected")
         if moving:
@@ -56,6 +68,45 @@ class SessionListItem(Static):
         s = self.session
         # Minimal format: glyph + name + age (no type prefixes - cleaner)
         return f"{s.status_glyph}  {s.display_name:<32} {s.age_display:>5}"
+
+    def update_in_place(self, session: Session, selected: bool, moving: bool) -> bool:
+        """Update this item in-place if possible.
+
+        Returns True if update was handled, False if recompose needed.
+        Visual calm: avoids DOM rebuild when only display values change.
+        """
+        # Can't update in-place if session ID changed (structural change)
+        if session.id != self.session.id:
+            return False
+
+        # Update session reference
+        old_state = self.session.state
+        self.session = session
+
+        # Update state class if changed
+        if session.state != old_state:
+            self.remove_class(old_state.value)
+            self.add_class(session.state.value)
+
+        # Update selection state
+        if selected != self._selected:
+            self._selected = selected
+            if selected:
+                self.add_class("selected")
+            else:
+                self.remove_class("selected")
+
+        # Update moving state
+        if moving != self._moving:
+            self._moving = moving
+            if moving:
+                self.add_class("moving")
+            else:
+                self.remove_class("moving")
+
+        # Refresh content (glyph, name, age may have changed)
+        self.refresh()
+        return True
 
 
 class SessionList(Static, can_focus=False):
@@ -98,8 +149,9 @@ class SessionList(Static, can_focus=False):
     """
 
     def compose(self) -> ComposeResult:
-        # Filter sessions based on show_completed
-        visible_sessions = self.sessions if self.show_completed else [s for s in self.sessions if s.is_active]
+        # All sessions are visible by default (dead sessions show until cleaned)
+        # show_completed toggle is removed - sessions remain visible until explicit cleanup
+        visible_sessions = self.sessions
 
         if not visible_sessions:
             yield Static("\n\n\n\n      ○\n\n    empty\n\n    n  new session", classes="empty-message")
@@ -115,36 +167,34 @@ class SessionList(Static, can_focus=False):
 
     def watch_selected_index(self, index: int) -> None:
         """Emit selection event when index changes."""
-        visible_sessions = self.sessions if self.show_completed else [s for s in self.sessions if s.is_active]
-        if visible_sessions and 0 <= index < len(visible_sessions):
-            self.post_message(SessionSelected(visible_sessions[index]))
+        if self.sessions and 0 <= index < len(self.sessions):
+            self.post_message(SessionSelected(self.sessions[index]))
 
     def move_down(self) -> None:
         """Move selection down, or move session down if in move mode."""
-        visible_sessions = self.sessions if self.show_completed else [s for s in self.sessions if s.is_active]
-        if not visible_sessions:
+        if not self.sessions:
             return
         if self.move_mode:
             self._move_session_down()
         else:
-            self.selected_index = (self.selected_index + 1) % len(visible_sessions)
+            self.selected_index = (self.selected_index + 1) % len(self.sessions)
         self.refresh(recompose=True)
 
     def move_up(self) -> None:
         """Move selection up, or move session up if in move mode."""
-        visible_sessions = self.sessions if self.show_completed else [s for s in self.sessions if s.is_active]
-        if not visible_sessions:
+        if not self.sessions:
             return
         if self.move_mode:
             self._move_session_up()
         else:
-            self.selected_index = (self.selected_index - 1) % len(visible_sessions)
+            self.selected_index = (self.selected_index - 1) % len(self.sessions)
         self.refresh(recompose=True)
 
     def _move_session_down(self) -> None:
         """Move selected session down in the list."""
-        if self.selected_index >= len(self.sessions) - 1:
-            return  # Already at bottom
+        if not self.sessions or self.selected_index >= len(self.sessions) - 1:
+            return  # Already at bottom or no sessions
+
         sessions = list(self.sessions)
         i = self.selected_index
         sessions[i], sessions[i + 1] = sessions[i + 1], sessions[i]
@@ -153,8 +203,9 @@ class SessionList(Static, can_focus=False):
 
     def _move_session_up(self) -> None:
         """Move selected session up in the list."""
-        if self.selected_index <= 0:
-            return  # Already at top
+        if not self.sessions or self.selected_index <= 0:
+            return  # Already at top or no sessions
+
         sessions = list(self.sessions)
         i = self.selected_index
         sessions[i], sessions[i - 1] = sessions[i - 1], sessions[i]
@@ -175,9 +226,8 @@ class SessionList(Static, can_focus=False):
 
     def get_selected(self) -> Session | None:
         """Get the currently selected session."""
-        visible_sessions = self.sessions if self.show_completed else [s for s in self.sessions if s.is_active]
-        if visible_sessions and 0 <= self.selected_index < len(visible_sessions):
-            return visible_sessions[self.selected_index]
+        if self.sessions and 0 <= self.selected_index < len(self.sessions):
+            return self.sessions[self.selected_index]
         return None
 
     def get_session_order(self) -> list[str]:
@@ -185,15 +235,58 @@ class SessionList(Static, can_focus=False):
         return [s.id for s in self.sessions]
 
     def update_sessions(self, sessions: list[Session]) -> None:
-        """Update the session list."""
+        """Update the session list with smart diffing for visual calm.
+
+        Visual Calm Strategy:
+        - Same structure (same IDs in same order): update items in-place
+        - Different structure: full recompose (necessary for DOM changes)
+        """
+        old_sessions = self.sessions
+
+        # Clamp selection index
+        new_selected = self.selected_index
+        if new_selected >= len(sessions):
+            new_selected = max(0, len(sessions) - 1)
+
+        # Check if structure changed (IDs or order)
+        old_ids = [s.id for s in old_sessions]
+        new_ids = [s.id for s in sessions]
+        structure_changed = old_ids != new_ids
+
+        # Update internal state
         self.sessions = sessions
-        # Clamp selection index based on visible sessions
-        visible_sessions = sessions if self.show_completed else [s for s in sessions if s.is_active]
-        if self.selected_index >= len(visible_sessions):
-            self.selected_index = max(0, len(visible_sessions) - 1)
-        # Force recompose to ensure UI reflects current session states
-        # (reactive may not detect changes when list contents mutate in-place)
-        self.refresh(recompose=True)
+        self.selected_index = new_selected
+
+        if structure_changed:
+            # Structure changed: must recompose
+            self.refresh(recompose=True)
+        else:
+            # Same structure: try in-place updates for visual calm
+            self._update_items_in_place(sessions)
+
+    def _update_items_in_place(self, sessions: list[Session]) -> None:
+        """Update existing SessionListItems without recomposing.
+
+        Visual calm: updates content and styling of existing widgets
+        rather than tearing down and rebuilding the DOM tree.
+        """
+        try:
+            items = list(self.query(SessionListItem))
+            if len(items) != len(sessions):
+                # Mismatch - fallback to recompose
+                self.refresh(recompose=True)
+                return
+
+            for i, (item, session) in enumerate(zip(items, sessions)):
+                is_selected = i == self.selected_index
+                is_moving = is_selected and self.move_mode
+                if not item.update_in_place(session, is_selected, is_moving):
+                    # Item couldn't update in-place - fallback to recompose
+                    self.refresh(recompose=True)
+                    return
+        except Exception:
+            # Any error - fallback to recompose
+            self.refresh(recompose=True)
 
     def update_sessions_preserve_order(self, sessions: list[Session], order: list[str]) -> None:
         """Update sessions while preserving custom order."""
