@@ -123,6 +123,12 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
         self._rapid_refresh_timer = None
         self._rapid_refresh_count = 0
 
+        # Cached widget references (set in on_mount)
+        self._session_list: SessionList | None = None
+        self._output_view: OutputView | None = None
+        self._info_view: SessionInfoView | None = None
+        self._hint: Static | None = None
+
         # Initialize command registry for palette
         self._command_registry = create_default_registry()
 
@@ -151,6 +157,12 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
 
     async def on_mount(self) -> None:
         """Initialize and start polling."""
+        # Cache widget references for performance (avoids repeated DOM queries)
+        self._session_list = self.query_one("#session-list", SessionList)
+        self._output_view = self.query_one("#output-view", OutputView)
+        self._info_view = self.query_one("#info-view", SessionInfoView)
+        self._hint = self.query_one("#hint", Static)
+
         self._refresh_sessions()
         if self._focus_tmux_session:
             self._select_session_by_tmux_name(self._focus_tmux_session)
@@ -161,39 +173,62 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
         if self._proxy_monitor:
             await self._proxy_monitor.start_monitoring()
 
+    @property
+    def session_list(self) -> SessionList:
+        """Get cached session list widget."""
+        if self._session_list is None:
+            self._session_list = self.query_one("#session-list", SessionList)
+        return self._session_list
+
+    @property
+    def output_view(self) -> OutputView:
+        """Get cached output view widget."""
+        if self._output_view is None:
+            self._output_view = self.query_one("#output-view", OutputView)
+        return self._output_view
+
+    @property
+    def info_view(self) -> SessionInfoView:
+        """Get cached info view widget."""
+        if self._info_view is None:
+            self._info_view = self.query_one("#info-view", SessionInfoView)
+        return self._info_view
+
+    @property
+    def hint(self) -> Static:
+        """Get cached hint widget."""
+        if self._hint is None:
+            self._hint = self.query_one("#hint", Static)
+        return self._hint
+
     def _select_session_by_tmux_name(self, tmux_name: str) -> None:
         """Select the session with the given tmux session name."""
-        session_list = self.query_one("#session-list", SessionList)
         # Find session in visible list
-        for i, session in enumerate(session_list.sessions):
+        for i, session in enumerate(self.session_list.sessions):
             if self._manager.get_tmux_session_name(session.id) == tmux_name:
-                session_list.selected_index = i
-                session_list.refresh(recompose=True)
+                self.session_list.selected_index = i
+                self.session_list.refresh(recompose=True)
                 break
 
     def _refresh_selected_output(self) -> None:
         """Refresh output/info view for currently selected session."""
-        session_list = self.query_one("#session-list", SessionList)
-        selected = session_list.get_selected()
+        selected = self.session_list.get_selected()
 
         if self.info_mode:
-            info_view = self.query_one("#info-view", SessionInfoView)
-            info_view.update_session(selected)
+            self.info_view.update_session(selected)
         else:
             if selected:
-                output_view = self.query_one("#output-view", OutputView)
                 if not selected.is_active:
                     content = self._build_dead_session_info(selected)
                 else:
                     content = self._manager.get_output(selected.id)
-                self._update_output_with_context(output_view, selected, content)
+                self._update_output_with_context(self.output_view, selected, content)
 
     def _refresh_sessions(self) -> None:
         """Update session list widget (skipped during move mode to preserve reordering)."""
-        session_list = self.query_one("#session-list", SessionList)
-        if session_list.move_mode:
+        if self.session_list.move_mode:
             return  # Don't overwrite user's reordering
-        session_list.update_sessions(self._manager.sessions)
+        self.session_list.update_sessions(self._manager.sessions)
 
     def _poll_sessions(self) -> None:
         """Periodic refresh of session states."""
@@ -226,15 +261,13 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
         session = event.session
 
         if self.info_mode:
-            info_view = self.query_one("#info-view", SessionInfoView)
-            info_view.update_session(session)
+            self.info_view.update_session(session)
         else:
-            output_view = self.query_one("#output-view", OutputView)
             if not session.is_active:
                 content = self._build_dead_session_info(session)
             else:
                 content = self._manager.get_output(session.id)
-            self._update_output_with_context(output_view, session, content)
+            self._update_output_with_context(self.output_view, session, content)
 
     def _build_dead_session_info(self, session: Session) -> str:
         """Build informational content for a dead session."""
@@ -350,34 +383,31 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
 
     # Navigation actions
     def action_move_down(self) -> None:
-        self.query_one("#session-list", SessionList).move_down()
+        self.session_list.move_down()
 
     def action_move_up(self) -> None:
-        self.query_one("#session-list", SessionList).move_up()
+        self.session_list.move_up()
 
     def action_toggle_move(self) -> None:
         """Toggle move mode for reordering sessions."""
-        session_list = self.query_one("#session-list", SessionList)
-        if session_list.move_mode:
-            session_list.exit_move_mode()
+        if self.session_list.move_mode:
+            self.session_list.exit_move_mode()
             self._save_session_order()
             self.zen_notify("order saved")
         else:
-            session_list.toggle_move_mode()
+            self.session_list.toggle_move_mode()
             self.zen_notify("move mode: j/k to reorder, space/esc to exit")
 
     def action_exit_move(self) -> None:
         """Exit move mode and save order."""
-        session_list = self.query_one("#session-list", SessionList)
-        if session_list.move_mode:
-            session_list.exit_move_mode()
+        if self.session_list.move_mode:
+            self.session_list.exit_move_mode()
             self._save_session_order()
             self.zen_notify("order saved")
 
     def _save_session_order(self) -> None:
         """Save current session order to state."""
-        session_list = self.query_one("#session-list", SessionList)
-        order = session_list.get_session_order()
+        order = self.session_list.get_session_order()
         self._manager.set_session_order(order)
 
     def action_new_session(self) -> None:
@@ -408,9 +438,8 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
                         provider=provider,
                     )
                     self._refresh_sessions()
-                    session_list = self.query_one("#session-list", SessionList)
-                    session_list.selected_index = 0
-                    session_list.refresh(recompose=True)
+                    self.session_list.selected_index = 0
+                    self.session_list.refresh(recompose=True)
                     self._start_rapid_refresh()
                     # Show provider name for AI sessions
                     display_type = provider if session_type == SessionType.AI else session_type.value
@@ -435,9 +464,8 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
                             working_dir=claude_session.project_path,
                         )
                         self._refresh_sessions()
-                        session_list = self.query_one("#session-list", SessionList)
-                        session_list.selected_index = 0
-                        session_list.refresh(recompose=True)
+                        self.session_list.selected_index = 0
+                        self.session_list.refresh(recompose=True)
                         self._start_rapid_refresh()
 
                         # Show appropriate notification based on session state
@@ -479,8 +507,7 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
         """Activate search in output view (only when not in info mode)."""
         if not self.info_mode:
             try:
-                output_view = self.query_one("#output-view", OutputView)
-                output_view.action_toggle_search()
+                self.output_view.action_toggle_search()
             except Exception:
                 pass
 
@@ -489,10 +516,8 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
 
     def watch_info_mode(self, info_mode: bool) -> None:
         try:
-            output_view = self.query_one("#output-view", OutputView)
-            info_view = self.query_one("#info-view", SessionInfoView)
-            output_view.display = not info_mode
-            info_view.display = info_mode
+            self.output_view.display = not info_mode
+            self.info_view.display = info_mode
             self._refresh_selected_output()
             self._update_hint()
             self.zen_notify(f"view: {'info' if info_mode else 'output'}")
@@ -500,14 +525,13 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
             pass
 
     def _update_hint(self) -> None:
-        hint = self.query_one("#hint", Static)
         base = "j/k nav  n new  a attach  ? help  q quit"
         if self.info_mode:
-            hint.update(f"{base}  [dim]◦ info[/dim]")
+            self.hint.update(f"{base}  [dim]◦ info[/dim]")
         elif self._streaming:
-            hint.update(f"{base}  [dim]◦ stream[/dim]")
+            self.hint.update(f"{base}  [dim]◦ stream[/dim]")
         else:
-            hint.update(base)
+            self.hint.update(base)
 
     def action_config(self) -> None:
         from .config_screen import ConfigScreen
@@ -556,8 +580,7 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
 
         # Update session info display if visible
         if self.info_mode:
-            info_view = self.query_one("#info-view", SessionInfoView)
-            info_view.refresh()
+            self.info_view.refresh()
 
     async def _cleanup_monitoring(self) -> None:
         """Clean up proxy monitoring on screen exit."""

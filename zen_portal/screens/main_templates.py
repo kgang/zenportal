@@ -1,6 +1,9 @@
 """Template and palette actions for MainScreen.
 
 Extracted to keep main.py under 500 lines.
+
+Uses cached widget references from MainScreen via properties:
+- self.session_list (SessionList)
 """
 
 from __future__ import annotations
@@ -17,11 +20,9 @@ class MainScreenPaletteMixin:
     def action_command_palette(self) -> None:
         """Open the command palette for searchable command execution."""
         from .command_palette import CommandPalette
-        from ..widgets.session_list import SessionList
 
         # Check if a session is selected for context-aware commands
-        session_list = self.query_one("#session-list", SessionList)
-        has_selection = session_list.get_selected() is not None
+        has_selection = self.session_list.get_selected() is not None
 
         def handle_command(command_id: str | None) -> None:
             if not command_id:
@@ -69,7 +70,6 @@ class MainScreenTemplateMixin:
         from ..models.session import SessionFeatures, SessionType
         from ..services.config import ClaudeModel
         from ..services.git import GitService
-        from ..widgets.session_list import SessionList
         from pathlib import Path
 
         # Resolve directory placeholders
@@ -106,9 +106,8 @@ class MainScreenTemplateMixin:
                 provider=provider,
             )
             self._refresh_sessions()
-            session_list = self.query_one("#session-list", SessionList)
-            session_list.selected_index = 0
-            session_list.refresh(recompose=True)
+            self.session_list.selected_index = 0
+            self.session_list.refresh(recompose=True)
             self._start_rapid_refresh()
             display_type = provider if session_type == SessionType.AI else session_type.value
             self.zen_notify(f"created {display_type}: {session.display_name}")

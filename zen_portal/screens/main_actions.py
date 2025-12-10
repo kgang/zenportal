@@ -1,9 +1,12 @@
-"""Action handlers for MainScreen as a mixin."""
+"""Action handlers for MainScreen as a mixin.
+
+Uses cached widget references from MainScreen via properties:
+- self.session_list (SessionList)
+- self.output_view (OutputView)
+- self.info_view (SessionInfoView)
+"""
 
 from ..models.session import Session, SessionState, SessionType, SessionFeatures
-from ..widgets.session_list import SessionList
-from ..widgets.output_view import OutputView
-from ..widgets.session_info import SessionInfoView
 
 
 class MainScreenActionsMixin:
@@ -11,8 +14,7 @@ class MainScreenActionsMixin:
 
     def action_pause(self) -> None:
         """Pause selected session (ends tmux but preserves worktree)."""
-        session_list = self.query_one("#session-list", SessionList)
-        selected = session_list.get_selected()
+        selected = self.session_list.get_selected()
         if not selected:
             self.zen_notify("no session selected", "warning")
             return
@@ -34,8 +36,7 @@ class MainScreenActionsMixin:
 
     def action_kill(self) -> None:
         """Kill selected session and remove its worktree."""
-        session_list = self.query_one("#session-list", SessionList)
-        selected = session_list.get_selected()
+        selected = self.session_list.get_selected()
         if not selected:
             self.zen_notify("no session selected", "warning")
             return
@@ -55,8 +56,7 @@ class MainScreenActionsMixin:
 
     def action_clean(self) -> None:
         """Clean up an ended session (remove worktree and session from list)."""
-        session_list = self.query_one("#session-list", SessionList)
-        selected = session_list.get_selected()
+        selected = self.session_list.get_selected()
         if not selected:
             self.zen_notify("no session selected", "warning")
             return
@@ -76,8 +76,7 @@ class MainScreenActionsMixin:
 
     def action_nav_worktree(self) -> None:
         """Navigate to a session's worktree."""
-        session_list = self.query_one("#session-list", SessionList)
-        selected = session_list.get_selected()
+        selected = self.session_list.get_selected()
         if not selected:
             self.zen_notify("no session selected", "warning")
             return
@@ -122,9 +121,8 @@ class MainScreenActionsMixin:
                         session_type=SessionType.SHELL,
                     )
                     self._refresh_sessions()
-                    session_list = self.query_one("#session-list", SessionList)
-                    session_list.selected_index = 0
-                    session_list.refresh(recompose=True)
+                    self.session_list.selected_index = 0
+                    self.session_list.refresh(recompose=True)
                     self._start_rapid_refresh()
                     self.zen_notify(f"shell in worktree: {wt.branch}")
                 except Exception as e:
@@ -147,8 +145,7 @@ class MainScreenActionsMixin:
 
     def action_attach_tmux(self) -> None:
         """Attach to tmux session (leaves TUI)."""
-        session_list = self.query_one("#session-list", SessionList)
-        selected = session_list.get_selected()
+        selected = self.session_list.get_selected()
         if not selected:
             self.zen_notify("no session selected", "warning")
             return
@@ -183,12 +180,11 @@ class MainScreenActionsMixin:
                 self._refresh_sessions()
 
                 is_reconnection = session.id in existing_ids
-                session_list = self.query_one("#session-list", SessionList)
                 for i, s in enumerate(self._manager.sessions):
                     if s.id == session.id:
-                        session_list.selected_index = i
+                        self.session_list.selected_index = i
                         break
-                session_list.refresh(recompose=True)
+                self.session_list.refresh(recompose=True)
                 self._start_rapid_refresh()
 
                 if is_reconnection:
@@ -211,8 +207,7 @@ class MainScreenActionsMixin:
 
     def action_revive(self) -> None:
         """Revive a bloomed/wilted session."""
-        session_list = self.query_one("#session-list", SessionList)
-        selected = session_list.get_selected()
+        selected = self.session_list.get_selected()
         if not selected:
             self.zen_notify("no session selected", "warning")
             return
@@ -230,8 +225,7 @@ class MainScreenActionsMixin:
         """Rename the selected session."""
         from .rename_modal import RenameModal
 
-        session_list = self.query_one("#session-list", SessionList)
-        selected = session_list.get_selected()
+        selected = self.session_list.get_selected()
         if not selected:
             self.zen_notify("no session selected", "warning")
             return
@@ -252,8 +246,7 @@ class MainScreenActionsMixin:
         """Open insert modal to send keys to session."""
         from .insert_modal import InsertModal, InsertResult
 
-        session_list = self.query_one("#session-list", SessionList)
-        selected = session_list.get_selected()
+        selected = self.session_list.get_selected()
         if not selected:
             self.zen_notify("no session selected", "warning")
             return
@@ -316,8 +309,7 @@ class MainScreenActionsMixin:
             return
 
         # Get current session for context
-        session_list = self.query_one("#session-list", SessionList)
-        selected = session_list.get_selected()
+        selected = self.session_list.get_selected()
 
         def handle_result(result: str | None) -> None:
             pass  # Modal handles display
