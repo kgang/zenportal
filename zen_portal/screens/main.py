@@ -9,7 +9,7 @@ from textual.widgets import Header, Static
 
 from ..models.events import SessionSelected
 from ..models.session import Session, SessionState, SessionType
-from ..services.session_manager import SessionManager, SessionLimitError
+from ..services.session_manager import SessionManager
 from ..services.config import ConfigManager
 from ..services.profile import ProfileManager
 from ..services.command_registry import create_default_registry
@@ -51,7 +51,6 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
         Binding("s", "toggle_streaming", "Stream", show=False),
         Binding("S", "search_output", "Search", show=False),
         ("c", "config", "Config"),
-        Binding("C", "toggle_completed", "Completed", show=False),
         ("?", "show_help", "Help"),
         ("q", "quit", "Quit"),
         Binding("/", "zen_prompt", "Ask AI", show=False),
@@ -165,7 +164,8 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
     def _select_session_by_tmux_name(self, tmux_name: str) -> None:
         """Select the session with the given tmux session name."""
         session_list = self.query_one("#session-list", SessionList)
-        for i, session in enumerate(self._manager.sessions):
+        # Find session in visible list
+        for i, session in enumerate(session_list.sessions):
             if self._manager.get_tmux_session_name(session.id) == tmux_name:
                 session_list.selected_index = i
                 session_list.refresh(recompose=True)
@@ -257,7 +257,7 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
 
         lines.append("")
 
-        if session.session_type == SessionType.CLAUDE and session.claude_session_id:
+        if session.session_type == SessionType.AI and session.claude_session_id:
             lines.append("  details")
             lines.append(f"    session id: {session.claude_session_id[:8]}...")
             if session.resolved_model:
@@ -446,9 +446,9 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
                             self.zen_notify(error_msg, "error")
                         else:
                             self.zen_notify(f"resumed: {session.display_name}")
-
-            except SessionLimitError as e:
-                self.zen_notify(str(e), "error")
+            except Exception as e:
+                # Log unexpected errors during session creation
+                self.zen_notify(f"error: {e}", "error")
 
         existing_names = {s.name for s in self._manager.sessions}
         known_claude_ids = {s.claude_session_id for s in self._manager.sessions if s.claude_session_id}
@@ -460,7 +460,6 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
                 existing_names=existing_names,
                 session_prefix=prefix,
                 known_claude_session_ids=known_claude_ids,
-                max_sessions=self._manager.MAX_SESSIONS,
                 existing_sessions=list(self._manager.sessions),
             ),
             handle_result,
@@ -514,17 +513,6 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
         from .config_screen import ConfigScreen
         self.app.push_screen(ConfigScreen(self._config, self._profile))
 
-    def action_toggle_completed(self) -> None:
-        """Toggle showing completed/dead sessions."""
-        session_list = self.query_one("#session-list", SessionList)
-        session_list.show_completed = not session_list.show_completed
-        # Reset selection to first item when toggling
-        session_list.selected_index = 0
-        session_list.refresh(recompose=True)
-        if session_list.show_completed:
-            self.zen_notify("showing all sessions")
-        else:
-            self.zen_notify("hiding completed")
 
     def action_show_help(self) -> None:
         from ..screens.help import HelpScreen

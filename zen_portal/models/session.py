@@ -149,4 +149,15 @@ class Session:
 
     @property
     def is_active(self) -> bool:
+        """Return True if session is currently running."""
         return self.state == SessionState.RUNNING
+
+    @property
+    def should_display(self) -> bool:
+        """Return True if session should be visible in the list.
+
+        All states except those that have been explicitly cleaned are visible.
+        This includes RUNNING, COMPLETED, FAILED, PAUSED, and KILLED sessions.
+        Sessions are only hidden after explicit cleanup via the 'd' key.
+        """
+        return True  # All sessions visible until explicitly cleaned

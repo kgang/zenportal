@@ -39,17 +39,6 @@ class CreateContext:
     proxy_warning: str = ""
 
 
-class ValidateLimit:
-    """Step: Check session count limit."""
-
-    def __init__(self, max_sessions: int, current_count: int):
-        self.max = max_sessions
-        self.current = current_count
-
-    def invoke(self, ctx: CreateContext) -> StepResult[CreateContext]:
-        if self.current >= self.max:
-            return StepResult.fail(f"Maximum sessions ({self.max}) reached")
-        return StepResult.success(ctx)
 
 
 class ResolveConfig:
@@ -239,12 +228,9 @@ class CreateSessionPipeline:
         commands: SessionCommandBuilder,
         worktree_service: WorktreeService | None,
         tmux_name_func,
-        max_sessions: int,
-        current_count: int,
         fallback_dir: Path,
     ):
         self._steps = [
-            ValidateLimit(max_sessions, current_count),
             ResolveConfig(config_manager, fallback_dir),
             CreateSessionModel(),
             SetupWorktree(worktree_service),

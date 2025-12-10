@@ -31,7 +31,6 @@ def detect_conflicts(
     name: str,
     session_type: SessionType,
     existing: list[Session],
-    max_sessions: int,
 ) -> list[SessionConflict]:
     """Detect potential conflicts before session creation.
 
@@ -39,7 +38,6 @@ def detect_conflicts(
         name: Proposed session name
         session_type: Type of session to create
         existing: List of existing sessions
-        max_sessions: Maximum allowed sessions
 
     Returns:
         List of detected conflicts (may be empty)
@@ -54,28 +52,6 @@ def detect_conflicts(
                 severity=ConflictSeverity.WARNING,
                 message=f"'{name}' already exists",
                 suggestion="consider a unique name",
-            )
-        )
-
-    # Near session limit (info - heads up)
-    remaining = max_sessions - len(existing)
-    if 0 < remaining <= 2:
-        conflicts.append(
-            SessionConflict(
-                type="near_limit",
-                severity=ConflictSeverity.INFO,
-                message=f"{remaining} slot{'s' if remaining > 1 else ''} remaining",
-            )
-        )
-
-    # At session limit (error - cannot proceed)
-    if remaining <= 0:
-        conflicts.append(
-            SessionConflict(
-                type="at_limit",
-                severity=ConflictSeverity.ERROR,
-                message=f"maximum sessions ({max_sessions}) reached",
-                suggestion="kill or clean existing sessions",
             )
         )
 

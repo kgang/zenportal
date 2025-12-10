@@ -69,7 +69,6 @@ class MainScreenTemplateMixin:
         from ..models.session import SessionFeatures, SessionType
         from ..services.config import ClaudeModel
         from ..services.git import GitService
-        from ..services.session_manager import SessionLimitError
         from ..widgets.session_list import SessionList
         from pathlib import Path
 
@@ -113,8 +112,9 @@ class MainScreenTemplateMixin:
             self._start_rapid_refresh()
             display_type = provider if session_type == SessionType.AI else session_type.value
             self.zen_notify(f"created {display_type}: {session.display_name}")
-        except SessionLimitError as e:
-            self.zen_notify(str(e), "error")
+        except Exception as e:
+            # Log unexpected errors during session creation
+            self.zen_notify(f"error: {e}", "error")
 
     def _edit_template(self, template: SessionTemplate) -> None:
         """Open editor for an existing template."""

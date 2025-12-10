@@ -34,7 +34,6 @@ class ProxyConfigWarning(Exception):
 class SessionManager:
     """Manages Claude Code sessions in tmux."""
 
-    MAX_SESSIONS = 10
     STATE_FILE = "state.json"
     HISTORY_DIR = "history"
 
@@ -155,16 +154,12 @@ class SessionManager:
             commands=self._commands,
             worktree_service=self._worktree,
             tmux_name_func=self._tmux_name,
-            max_sessions=self.MAX_SESSIONS,
-            current_count=len(self._sessions),
             fallback_dir=self._fallback_working_dir,
         )
 
         result = pipeline.invoke(ctx)
 
         if not result.ok:
-            if "Maximum sessions" in result.error:
-                raise SessionLimitError(result.error)
             # Create a failed session for other errors
             session = Session(
                 name=name,
@@ -191,8 +186,6 @@ class SessionManager:
         working_dir: Path | None = None,
     ) -> Session:
         """Create a new session that resumes an existing Claude session."""
-        if len(self._sessions) >= self.MAX_SESSIONS:
-            raise SessionLimitError(f"Maximum sessions ({self.MAX_SESSIONS}) reached")
 
         resolved = self._config.resolve_features()
         effective_working_dir = working_dir or resolved.working_dir or self._fallback_working_dir
@@ -355,12 +348,11 @@ class SessionManager:
         if self._worktree and session.worktree_path:
             self._worktree.cleanup_session(session)
 
-        record = self._session_to_record(session)
         del self._sessions[session_id]
 
         self._emit(SessionCleaned(session_id))
         self._save_state()
-        self._append_history(record, "cleaned")
+        self._state.append_history(session, "cleaned")
         return True
 
     def navigate_to_worktree(self, session_id: str) -> Session | None:
@@ -461,9 +453,6 @@ class SessionManager:
         working_dir: Path | None = None,
     ) -> Session:
         """Adopt an external tmux session into zen-portal management."""
-        if len(self._sessions) >= self.MAX_SESSIONS:
-            raise SessionLimitError(f"Maximum sessions ({self.MAX_SESSIONS}) reached")
-
         # Check if already tracking this tmux session
         for existing in self._sessions.values():
             existing_tmux = self.get_tmux_session_name(existing.id)

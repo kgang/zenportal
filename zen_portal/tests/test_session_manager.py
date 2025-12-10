@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from zen_portal.services.session_manager import SessionManager, SessionLimitError
+from zen_portal.services.session_manager import SessionManager
 from zen_portal.services.tmux import TmuxResult
 from zen_portal.services.worktree import WorktreeResult
 from zen_portal.models.session import SessionState, SessionFeatures
@@ -45,18 +45,6 @@ class TestSessionManager:
 
         session = session_manager.create_session("test")
         assert session.state == SessionState.FAILED
-
-    def test_create_session_max_sessions(
-        self, session_manager: SessionManager, mock_tmux: MagicMock
-    ):
-        """Raise SessionLimitError when max sessions reached."""
-        for i in range(SessionManager.MAX_SESSIONS):
-            session_manager.create_session(f"session-{i}")
-
-        with pytest.raises(SessionLimitError) as exc_info:
-            session_manager.create_session("one-too-many")
-
-        assert "Maximum sessions" in str(exc_info.value)
 
     def test_kill_session(
         self, session_manager: SessionManager, mock_tmux: MagicMock

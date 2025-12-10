@@ -7,7 +7,6 @@ from unittest.mock import Mock, MagicMock
 from zen_portal.services.pipeline import StepResult, run_pipeline
 from zen_portal.services.pipelines.create import (
     CreateContext,
-    ValidateLimit,
     ValidateBinary,
     ResolveConfig,
     CreateSessionModel,
@@ -62,36 +61,6 @@ class TestRunPipeline:
         step2.invoke.assert_not_called()
 
 
-class TestValidateLimit:
-    """Tests for ValidateLimit step."""
-
-    def test_allows_when_under_limit(self):
-        step = ValidateLimit(max_sessions=10, current_count=5)
-        ctx = CreateContext(name="test")
-
-        result = step.invoke(ctx)
-
-        assert result.ok is True
-        assert result.value is ctx
-
-    def test_rejects_when_at_limit(self):
-        step = ValidateLimit(max_sessions=10, current_count=10)
-        ctx = CreateContext(name="test")
-
-        result = step.invoke(ctx)
-
-        assert result.ok is False
-        assert "Maximum sessions" in result.error
-
-    def test_rejects_when_over_limit(self):
-        step = ValidateLimit(max_sessions=5, current_count=6)
-        ctx = CreateContext(name="test")
-
-        result = step.invoke(ctx)
-
-        assert result.ok is False
-
-
 class TestValidateBinary:
     """Tests for ValidateBinary step."""
 
@@ -126,71 +95,38 @@ class TestConflictDetection:
             name="my-session",
             session_type=SessionType.AI,
             existing=existing,
-            max_sessions=10,
         )
 
         assert len(conflicts) == 1
         assert conflicts[0].type == "name_collision"
         assert conflicts[0].severity == ConflictSeverity.WARNING
 
-    def test_detects_near_limit(self):
-        existing = [Session(name=f"session-{i}") for i in range(8)]
-
-        conflicts = detect_conflicts(
-            name="new-session",
-            session_type=SessionType.AI,
-            existing=existing,
-            max_sessions=10,
-        )
-
-        assert any(c.type == "near_limit" for c in conflicts)
-
-    def test_detects_at_limit(self):
-        existing = [Session(name=f"session-{i}") for i in range(10)]
-
-        conflicts = detect_conflicts(
-            name="new-session",
-            session_type=SessionType.AI,
-            existing=existing,
-            max_sessions=10,
-        )
-
-        assert any(c.type == "at_limit" for c in conflicts)
-        assert any(c.severity == ConflictSeverity.ERROR for c in conflicts)
-
-    def test_no_conflicts_with_unique_name_under_limit(self):
+    def test_no_conflicts_with_unique_name(self):
         existing = [Session(name="existing")]
 
         conflicts = detect_conflicts(
             name="new-unique-session",
             session_type=SessionType.AI,
             existing=existing,
-            max_sessions=10,
         )
 
         assert len(conflicts) == 0
 
-    def test_has_blocking_conflict_with_error(self):
-        existing = [Session(name=f"s{i}") for i in range(10)]
-        conflicts = detect_conflicts("new", SessionType.AI, existing, 10)
-
-        assert has_blocking_conflict(conflicts) is True
-
     def test_has_blocking_conflict_without_error(self):
         existing = [Session(name="existing")]
-        conflicts = detect_conflicts("existing", SessionType.AI, existing, 10)
+        conflicts = detect_conflicts("existing", SessionType.AI, existing)
 
         assert has_blocking_conflict(conflicts) is False  # warning only
 
-    def test_get_conflict_summary_returns_highest_priority(self):
-        existing = [Session(name=f"s{i}") for i in range(10)]
-        # This creates both a name collision (warning) and at_limit (error)
-        conflicts = detect_conflicts("s0", SessionType.AI, existing, 10)
+    def test_get_conflict_summary_returns_warning(self):
+        existing = [Session(name="existing")]
+        # This creates a name collision (warning)
+        conflicts = detect_conflicts("existing", SessionType.AI, existing)
 
         summary = get_conflict_summary(conflicts)
 
-        # Should return error message, not warning
-        assert "maximum sessions" in summary
+        # Should return warning message
+        assert "already exists" in summary
 
     def test_get_conflict_summary_returns_none_for_empty(self):
         conflicts = []

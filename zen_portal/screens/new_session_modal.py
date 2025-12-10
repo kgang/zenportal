@@ -42,7 +42,6 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         initial_working_dir: Path | None = None,
         known_claude_session_ids: set[str] | None = None,
         models_service: OpenRouterModelsService | None = None,
-        max_sessions: int = 10,
         existing_sessions: list | None = None,
     ) -> None:
         super().__init__()
@@ -52,7 +51,6 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         self._models_service = models_service or OpenRouterModelsService()
         self._existing_names = existing_names or set()
         self._prefix = session_prefix
-        self._max_sessions = max_sessions
         self._existing_sessions = existing_sessions or []
 
         # Resolve initial working directory
@@ -228,7 +226,6 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
             name=name,
             session_type=session_type_map.get(session_type, SessionType.AI),
             existing=self._existing_sessions,
-            max_sessions=self._max_sessions,
         )
 
         self._update_conflict_display(conflicts)
@@ -255,10 +252,29 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
 
     def _load_lists(self) -> None:
         """Load attach and resume lists."""
+        self._refresh_attach_list()
+        self._refresh_resume_list()
+
+    def _refresh_attach_list(self) -> None:
+        """Refresh the attach list (reload from tmux)."""
+        old_selected = self._attach_list.selected
         self._attach_list.load_sessions()
+        # Preserve selection if still valid
+        if old_selected < len(self._attach_list.sessions):
+            self._attach_list.selected = old_selected
+        else:
+            self._attach_list.selected = 0
         self._attach_list.build_list(self.query_one("#attach-list", Vertical))
 
+    def _refresh_resume_list(self) -> None:
+        """Refresh the resume list (reload from Claude sessions)."""
+        old_selected = self._resume_list.selected
         self._resume_list.load_sessions()
+        # Preserve selection if still valid
+        if old_selected < len(self._resume_list.sessions):
+            self._resume_list.selected = old_selected
+        else:
+            self._resume_list.selected = 0
         self._resume_list.build_list(self.query_one("#resume-list", Vertical))
 
     def _set_initial_visibility(self) -> None:
@@ -557,6 +573,11 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
             tabs.active = "tab-new"
 
     def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
+        # Refresh lists when switching to attach/resume tabs to prevent stale data
+        if event.pane.id == "tab-attach":
+            self._refresh_attach_list()
+        elif event.pane.id == "tab-resume":
+            self._refresh_resume_list()
         self._focus_for_tab(event.pane.id)
 
     def _focus_for_tab(self, tab_id: str) -> None:
