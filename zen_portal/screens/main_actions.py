@@ -1,7 +1,6 @@
 """Action handlers for MainScreen as a mixin."""
 
 from ..models.session import Session, SessionState, SessionType, SessionFeatures
-from ..services.session_manager import SessionLimitError
 from ..widgets.session_list import SessionList
 from ..widgets.output_view import OutputView
 from ..widgets.session_info import SessionInfoView
@@ -22,13 +21,16 @@ class MainScreenActionsMixin:
             self.zen_notify("session already ended", "warning")
             return
 
+        had_worktree = selected.worktree_path is not None
+        paused_name = selected.display_name
+
         self._manager.pause_session(selected.id)
         self._refresh_sessions()
 
-        if selected.worktree_path:
-            self.zen_notify(f"paused: {selected.display_name} (worktree preserved)")
+        if had_worktree:
+            self.zen_notify(f"paused: {paused_name} (worktree preserved)")
         else:
-            self.zen_notify(f"paused: {selected.display_name}")
+            self.zen_notify(f"paused: {paused_name}")
 
     def action_kill(self) -> None:
         """Kill selected session and remove its worktree."""
@@ -332,7 +334,19 @@ class MainScreenExitMixin:
     def _exit_with_cleanup(
         self, cleanup_orphans: bool = False, keep_running: bool = False
     ) -> None:
-        """Exit the application."""
+        """Exit the application.
+
+        Cleans up dead sessions (completed, failed, killed) on exit.
+        Paused sessions are preserved by default to allow later revival.
+        """
+        # Clean up dead sessions except paused (which user explicitly preserved)
+        dead_session_ids = [
+            s.id for s in self._manager.sessions
+            if not s.is_active and s.state != SessionState.PAUSED
+        ]
+        for session_id in dead_session_ids:
+            self._manager.clean_session(session_id)
+
         if cleanup_orphans:
             self._manager.cleanup_dead_tmux_sessions()
         self._manager.save_state()

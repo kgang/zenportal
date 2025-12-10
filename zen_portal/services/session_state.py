@@ -228,8 +228,9 @@ class SessionStateService:
         )
 
         # Decide whether to restore this session
-        # Restore if: tmux exists (alive or dead) OR worktree exists
-        if not tmux_exists and not worktree_exists:
+        # Restore if: tmux exists (alive or dead) OR worktree exists OR paused
+        # Paused sessions are always restored (user explicitly preserved them)
+        if not tmux_exists and not worktree_exists and state != SessionState.PAUSED:
             return None
 
         # Reconstruct session
