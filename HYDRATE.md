@@ -1,8 +1,8 @@
 # HYDRATE.md
 
-> Quick context for Claude Code sessions. Last updated: 2025-12-09 (v0.3.3 - Visual Calm)
+> Quick context for Claude Code sessions. Last updated: 2025-12-10 (v0.3.4 - Widget Caching)
 
-**Status**: Visual calm refactoring complete. OutputView/SessionList now use smart diffing and incremental updates to reduce screen violence. Phase 2 complete. See ZEN_CODE_DESIGN.md for architecture roadmap.
+**Status**: Widget caching complete. MainScreen uses cached properties for session_list/output_view/info_view/hint, eliminating ~35 DOM queries per action. Session limit removed (unlimited sessions). See ZEN_CODE_DESIGN.md for architecture roadmap.
 
 ---
 
@@ -135,6 +135,7 @@ C       show completed    S    search output
 - `MainScreenTemplateMixin` - template management
 - `MainScreenPaletteMixin` - command palette
 - Pattern keeps main.py focused on UI composition and orchestration
+- Mixins access cached widgets via `self.session_list`, `self.output_view`, etc.
 
 **Logging**: All services use Python logging.
 - `logger = logging.getLogger(__name__)`
@@ -312,7 +313,7 @@ See **ZEN_CODE_DESIGN.md** for comprehensive architecture guide.
 
 **Phase 2 (Simplification) - COMPLETE ✓**
 - ✓ Consolidate WorktreeService + WorktreeManager (441 → 434 lines, single API)
-- Pending: Cache widget references (152 DOM queries → ~15)
+- ✓ Cache widget references (~35 DOM queries → 4 lazy properties)
 - Pending: Config schema with dataclasses (type-safe)
 
 **Phase 3 (Architecture)**
