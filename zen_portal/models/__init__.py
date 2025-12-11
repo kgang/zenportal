@@ -11,6 +11,21 @@ from .events import (
     SessionCleaned,
     SessionSelected,
 )
+from .exceptions import (
+    ZenError,
+    SessionError,
+    SessionNotFoundError,
+    SessionStateError,
+    ConfigError,
+    ConfigValidationError,
+    WorktreeError,
+    WorktreeExistsError,
+    WorktreeNotFoundError,
+    ValidationError,
+    TmuxError,
+    TmuxSessionNotFoundError,
+    DiscoveryError,
+)
 
 __all__ = [
     # Session models
@@ -24,4 +39,18 @@ __all__ = [
     "SessionKilled",
     "SessionCleaned",
     "SessionSelected",
+    # Exceptions
+    "ZenError",
+    "SessionError",
+    "SessionNotFoundError",
+    "SessionStateError",
+    "ConfigError",
+    "ConfigValidationError",
+    "WorktreeError",
+    "WorktreeExistsError",
+    "WorktreeNotFoundError",
+    "ValidationError",
+    "TmuxError",
+    "TmuxSessionNotFoundError",
+    "DiscoveryError",
 ]

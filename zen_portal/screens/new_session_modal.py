@@ -12,6 +12,7 @@ from ..models.new_session import NewSessionType, AIProvider, ResultType, NewSess
 from ..services.config import ConfigManager, ClaudeModel, ALL_SESSION_TYPES, ALL_AI_PROVIDERS
 from ..services.conflict import detect_conflicts, has_blocking_conflict, ConflictSeverity
 from ..services.discovery import DiscoveryService
+from ..services.validation import SessionValidator, ValidationResult
 from ..services.openrouter_models import OpenRouterModelsService
 from ..services.tmux import TmuxService
 from ..widgets.directory_browser import DirectoryBrowser
@@ -66,6 +67,9 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
 
         # Enabled session types from config
         self._enabled_types = self._get_enabled_session_types()
+
+        # Validator for session creation (extracted business logic)
+        self._validator = SessionValidator()
 
     def _get_enabled_session_types(self) -> list[NewSessionType]:
         """Get enabled session types from config."""
@@ -210,10 +214,14 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
             self._check_conflicts()
 
     def _check_conflicts(self) -> None:
-        """Check for conflicts and update hint."""
+        """Check for conflicts and validation issues, update hint."""
         name = self.query_one("#name-input", Input).value.strip()
         type_select = self.query_one("#type-select", Select)
         session_type = type_select.value if type_select.value is not Select.BLANK else NewSessionType.AI
+
+        # Use validator for name validation
+        existing_names = {s.name for s in self._existing_sessions}
+        validation = self._validator.validate_name(name, existing_names)
 
         # Convert NewSessionType to SessionType for conflict detection
         from ..models.session import SessionType
@@ -228,12 +236,28 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
             existing=self._existing_sessions,
         )
 
-        self._update_conflict_display(conflicts)
+        self._update_conflict_display(conflicts, validation)
 
-    def _update_conflict_display(self, conflicts: list) -> None:
+    def _update_conflict_display(
+        self,
+        conflicts: list,
+        validation: ValidationResult | None = None,
+    ) -> None:
         """Update the conflict hint display."""
         hint = self.query_one("#conflict-hint", Static)
         hint.remove_class("warning", "error")
+
+        # Prioritize validation errors over conflicts
+        if validation and not validation.is_valid:
+            hint.update(validation.first_error or "")
+            hint.add_class("error")
+            return
+
+        # Show validation warnings
+        if validation and validation.first_warning:
+            hint.update(validation.first_warning)
+            hint.add_class("warning")
+            return
 
         if not conflicts:
             hint.update("")
@@ -600,8 +624,12 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
     def _submit_new(self) -> None:
         """Create a new session."""
         name = self.query_one("#name-input", Input).value.strip()
-        if not name:
-            self.post_message(self.app.notification_service.warning("enter a session name"))
+
+        # Validate name using SessionValidator
+        existing_names = {s.name for s in self._existing_sessions}
+        validation = self._validator.validate_name(name, existing_names)
+        if not validation.is_valid:
+            self.notify(validation.first_error or "invalid session name", severity="error")
             return
 
         type_select = self.query_one("#type-select", Select)
