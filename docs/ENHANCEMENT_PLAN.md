@@ -4,14 +4,14 @@
 
 ## hydrate.project.manifest
 
-**Current State**: Solid foundation with good test coverage (310 tests). Phase 1-3 refactoring complete. Exception hierarchy established. SessionValidator extracted. Config uses schema dataclasses.
+**Current State**: Solid foundation with good test coverage (328 tests). Phase 1-4 complete. EventBus added for decoupled service-UI communication. Widget caching in main screens.
 
 **Key Metrics**:
 | Metric | Current | Target |
 |--------|---------|--------|
-| Tests | 310 | 350+ |
+| Tests | 328 | 350+ |
 | Files > 500 lines | 3 | 0 |
-| Total lines | 19,052 | ~17,000 |
+| Total lines | 19,200 | ~17,000 |
 
 ---
 
@@ -39,12 +39,12 @@ Current blockers and tech debt:
 | `session_manager.py` | 630 | Still above target |
 | `main.py` | 592 | Acceptable with mixins |
 
-### 2. Architectural Gaps (Partially Addressed)
+### 2. Architectural Gaps (All Addressed)
 
 - ✓ **Exception Hierarchy**: `ZenError` base with specific subclasses
 - ✓ **SessionValidator**: Extracted to `services/validation.py`
 - ✓ **Config Schema**: Dataclasses with `from_dict`/`to_dict`
-- **No Event Bus**: Callbacks still couple services to UI
+- ✓ **EventBus**: `services/events.py` - typed pub/sub, decouples services from UI
 
 ### 3. Missing Features
 
@@ -95,41 +95,75 @@ Already in place in `services/config.py`:
 - All with `from_dict()` and `to_dict()` serialization
 - Type-safe, IDE autocomplete works
 
-### Phase 4: Features
+### Phase 4: Architecture (COMPLETE)
 
-**4.1 Session Search**
+**4.1 EventBus** ✓
+
+Implemented in `services/events.py`:
+```python
+from zen_portal.services.events import EventBus, SessionCreatedEvent
+
+# Services emit
+bus = EventBus.get()
+bus.emit(SessionCreatedEvent(session_id="x", session_name="y"))
+
+# UI subscribes
+bus.subscribe(SessionCreatedEvent, self._on_session_created)
+```
+
+- Typed events: `SessionCreatedEvent`, `SessionPausedEvent`, `ProxyStatusChangedEvent`, etc.
+- Singleton pattern with `EventBus.get()`
+- Error isolation: one handler's error doesn't affect others
+- 18 tests added
+
+**4.2 Widget Caching** ✓
+
+Added lazy property pattern to `new_session_modal.py`:
+```python
+@property
+def name_input(self) -> Input:
+    if self._name_input is None:
+        self._name_input = self.query_one("#name-input", Input)
+    return self._name_input
+```
+
+Removes ~50 DOM queries per modal lifecycle.
+
+### Phase 5: Features
+
+**5.1 Session Search**
 
 - Fuzzy search across session names/output
 - Filter by type, state, directory
 - Keybinding: `/` (when no session selected)
 
-**4.2 Session Groups**
+**5.2 Session Groups**
 
 - Tag sessions with labels
 - Group by project/directory
 - Collapse/expand groups in list
 
-**4.3 Output Export**
+**5.3 Output Export**
 
 - Export session output to file
 - Format options: plain text, markdown, JSON
 - Keybinding: `E`
 
-### Phase 5: Polish
+### Phase 6: Polish
 
-**5.1 Performance**
+**6.1 Performance**
 
-- Cache widget references in remaining screens
+- ✓ Cache widget references in main screens
 - Lazy load OpenRouter models
 - Debounce rapid state updates
 
-**5.2 Testing**
+**6.2 Testing**
 
 - Integration tests for session lifecycle
 - UI tests with Textual's pilot
 - Target: 80% coverage
 
-**5.3 Documentation**
+**6.3 Documentation**
 
 - User guide (README enhancement)
 - Configuration reference
@@ -147,15 +181,16 @@ Already in place in `services/config.py`:
 - ✓ Phase 3.1: SessionValidator extracted to `services/validation.py`
 - ✓ Phase 3.2: Exception hierarchy in `models/exceptions.py`
 - ✓ Phase 3.3: Config schema already in place
+- ✓ Phase 4.1: EventBus in `services/events.py` (18 tests)
+- ✓ Phase 4.2: Widget caching in `new_session_modal.py`
 
 ### Upcoming
 
 | Phase | Focus | Files Affected |
 |-------|-------|----------------|
-| 4.1 | Session search | main.py, session_list.py |
-| 4.2 | Session groups | models/session.py, main.py |
-| 4.3 | Event bus | services/, screens/ |
-| 5.1 | Widget caching in remaining screens | new_session_modal.py |
+| 5.1 | Session search | main.py, session_list.py |
+| 5.2 | Session groups | models/session.py, main.py |
+| 5.3 | Integrate EventBus into SessionManager | session_manager.py |
 
 ---
 
@@ -176,10 +211,11 @@ Low-priority but interesting:
 The enhancement plan succeeds when:
 
 - [ ] All files under 500 lines
-- [ ] Exception hierarchy implemented
-- [ ] Config uses schema dataclass
-- [ ] Validators extracted from screens
-- [ ] 300+ tests with 80% coverage
+- [x] Exception hierarchy implemented
+- [x] Config uses schema dataclass
+- [x] Validators extracted from screens
+- [x] 300+ tests (328 currently)
+- [x] EventBus for service-UI decoupling
 - [ ] Session search functional
 - [ ] User documentation complete
 

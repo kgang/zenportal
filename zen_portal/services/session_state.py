@@ -64,7 +64,12 @@ class SessionStateService:
                 logger.warning(f"Failed to load state file, using empty state: {e}")
                 return PortalState()
 
-    def save(self, sessions: list[Session], session_order: list[str] | None = None) -> bool:
+    def save(
+        self,
+        sessions: list[Session],
+        session_order: list[str] | None = None,
+        selected_session_id: str | None = None,
+    ) -> bool:
         """Save state to disk atomically with lock.
 
         Uses temp file + rename for atomic writes.
@@ -72,6 +77,7 @@ class SessionStateService:
         Args:
             sessions: List of sessions to persist
             session_order: Optional custom display order
+            selected_session_id: Optional cursor position (session ID)
 
         Returns:
             True on success, False on failure
@@ -82,7 +88,8 @@ class SessionStateService:
             records = [self._session_to_record(s) for s in sessions]
             state = PortalState(
                 sessions=records,
-                session_order=session_order or []
+                session_order=session_order or [],
+                selected_session_id=selected_session_id,
             )
             state.last_updated = datetime.now().isoformat()
 

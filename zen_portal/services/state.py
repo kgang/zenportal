@@ -96,6 +96,7 @@ class PortalState:
     last_updated: str = field(default_factory=lambda: datetime.now().isoformat())
     sessions: list[SessionRecord] = field(default_factory=list)
     session_order: list[str] = field(default_factory=list)  # Custom display order
+    selected_session_id: str | None = None  # Cursor position (session ID)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
@@ -106,6 +107,8 @@ class PortalState:
         }
         if self.session_order:
             result["session_order"] = self.session_order
+        if self.selected_session_id:
+            result["selected_session_id"] = self.selected_session_id
         return result
 
     @classmethod
@@ -118,4 +121,5 @@ class PortalState:
                 SessionRecord.from_dict(s) for s in data.get("sessions", [])
             ],
             session_order=data.get("session_order", []),
+            selected_session_id=data.get("selected_session_id"),
         )

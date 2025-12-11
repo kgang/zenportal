@@ -2,15 +2,7 @@
 
 # Re-export session models
 from .session import Session, SessionState
-from .events import (
-    SessionCreated,
-    SessionStateChanged,
-    SessionOutput,
-    SessionPaused,
-    SessionKilled,
-    SessionCleaned,
-    SessionSelected,
-)
+from .events import SessionSelected
 from .exceptions import (
     ZenError,
     SessionError,
@@ -31,13 +23,7 @@ __all__ = [
     # Session models
     "Session",
     "SessionState",
-    # Events
-    "SessionCreated",
-    "SessionStateChanged",
-    "SessionOutput",
-    "SessionPaused",
-    "SessionKilled",
-    "SessionCleaned",
+    # Events (UI-level Textual Messages)
     "SessionSelected",
     # Exceptions
     "ZenError",

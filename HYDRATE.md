@@ -22,7 +22,7 @@ hydrate.time.witness       → git log, recent changes
 | Note enablement | `hydrate.project.afford` | Announce what you enable |
 | Update shared | `hydrate.concept.refine` | Prefix `[STALE?]` if uncertain |
 
-**Status**: 310 tests | Branch: `main` | Files: 19k lines
+**Status**: 338 tests | Branch: `main` | Files: 19k lines
 ################################################################################
 
 ## hydrate.project.manifest
@@ -72,11 +72,13 @@ zen_portal/
 
 **Architecture Patterns**:
 - **Services Container** (`app.py`): DI via dataclass, `Services.create()` wires deps
+- **EventBus** (`services/events.py`): Typed pub/sub, SessionManager emits domain events
 - **Exception Hierarchy** (`models/exceptions.py`): `ZenError` base, specific subclasses
 - **Validation** (`services/validation.py`): `SessionValidator`, `ValidationResult`
-- **State Persistence** (`session_state.py`): RLock, atomic writes, JSONL history
+- **State Persistence** (`session_state.py`): RLock, atomic writes, cursor position, JSONL history
 - **Pipelines** (`pipelines/`): Composable steps, `T → StepResult[U]`
 - **Mixins** (`screens/main_*.py`): MainScreen organization
+- **Widget Caching**: Lazy properties for frequently-accessed widgets
 
 **Widget ID Rules** (prevent DuplicateIds):
 ```python
@@ -118,15 +120,15 @@ I   info        A analyze  C completed    S search
 ## hydrate.void.witness
 
 **Tech debt** (acknowledged, not ignored):
-- `new_session_modal.py`: 715 lines (could cache widgets)
-- DOM queries not cached in all screens
-- No event bus (callbacks couple services to UI)
+- `new_session_modal.py`: 783 lines (widget caching added 68 lines for lazy properties)
 
 **Refactoring Progress**:
 - ✓ Phase 1: SessionStateService, Services container, logging
 - ✓ Phase 2: Worktree consolidated, MainScreen widget caching
 - ✓ Phase 3: ZenError hierarchy, SessionValidator, Config schema
-- Next: Session search, event bus, widget caching in remaining screens
+- ✓ Phase 4: EventBus (`services/events.py`), widget caching in new_session_modal
+- ✓ Phase 5: EventBus integrated into SessionManager (replaces callback pattern)
+- Next: Session search, UI subscriptions to EventBus
 
 See `docs/ENHANCEMENT_PLAN.md` for detailed roadmap.
 

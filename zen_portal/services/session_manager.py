@@ -3,10 +3,8 @@
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Any
 
 from ..models.session import Session, SessionState, SessionFeatures, SessionType
-from ..models.events import SessionCreated, SessionPaused, SessionKilled, SessionCleaned
 from .tmux import TmuxService
 from .config import ConfigManager, FeatureSettings, WorktreeSettings, OpenRouterProxySettings, ClaudeModel
 from .worktree import WorktreeService
@@ -16,6 +14,14 @@ from .session_commands import SessionCommandBuilder
 from .proxy_validation import ProxyValidator, ProxyValidationResult
 from .core import TokenManager, StateRefresher
 from .pipelines import CreateContext, CreateSessionPipeline
+from .events import (
+    EventBus,
+    SessionCreatedEvent,
+    SessionStateChangedEvent,
+    SessionPausedEvent,
+    SessionKilledEvent,
+    SessionCleanedEvent,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -43,17 +49,18 @@ class SessionManager:
         config_manager: ConfigManager,
         worktree_service: WorktreeService | None = None,
         working_dir: Path | None = None,
-        on_event: Callable | None = None,
         base_dir: Path | None = None,
         state_service: SessionStateService | None = None,
+        event_bus: EventBus | None = None,
     ):
         self._tmux = tmux
         self._config = config_manager
         self._worktree = worktree_service
         self._fallback_working_dir = working_dir or Path.cwd()
-        self._on_event = on_event
+        self._bus = event_bus or EventBus.get()
         self._sessions: dict[str, Session] = {}
         self._session_order: list[str] = []  # Custom display order
+        self._selected_session_id: str | None = None  # Cursor position
         self._commands = SessionCommandBuilder()
 
         # State persistence service (injected or created)
@@ -76,7 +83,9 @@ class SessionManager:
         self.tokens = self._token_mgr
 
         # Load persisted state on startup
-        self._sessions, self._session_order = self._load_persisted_sessions_with_order()
+        self._sessions, self._session_order, self._selected_session_id = (
+            self._load_persisted_state()
+        )
 
     @property
     def sessions(self) -> list[Session]:
@@ -102,14 +111,48 @@ class SessionManager:
         """Get the custom session order."""
         return self._session_order
 
+    @property
+    def selected_session_id(self) -> str | None:
+        """Get the last selected session ID (cursor position)."""
+        return self._selected_session_id
+
     def set_session_order(self, order: list[str]) -> None:
         """Set custom session display order and persist."""
         self._session_order = order
-        self._save_state_with_order(order)
+        self._save_state()
 
-    def _emit(self, event) -> None:
-        if self._on_event:
-            self._on_event(event)
+    def set_selected_session(self, session_id: str | None) -> None:
+        """Set the selected session (cursor position) and persist."""
+        self._selected_session_id = session_id
+        self._save_state()
+
+    def _emit_created(self, session: Session) -> None:
+        """Emit session created event via EventBus."""
+        self._bus.emit(SessionCreatedEvent(
+            session_id=session.id,
+            session_name=session.name,
+            session_type=session.session_type.value,
+        ))
+
+    def _emit_state_changed(self, session: Session, old_state: SessionState) -> None:
+        """Emit session state changed event via EventBus."""
+        self._bus.emit(SessionStateChangedEvent(
+            session_id=session.id,
+            old_state=old_state.value,
+            new_state=session.state.value,
+        ))
+
+    def _emit_paused(self, session_id: str) -> None:
+        """Emit session paused event via EventBus."""
+        self._bus.emit(SessionPausedEvent(session_id=session_id))
+
+    def _emit_killed(self, session_id: str) -> None:
+        """Emit session killed event via EventBus."""
+        self._bus.emit(SessionKilledEvent(session_id=session_id))
+
+    def _emit_cleaned(self, session_id: str) -> None:
+        """Emit session cleaned event via EventBus."""
+        self._bus.emit(SessionCleanedEvent(session_id=session_id))
 
     def _get_session_prefix(self) -> str:
         """Get the session prefix from resolved config."""
@@ -169,13 +212,13 @@ class SessionManager:
                 provider=provider,
             )
             self._sessions[session.id] = session
-            self._emit(SessionCreated(session))
+            self._emit_created(session)
             self._persist_change(session, "created")
             return session
 
         session = result.value
         self._sessions[session.id] = session
-        self._emit(SessionCreated(session))
+        self._emit_created(session)
         self._persist_change(session, "created")
         return session
 
@@ -206,7 +249,7 @@ class SessionManager:
         if not discovery.session_file_exists(resume_session_id, effective_working_dir):
             session.state = SessionState.FAILED
             session.error_message = f"Session file not found: {resume_session_id[:8]}..."
-            self._emit(SessionCreated(session))
+            self._emit_created(session)
             self._persist_change(session, "created")
             return session
 
@@ -231,7 +274,7 @@ class SessionManager:
         if not result.success:
             session.error_message = result.error or "Failed to create tmux session"
 
-        self._emit(SessionCreated(session))
+        self._emit_created(session)
         self._persist_change(session, "created")
         return session
 
@@ -312,7 +355,7 @@ class SessionManager:
         session.state = SessionState.PAUSED
         session.ended_at = datetime.now()
 
-        self._emit(SessionPaused(session_id))
+        self._emit_paused(session_id)
         self._persist_change(session, "paused")
         return True
 
@@ -334,7 +377,7 @@ class SessionManager:
         session.state = SessionState.KILLED
         session.ended_at = datetime.now()
 
-        self._emit(SessionKilled(session_id))
+        self._emit_killed(session_id)
         self._persist_change(session, "killed")
         return True
 
@@ -350,7 +393,7 @@ class SessionManager:
 
         del self._sessions[session_id]
 
-        self._emit(SessionCleaned(session_id))
+        self._emit_cleaned(session_id)
         self._save_state()
         self._state.append_history(session, "cleaned")
         return True
@@ -509,7 +552,7 @@ class SessionManager:
         else:
             session.state = SessionState.FAILED
 
-        self._emit(SessionCreated(session))
+        self._emit_created(session)
         return session
 
     def get_tmux_session_name(self, session_id: str) -> str | None:
@@ -538,18 +581,17 @@ class SessionManager:
     def _save_state(self) -> bool:
         """Save state to disk atomically."""
         sessions = list(self._sessions.values())
-        return self._state.save(sessions, self._session_order)
+        return self._state.save(
+            sessions,
+            self._session_order,
+            self._selected_session_id,
+        )
 
-    def _save_state_with_order(self, order: list[str]) -> bool:
-        """Save state with custom order."""
-        self._session_order = order
-        return self._save_state()
-
-    def _load_persisted_sessions_with_order(self) -> tuple[dict[str, Session], list[str]]:
-        """Load sessions and custom order from persisted state.
+    def _load_persisted_state(self) -> tuple[dict[str, Session], list[str], str | None]:
+        """Load sessions, order, and cursor position from persisted state.
 
         Returns:
-            Tuple of (sessions dict, session order list)
+            Tuple of (sessions dict, session order list, selected session ID)
         """
         state = self._state.load()
         sessions = {}
@@ -566,7 +608,13 @@ class SessionManager:
 
         # Filter order to only include existing sessions
         order = [sid for sid in state.session_order if sid in sessions]
-        return sessions, order
+
+        # Validate selected session still exists
+        selected = state.selected_session_id
+        if selected and selected not in sessions:
+            selected = None
+
+        return sessions, order, selected
 
     def _persist_change(self, session: Session, event: str = "update") -> None:
         """Persist state after a session change."""

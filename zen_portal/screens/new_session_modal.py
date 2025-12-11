@@ -71,6 +71,17 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         # Validator for session creation (extracted business logic)
         self._validator = SessionValidator()
 
+        # Cached widget references (populated on_mount)
+        self._name_input: Input | None = None
+        self._type_select: Select | None = None
+        self._provider_select: Select | None = None
+        self._prompt_input: Input | None = None
+        self._dir_path_input: Input | None = None
+        self._dir_browser: DirectoryBrowser | None = None
+        self._advanced_config: Collapsible | None = None
+        self._tabs: TabbedContent | None = None
+        self._conflict_hint: Static | None = None
+
     def _get_enabled_session_types(self) -> list[NewSessionType]:
         """Get enabled session types from config."""
         resolved = self._config.resolve_features()
@@ -200,10 +211,84 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
             # Billing mode selector (Claude only)
             yield BillingWidget(self._config, self._models_service, id="billing-widget")
 
+    @property
+    def name_input(self) -> Input:
+        """Cached name input widget."""
+        if self._name_input is None:
+            self._name_input = self.query_one("#name-input", Input)
+        return self._name_input
+
+    @property
+    def type_select(self) -> Select:
+        """Cached type select widget."""
+        if self._type_select is None:
+            self._type_select = self.query_one("#type-select", Select)
+        return self._type_select
+
+    @property
+    def provider_select(self) -> Select:
+        """Cached provider select widget."""
+        if self._provider_select is None:
+            self._provider_select = self.query_one("#provider-select", Select)
+        return self._provider_select
+
+    @property
+    def prompt_input(self) -> Input:
+        """Cached prompt input widget."""
+        if self._prompt_input is None:
+            self._prompt_input = self.query_one("#prompt-input", Input)
+        return self._prompt_input
+
+    @property
+    def dir_path_input(self) -> Input:
+        """Cached directory path input widget."""
+        if self._dir_path_input is None:
+            self._dir_path_input = self.query_one("#dir-path-input", Input)
+        return self._dir_path_input
+
+    @property
+    def dir_browser(self) -> DirectoryBrowser:
+        """Cached directory browser widget."""
+        if self._dir_browser is None:
+            self._dir_browser = self.query_one("#dir-browser", DirectoryBrowser)
+        return self._dir_browser
+
+    @property
+    def advanced_config(self) -> Collapsible:
+        """Cached advanced config collapsible."""
+        if self._advanced_config is None:
+            self._advanced_config = self.query_one("#advanced-config", Collapsible)
+        return self._advanced_config
+
+    @property
+    def tabs(self) -> TabbedContent:
+        """Cached tabs widget."""
+        if self._tabs is None:
+            self._tabs = self.query_one("#tabs", TabbedContent)
+        return self._tabs
+
+    @property
+    def conflict_hint(self) -> Static:
+        """Cached conflict hint widget."""
+        if self._conflict_hint is None:
+            self._conflict_hint = self.query_one("#conflict-hint", Static)
+        return self._conflict_hint
+
     def on_mount(self) -> None:
         """Focus the name input and load lists."""
         self.trap_focus = True
-        self.query_one("#name-input", Input).focus()
+        # Populate cached widget references
+        self._name_input = self.query_one("#name-input", Input)
+        self._type_select = self.query_one("#type-select", Select)
+        self._provider_select = self.query_one("#provider-select", Select)
+        self._prompt_input = self.query_one("#prompt-input", Input)
+        self._dir_path_input = self.query_one("#dir-path-input", Input)
+        self._dir_browser = self.query_one("#dir-browser", DirectoryBrowser)
+        self._advanced_config = self.query_one("#advanced-config", Collapsible)
+        self._tabs = self.query_one("#tabs", TabbedContent)
+        self._conflict_hint = self.query_one("#conflict-hint", Static)
+
+        self.name_input.focus()
         self._load_lists()
         self._set_initial_visibility()
         self._check_conflicts()
@@ -215,9 +300,8 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
 
     def _check_conflicts(self) -> None:
         """Check for conflicts and validation issues, update hint."""
-        name = self.query_one("#name-input", Input).value.strip()
-        type_select = self.query_one("#type-select", Select)
-        session_type = type_select.value if type_select.value is not Select.BLANK else NewSessionType.AI
+        name = self.name_input.value.strip()
+        session_type = self.type_select.value if self.type_select.value is not Select.BLANK else NewSessionType.AI
 
         # Use validator for name validation
         existing_names = {s.name for s in self._existing_sessions}
@@ -244,7 +328,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         validation: ValidationResult | None = None,
     ) -> None:
         """Update the conflict hint display."""
-        hint = self.query_one("#conflict-hint", Static)
+        hint = self.conflict_hint
         hint.remove_class("warning", "error")
 
         # Prioritize validation errors over conflicts
@@ -312,16 +396,15 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
 
         # Show provider selector only for AI sessions
         self.query_one("#provider-label", Static).display = is_ai
-        self.query_one("#provider-select", Select).display = is_ai
+        self.provider_select.display = is_ai
 
         # Show prompt for AI sessions
         self.query_one("#prompt-label", Static).display = is_ai
-        self.query_one("#prompt-input", Input).display = is_ai
+        self.prompt_input.display = is_ai
 
         # Show advanced config only for Claude provider
-        provider_select = self.query_one("#provider-select", Select)
-        is_claude = is_ai and provider_select.value == AIProvider.CLAUDE
-        self.query_one("#advanced-config", Collapsible).display = is_claude
+        is_claude = is_ai and self.provider_select.value == AIProvider.CLAUDE
+        self.advanced_config.display = is_claude
 
         # Show shell options only for shell sessions
         shell_options = self.query_one("#shell-options", Horizontal)
@@ -329,8 +412,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
 
     def _get_active_tab(self) -> str:
         """Get the currently active tab ID."""
-        tabs = self.query_one("#tabs", TabbedContent)
-        return tabs.active or "tab-new"
+        return self.tabs.active or "tab-new"
 
     def on_select_changed(self, event: Select.Changed) -> None:
         """Handle select changes."""
@@ -346,38 +428,34 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
 
         # Show/hide provider selector
         self.query_one("#provider-label", Static).display = is_ai
-        self.query_one("#provider-select", Select).display = is_ai
+        self.provider_select.display = is_ai
 
         # Show/hide prompt for AI sessions
         self.query_one("#prompt-label", Static).display = is_ai
-        self.query_one("#prompt-input", Input).display = is_ai
+        self.prompt_input.display = is_ai
 
         # Show/hide advanced config (only for Claude)
-        provider_select = self.query_one("#provider-select", Select)
-        is_claude = is_ai and provider_select.value == AIProvider.CLAUDE
-        self.query_one("#advanced-config", Collapsible).display = is_claude
+        is_claude = is_ai and self.provider_select.value == AIProvider.CLAUDE
+        self.advanced_config.display = is_claude
 
         # Show/hide shell options
         shell_options = self.query_one("#shell-options", Horizontal)
         shell_options.remove_class("hidden") if is_shell else shell_options.add_class("hidden")
 
         # Auto-update name if not customized
-        name_input = self.query_one("#name-input", Input)
-        provider = provider_select.value if is_ai else None
-        if name_input.value.startswith("session") or name_input.value.startswith(self._initial_dir.name):
-            name_input.value = self._get_default_name(value, provider)
+        provider = self.provider_select.value if is_ai else None
+        if self.name_input.value.startswith("session") or self.name_input.value.startswith(self._initial_dir.name):
+            self.name_input.value = self._get_default_name(value, provider)
 
     def _handle_provider_change(self, value: AIProvider) -> None:
         """Handle AI provider changes."""
         # Show advanced config only for Claude
         is_claude = value == AIProvider.CLAUDE
-        self.query_one("#advanced-config", Collapsible).display = is_claude
+        self.advanced_config.display = is_claude
 
         # Auto-update name if not customized
-        name_input = self.query_one("#name-input", Input)
-        if name_input.value.startswith("session") or name_input.value.startswith(self._initial_dir.name):
-            type_select = self.query_one("#type-select", Select)
-            name_input.value = self._get_default_name(type_select.value, value)
+        if self.name_input.value.startswith("session") or self.name_input.value.startswith(self._initial_dir.name):
+            self.name_input.value = self._get_default_name(self.type_select.value, value)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "browse-btn":
@@ -385,19 +463,18 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
 
     def _toggle_directory_browser(self) -> None:
         """Toggle the directory browser visibility."""
-        dir_browser = self.query_one("#dir-browser", DirectoryBrowser)
-        if dir_browser.has_class("visible"):
-            dir_browser.remove_class("visible")
+        if self.dir_browser.has_class("visible"):
+            self.dir_browser.remove_class("visible")
         else:
-            dir_browser.add_class("visible")
-            dir_browser.focus()
+            self.dir_browser.add_class("visible")
+            self.dir_browser.focus()
 
     def on_directory_browser_path_changed(self, event: DirectoryBrowser.PathChanged) -> None:
-        self.query_one("#dir-path-input", Input).value = str(event.path)
+        self.dir_path_input.value = str(event.path)
 
     def on_directory_browser_directory_selected(self, event: DirectoryBrowser.DirectorySelected) -> None:
-        self.query_one("#dir-path-input", Input).value = str(event.path)
-        self.query_one("#dir-browser", DirectoryBrowser).remove_class("visible")
+        self.dir_path_input.value = str(event.path)
+        self.dir_browser.remove_class("visible")
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.input.id == "dir-path-input":
@@ -413,7 +490,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         try:
             path = Path(path_str).expanduser().resolve()
             if path.is_dir():
-                self.query_one("#dir-browser", DirectoryBrowser).set_path(path)
+                self.dir_browser.set_path(path)
         except Exception:
             pass
 
@@ -468,17 +545,16 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
             return
 
         # Handle j/k in type-select dropdown
-        type_select = self.query_one("#type-select", Select)
-        if type_select.has_focus:
+        if self.type_select.has_focus:
             if event.key == "j":
                 event.prevent_default()
                 event.stop()
-                self._cycle_select_value(type_select, forward=True)
+                self._cycle_select_value(self.type_select, forward=True)
                 return
             elif event.key == "k":
                 event.prevent_default()
                 event.stop()
-                self._cycle_select_value(type_select, forward=False)
+                self._cycle_select_value(self.type_select, forward=False)
                 return
 
         # h/l for tab navigation (only when not in input)
@@ -517,20 +593,17 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
             self._submit()
             return
 
-        type_select = self.query_one("#type-select", Select)
         browse_btn = self.query_one("#browse-btn", Button)
-        dir_input = self.query_one("#dir-path-input", Input)
-        advanced = self.query_one("#advanced-config", Collapsible)
 
-        if type_select.has_focus:
-            if type_select.expanded:
-                type_select.action_dismiss()
+        if self.type_select.has_focus:
+            if self.type_select.expanded:
+                self.type_select.action_dismiss()
             else:
-                type_select.action_show_overlay()
-        elif browse_btn.has_focus or dir_input.has_focus:
+                self.type_select.action_show_overlay()
+        elif browse_btn.has_focus or self.dir_path_input.has_focus:
             self._toggle_directory_browser()
-        elif advanced.has_focus:
-            advanced.collapsed = not advanced.collapsed
+        elif self.advanced_config.has_focus:
+            self.advanced_config.collapsed = not self.advanced_config.collapsed
         else:
             self._toggle_directory_browser()
 
@@ -563,8 +636,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
     def key_enter(self) -> None:
         """Submit on enter (unless in directory browser)."""
         try:
-            dir_browser = self.query_one("#dir-browser", DirectoryBrowser)
-            if dir_browser.has_focus or any(child.has_focus for child in dir_browser.query("*")):
+            if self.dir_browser.has_focus or any(child.has_focus for child in self.dir_browser.query("*")):
                 return
         except Exception:
             pass
@@ -572,29 +644,27 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
 
     def _next_tab(self) -> None:
         """Switch to the next tab."""
-        tabs = self.query_one("#tabs", TabbedContent)
         tab_ids = ["tab-new", "tab-attach", "tab-resume"]
-        current = tabs.active or "tab-new"
+        current = self.tabs.active or "tab-new"
         try:
             current_idx = tab_ids.index(current)
             next_idx = (current_idx + 1) % len(tab_ids)
-            tabs.active = tab_ids[next_idx]
+            self.tabs.active = tab_ids[next_idx]
             self._focus_for_tab(tab_ids[next_idx])
         except ValueError:
-            tabs.active = "tab-new"
+            self.tabs.active = "tab-new"
 
     def _prev_tab(self) -> None:
         """Switch to the previous tab."""
-        tabs = self.query_one("#tabs", TabbedContent)
         tab_ids = ["tab-new", "tab-attach", "tab-resume"]
-        current = tabs.active or "tab-new"
+        current = self.tabs.active or "tab-new"
         try:
             current_idx = tab_ids.index(current)
             prev_idx = (current_idx - 1) % len(tab_ids)
-            tabs.active = tab_ids[prev_idx]
+            self.tabs.active = tab_ids[prev_idx]
             self._focus_for_tab(tab_ids[prev_idx])
         except ValueError:
-            tabs.active = "tab-new"
+            self.tabs.active = "tab-new"
 
     def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
         # Refresh lists when switching to attach/resume tabs to prevent stale data
@@ -607,7 +677,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
     def _focus_for_tab(self, tab_id: str) -> None:
         """Set appropriate focus for the given tab."""
         if tab_id == "tab-new":
-            self.query_one("#name-input", Input).focus()
+            self.name_input.focus()
         else:
             self.focus()
 
@@ -623,7 +693,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
 
     def _submit_new(self) -> None:
         """Create a new session."""
-        name = self.query_one("#name-input", Input).value.strip()
+        name = self.name_input.value.strip()
 
         # Validate name using SessionValidator
         existing_names = {s.name for s in self._existing_sessions}
@@ -632,21 +702,19 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
             self.notify(validation.first_error or "invalid session name", severity="error")
             return
 
-        type_select = self.query_one("#type-select", Select)
-        session_type = type_select.value
+        session_type = self.type_select.value
         if session_type is Select.BLANK:
             session_type = NewSessionType.AI
 
         # Get provider for AI sessions
-        provider_select = self.query_one("#provider-select", Select)
-        provider = provider_select.value if provider_select.value is not Select.BLANK else AIProvider.CLAUDE
+        provider = self.provider_select.value if self.provider_select.value is not Select.BLANK else AIProvider.CLAUDE
 
         prompt = ""
         model = None
         use_worktree = None
 
         if session_type == NewSessionType.AI:
-            prompt = self.query_one("#prompt-input", Input).value.strip()
+            prompt = self.prompt_input.value.strip()
 
             # Advanced options only for Claude
             if provider == AIProvider.CLAUDE:
@@ -666,7 +734,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
             use_worktree = shell_worktree.value if shell_worktree.value else None
 
         # Get working directory
-        path_str = self.query_one("#dir-path-input", Input).value.strip()
+        path_str = self.dir_path_input.value.strip()
         if path_str.startswith("~"):
             path_str = str(Path.home()) + path_str[1:]
         try:

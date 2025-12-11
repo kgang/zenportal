@@ -8,6 +8,13 @@ from unittest.mock import MagicMock, patch
 from zen_portal.services.session_manager import SessionManager
 from zen_portal.services.tmux import TmuxResult
 from zen_portal.services.worktree import WorktreeResult
+from zen_portal.services.events import (
+    EventBus,
+    SessionCreatedEvent,
+    SessionPausedEvent,
+    SessionKilledEvent,
+    SessionCleanedEvent,
+)
 from zen_portal.models.session import SessionState, SessionFeatures
 
 
@@ -438,3 +445,177 @@ class TestSessionManagerWithWorktree:
         call_kwargs = mock_worktree_class.call_args[1]
         assert call_kwargs["source_repo"] == custom_dir
         assert session.worktree_source_repo == custom_dir
+
+
+class TestSessionManagerEventBus:
+    """Tests for SessionManager EventBus integration."""
+
+    @pytest.fixture(autouse=True)
+    def reset_event_bus(self):
+        """Reset EventBus before each test."""
+        EventBus.reset()
+        yield
+        EventBus.reset()
+
+    def test_create_session_emits_created_event(
+        self, session_manager: SessionManager, mock_tmux: MagicMock
+    ):
+        """Creating a session emits SessionCreatedEvent."""
+        received = []
+        EventBus.get().subscribe(SessionCreatedEvent, received.append)
+
+        session = session_manager.create_session("test-session")
+
+        assert len(received) == 1
+        event = received[0]
+        assert event.session_id == session.id
+        assert event.session_name == "test-session"
+        assert event.session_type == "ai"
+
+    def test_pause_session_emits_paused_event(
+        self, session_manager: SessionManager, mock_tmux: MagicMock
+    ):
+        """Pausing a session emits SessionPausedEvent."""
+        session = session_manager.create_session("test")
+        received = []
+        EventBus.get().subscribe(SessionPausedEvent, received.append)
+
+        session_manager.pause_session(session.id)
+
+        assert len(received) == 1
+        assert received[0].session_id == session.id
+
+    def test_kill_session_emits_killed_event(
+        self, session_manager: SessionManager, mock_tmux: MagicMock
+    ):
+        """Killing a session emits SessionKilledEvent."""
+        session = session_manager.create_session("test")
+        received = []
+        EventBus.get().subscribe(SessionKilledEvent, received.append)
+
+        session_manager.kill_session(session.id)
+
+        assert len(received) == 1
+        assert received[0].session_id == session.id
+
+    def test_clean_session_emits_cleaned_event(
+        self, session_manager: SessionManager, mock_tmux: MagicMock
+    ):
+        """Cleaning a session emits SessionCleanedEvent."""
+        session = session_manager.create_session("test")
+        session_manager.pause_session(session.id)  # Must be non-active to clean
+        received = []
+        EventBus.get().subscribe(SessionCleanedEvent, received.append)
+
+        session_manager.clean_session(session.id)
+
+        assert len(received) == 1
+        assert received[0].session_id == session.id
+
+    def test_custom_event_bus_injection(
+        self, mock_tmux: MagicMock, config_manager, tmp_path: Path
+    ):
+        """SessionManager accepts custom EventBus via DI."""
+        custom_bus = EventBus()
+        received = []
+        custom_bus.subscribe(SessionCreatedEvent, received.append)
+
+        state_dir = tmp_path / ".zen_portal"
+        manager = SessionManager(
+            tmux=mock_tmux,
+            config_manager=config_manager,
+            base_dir=state_dir,
+            working_dir=tmp_path,
+            event_bus=custom_bus,
+        )
+
+        manager.create_session("test")
+
+        assert len(received) == 1
+
+
+class TestSessionManagerCursorPersistence:
+    """Tests for cursor position (selected session) persistence."""
+
+    def test_selected_session_id_initially_none(
+        self, session_manager: SessionManager
+    ):
+        """Selected session is None when no sessions exist."""
+        assert session_manager.selected_session_id is None
+
+    def test_set_selected_session_persists(
+        self, session_manager: SessionManager, mock_tmux: MagicMock
+    ):
+        """Setting selected session persists to state."""
+        session = session_manager.create_session("test")
+
+        session_manager.set_selected_session(session.id)
+
+        assert session_manager.selected_session_id == session.id
+
+    def test_selected_session_survives_reload(
+        self, mock_tmux: MagicMock, config_manager, tmp_path: Path
+    ):
+        """Selected session ID is restored after creating new SessionManager."""
+        state_dir = tmp_path / ".zen_portal"
+
+        # Create first manager and set selection
+        manager1 = SessionManager(
+            tmux=mock_tmux,
+            config_manager=config_manager,
+            base_dir=state_dir,
+            working_dir=tmp_path,
+        )
+        session = manager1.create_session("test-session")
+        manager1.set_selected_session(session.id)
+
+        # Create second manager (simulates app restart)
+        manager2 = SessionManager(
+            tmux=mock_tmux,
+            config_manager=config_manager,
+            base_dir=state_dir,
+            working_dir=tmp_path,
+        )
+
+        assert manager2.selected_session_id == session.id
+
+    def test_selected_session_cleared_if_session_deleted(
+        self, mock_tmux: MagicMock, config_manager, tmp_path: Path
+    ):
+        """Selected session ID is cleared if session no longer exists on reload."""
+        state_dir = tmp_path / ".zen_portal"
+
+        # Create manager and set selection
+        manager1 = SessionManager(
+            tmux=mock_tmux,
+            config_manager=config_manager,
+            base_dir=state_dir,
+            working_dir=tmp_path,
+        )
+        session = manager1.create_session("test")
+        manager1.set_selected_session(session.id)
+
+        # Simulate session no longer existing (tmux gone, no worktree)
+        mock_tmux.session_exists.return_value = False
+
+        # Create second manager - session won't be restored
+        manager2 = SessionManager(
+            tmux=mock_tmux,
+            config_manager=config_manager,
+            base_dir=state_dir,
+            working_dir=tmp_path,
+        )
+
+        # Selected ID should be None since session doesn't exist
+        assert manager2.selected_session_id is None
+
+    def test_set_selected_session_to_none(
+        self, session_manager: SessionManager, mock_tmux: MagicMock
+    ):
+        """Can set selected session to None."""
+        session = session_manager.create_session("test")
+        session_manager.set_selected_session(session.id)
+
+        session_manager.set_selected_session(None)
+
+        assert session_manager.selected_session_id is None

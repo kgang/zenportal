@@ -166,6 +166,8 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
         self._refresh_sessions()
         if self._focus_tmux_session:
             self._select_session_by_tmux_name(self._focus_tmux_session)
+        else:
+            self._restore_cursor_position()
         self._refresh_selected_output()
         self.set_interval(1.0, self._poll_sessions)
 
@@ -208,6 +210,17 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
             if self._manager.get_tmux_session_name(session.id) == tmux_name:
                 self.session_list.selected_index = i
                 self.session_list.refresh(recompose=True)
+                break
+
+    def _restore_cursor_position(self) -> None:
+        """Restore cursor to last selected session from persisted state."""
+        selected_id = self._manager.selected_session_id
+        if not selected_id:
+            return
+        # Find session index by ID
+        for i, session in enumerate(self.session_list.sessions):
+            if session.id == selected_id:
+                self.session_list.selected_index = i
                 break
 
     def _refresh_selected_output(self) -> None:
@@ -259,6 +272,9 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
     def on_session_selected(self, event: SessionSelected) -> None:
         """Handle session selection changes."""
         session = event.session
+
+        # Persist cursor position (debounced via state save)
+        self._manager.set_selected_session(session.id)
 
         if self.info_mode:
             self.info_view.update_session(session)
