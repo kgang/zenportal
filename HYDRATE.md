@@ -22,7 +22,7 @@ hydrate.time.witness       → git log, recent changes
 | Note enablement | `hydrate.project.afford` | Announce what you enable |
 | Update shared | `hydrate.concept.refine` | Prefix `[STALE?]` if uncertain |
 
-**Status**: 338 tests | Branch: `main` | Files: 19k lines
+**Status**: 338 tests | Branch: `main` | Files: 20k lines
 ################################################################################
 
 ## hydrate.project.manifest
@@ -47,7 +47,8 @@ zen_portal/
 ├── models/                   # Session, Template, events, enums, exceptions
 │   └── exceptions.py         # ZenError hierarchy
 ├── services/                 # business logic (no UI)
-│   ├── session_manager.py    # lifecycle (630 lines)
+│   ├── session_manager.py    # lifecycle (678 lines)
+│   ├── events.py             # EventBus pub/sub (235 lines)
 │   ├── session_state.py      # thread-safe persistence
 │   ├── validation.py         # SessionValidator, ValidationResult
 │   ├── worktree.py           # git worktree
@@ -59,7 +60,7 @@ zen_portal/
 ├── screens/                  # modals and full screens
 │   ├── main.py               # MainScreen (uses mixins)
 │   └── new_session_modal.py  # session creation (uses SessionValidator)
-└── tests/                    # 310 tests
+└── tests/                    # 338 tests
 ```
 
 **File limit**: ~500 lines. Large modules split into `core/` or supporting files.
@@ -123,12 +124,8 @@ I   info        A analyze  C completed    S search
 - `new_session_modal.py`: 783 lines (widget caching added 68 lines for lazy properties)
 
 **Refactoring Progress**:
-- ✓ Phase 1: SessionStateService, Services container, logging
-- ✓ Phase 2: Worktree consolidated, MainScreen widget caching
-- ✓ Phase 3: ZenError hierarchy, SessionValidator, Config schema
-- ✓ Phase 4: EventBus (`services/events.py`), widget caching in new_session_modal
-- ✓ Phase 5: EventBus integrated into SessionManager (replaces callback pattern)
-- Next: Session search, UI subscriptions to EventBus
+- ✓ Phase 1-5: Services container, EventBus, ZenError, SessionValidator, widget caching
+- Next: UI subscriptions to EventBus, session search feature
 
 See `docs/ENHANCEMENT_PLAN.md` for detailed roadmap.
 
