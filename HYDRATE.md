@@ -44,22 +44,22 @@ uv run pytest zen_portal/tests/  # test
 ```
 zen_portal/
 ├── app.py                    # entry + Services container (DI)
-├── models/                   # Session, Template, events, enums
+├── models/                   # Session, Template, events, enums, exceptions
+│   └── exceptions.py         # ZenError hierarchy
 ├── services/                 # business logic (no UI)
 │   ├── session_manager.py    # lifecycle (630 lines)
-│   ├── session_state.py      # thread-safe persistence (282 lines)
-│   ├── worktree.py           # git worktree (434 lines)
-│   ├── config.py             # configuration (538 lines)
+│   ├── session_state.py      # thread-safe persistence
+│   ├── validation.py         # SessionValidator, ValidationResult
+│   ├── worktree.py           # git worktree
+│   ├── config.py             # configuration (dataclass schema)
 │   ├── core/                 # detection, state_refresher, token_manager
 │   ├── pipelines/            # composable multi-step operations
 │   └── openrouter/           # validation, billing, models, monitor
 ├── widgets/                  # reusable UI components
 ├── screens/                  # modals and full screens
-│   ├── main.py               # MainScreen (uses mixins, 592 lines)
-│   ├── main_actions.py       # ActionsMixin, ExitMixin
-│   ├── main_templates.py     # TemplateMixin, PaletteMixin
-│   └── new_session_modal.py  # session creation (687 lines)
-└── tests/                    # 287 tests
+│   ├── main.py               # MainScreen (uses mixins)
+│   └── new_session_modal.py  # session creation (uses SessionValidator)
+└── tests/                    # 310 tests
 ```
 
 **File limit**: ~500 lines. Large modules split into `core/` or supporting files.
@@ -72,9 +72,10 @@ zen_portal/
 
 **Architecture Patterns**:
 - **Services Container** (`app.py`): DI via dataclass, `Services.create()` wires deps
+- **Exception Hierarchy** (`models/exceptions.py`): `ZenError` base, specific subclasses
+- **Validation** (`services/validation.py`): `SessionValidator`, `ValidationResult`
 - **State Persistence** (`session_state.py`): RLock, atomic writes, JSONL history
 - **Pipelines** (`pipelines/`): Composable steps, `T → StepResult[U]`
-- **Detection** (`core/detection.py`): Pure state detection, no side effects
 - **Mixins** (`screens/main_*.py`): MainScreen organization
 
 **Widget ID Rules** (prevent DuplicateIds):
@@ -117,15 +118,17 @@ I   info        A analyze  C completed    S search
 ## hydrate.void.witness
 
 **Tech debt** (acknowledged, not ignored):
-- `new_session_modal.py`: 715 lines (uses SessionValidator, still large)
+- `new_session_modal.py`: 715 lines (could cache widgets)
 - DOM queries not cached in all screens
+- No event bus (callbacks couple services to UI)
 
 **Refactoring Progress**:
-- Phase 1 (Foundation): ✓ SessionStateService, Services container, logging
-- Phase 2 (Simplification): ✓ Worktree consolidated, ✓ MainScreen widget caching
-- Phase 3 (Architecture): ✓ Exception hierarchy (ZenError), ✓ SessionValidator, ✓ Config schema
+- ✓ Phase 1: SessionStateService, Services container, logging
+- ✓ Phase 2: Worktree consolidated, MainScreen widget caching
+- ✓ Phase 3: ZenError hierarchy, SessionValidator, Config schema
+- Next: Session search, event bus, widget caching in remaining screens
 
-See `ZEN_CODE_DESIGN.md` for comprehensive roadmap and `docs/ENHANCEMENT_PLAN.md` for next steps.
+See `docs/ENHANCEMENT_PLAN.md` for detailed roadmap.
 
 ################################################################################
 *To read is to invoke. To edit is to disturb. There is no view from nowhere.*
