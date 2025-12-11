@@ -3,20 +3,27 @@
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal
-from textual.events import MouseScrollDown, MouseScrollUp
+from textual.events import Key, MouseScrollDown, MouseScrollUp
 from textual.reactive import reactive
-from textual.widgets import Header, Static
+from textual.widgets import Header, Static, Input
 
 from ..models.events import SessionSelected
 from ..models.session import Session, SessionState, SessionType
 from ..services.session_manager import SessionManager
+from ..services.events import (
+    EventBus,
+    SessionCreatedEvent,
+    SessionPausedEvent,
+    SessionKilledEvent,
+    SessionCleanedEvent,
+)
 from ..services.config import ConfigManager
 from ..services.profile import ProfileManager
 from ..services.command_registry import create_default_registry
 from ..services.template_manager import TemplateManager
 from ..services.proxy_monitor import ProxyMonitor, ProxyStatusEvent
 from ..services.git import GitService
-from ..widgets.session_list import SessionList
+from ..widgets.session_list import SessionList, SearchConfirmed, SearchCancelled
 from ..widgets.output_view import OutputView
 from ..widgets.session_info import SessionInfoView
 from .base import ZenScreen
@@ -34,7 +41,7 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
         ("up", "move_up", "↑"),
         Binding("l", "toggle_move", "→", show=False),
         Binding("space", "toggle_move", "Move", show=False),
-        Binding("escape", "exit_move", "Exit move", show=False),
+        Binding("escape", "escape_handler", "Exit", show=False),
         ("n", "new_session", "New"),
         Binding("o", "attach_existing", "Attach Existing", show=False),
         ("p", "pause", "Pause"),
@@ -53,8 +60,7 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
         ("c", "config", "Config"),
         ("?", "show_help", "Help"),
         ("q", "quit", "Quit"),
-        Binding("/", "zen_prompt", "Ask AI", show=False),
-        Binding("A", "analyze", "Analyze", show=False),
+        Binding("/", "search_sessions", "Search", show=False),
         Binding("R", "restart_app", "Restart", show=False),
         Binding(":", "command_palette", "Commands", show=False),
         Binding("ctrl+p", "command_palette", "Commands", show=False),
@@ -62,6 +68,7 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
     ]
 
     info_mode: reactive[bool] = reactive(False)
+    search_mode: reactive[bool] = reactive(False)
 
     DEFAULT_CSS = """
     MainScreen {
@@ -105,6 +112,19 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
         layer: notification;
         margin-bottom: 2;
     }
+
+    MainScreen #search-input {
+        dock: bottom;
+        width: 100%;
+        height: 1;
+        background: $surface;
+        border: none;
+        padding: 0 1;
+    }
+
+    MainScreen #search-input.hidden {
+        display: none;
+    }
     """
 
     def __init__(
@@ -128,6 +148,7 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
         self._output_view: OutputView | None = None
         self._info_view: SessionInfoView | None = None
         self._hint: Static | None = None
+        self._search_input: Input | None = None
 
         # Initialize command registry for palette
         self._command_registry = create_default_registry()
@@ -143,6 +164,9 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
         if self._proxy_monitor:
             self._proxy_monitor.add_status_callback(self._on_proxy_status_change)
 
+        # EventBus for reactive session updates
+        self._bus = EventBus.get()
+
     def compose(self) -> ComposeResult:
         yield Header()
         with Horizontal(id="content"):
@@ -151,7 +175,10 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
             info_view = SessionInfoView(proxy_monitor=self._proxy_monitor, id="info-view")
             info_view.display = False
             yield info_view
-        yield Static("j/k nav  n new  a attach  ? help  q quit", id="hint", classes="hint")
+        search_input = Input(placeholder="search ↑↓ tab enter", id="search-input", classes="hidden")
+        search_input.can_focus = False  # Only focusable when search mode is active
+        yield search_input
+        yield Static("j/k nav  n new  a attach  / search  ? help  q quit", id="hint", classes="hint")
         # Notification rack from ZenScreen base - must be last for layer ordering
         yield from super().compose()
 
@@ -162,6 +189,13 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
         self._output_view = self.query_one("#output-view", OutputView)
         self._info_view = self.query_one("#info-view", SessionInfoView)
         self._hint = self.query_one("#hint", Static)
+        self._search_input = self.query_one("#search-input", Input)
+
+        # Subscribe to EventBus for reactive session updates
+        self._bus.subscribe(SessionCreatedEvent, self._on_session_event)
+        self._bus.subscribe(SessionPausedEvent, self._on_session_event)
+        self._bus.subscribe(SessionKilledEvent, self._on_session_event)
+        self._bus.subscribe(SessionCleanedEvent, self._on_session_event)
 
         self._refresh_sessions()
         if self._focus_tmux_session:
@@ -202,6 +236,13 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
         if self._hint is None:
             self._hint = self.query_one("#hint", Static)
         return self._hint
+
+    @property
+    def search_input(self) -> Input:
+        """Get cached search input widget."""
+        if self._search_input is None:
+            self._search_input = self.query_one("#search-input", Input)
+        return self._search_input
 
     def _select_session_by_tmux_name(self, tmux_name: str) -> None:
         """Select the session with the given tmux session name."""
@@ -414,9 +455,11 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
             self.session_list.toggle_move_mode()
             self.zen_notify("move mode: j/k to reorder, space/esc to exit")
 
-    def action_exit_move(self) -> None:
-        """Exit move mode and save order."""
-        if self.session_list.move_mode:
+    def action_escape_handler(self) -> None:
+        """Handle escape: exit search mode, then move mode."""
+        if self.search_mode:
+            self.search_mode = False
+        elif self.session_list.move_mode:
             self.session_list.exit_move_mode()
             self._save_session_order()
             self.zen_notify("order saved")
@@ -527,6 +570,75 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
             except Exception:
                 pass
 
+    def action_search_sessions(self) -> None:
+        """Activate session search mode."""
+        self.search_mode = True
+
+    def watch_search_mode(self, search_mode: bool) -> None:
+        """Show/hide search input when mode changes."""
+        if search_mode:
+            self.search_input.can_focus = True
+            self.search_input.remove_class("hidden")
+            self.search_input.focus()
+            # Clear after focus to ensure no stray characters
+            self.search_input.value = ""
+            # Enable session list focus for Tab navigation
+            self.session_list.enable_focus()
+        else:
+            self.search_input.add_class("hidden")
+            self.search_input.can_focus = False  # Prevent focus stealing
+            self.session_list.clear_search()
+            self.session_list.disable_focus()
+            self.focus()  # Return focus to screen for keybindings
+            self._update_hint()
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        """Update session filter as user types."""
+        if event.input.id == "search-input":
+            self.session_list.set_search(event.value)
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        """Close search on Enter (keep filter active)."""
+        if event.input.id == "search-input":
+            self.search_mode = False
+
+    def on_key(self, event: Key) -> None:
+        """Intercept keys for search mode."""
+        if not self.search_mode:
+            return
+        # Block the initial / that triggered search mode
+        if event.key == "slash" and self.search_input.value == "":
+            event.prevent_default()
+            event.stop()
+            return
+        # Tab switches focus to session list for navigation
+        if event.key == "tab":
+            event.prevent_default()
+            event.stop()
+            self.session_list.focus()
+        # Up/down arrows navigate even from input
+        elif event.key == "down":
+            event.prevent_default()
+            event.stop()
+            self.session_list.move_down()
+        elif event.key == "up":
+            event.prevent_default()
+            event.stop()
+            self.session_list.move_up()
+
+    def _exit_search(self) -> None:
+        """Exit search mode and clear filter."""
+        self.search_mode = False
+
+    def on_search_confirmed(self, event: SearchConfirmed) -> None:
+        """Handle search confirmation - keep filter, exit search mode."""
+        self.search_mode = False
+        self._update_hint()
+
+    def on_search_cancelled(self, event: SearchCancelled) -> None:
+        """Handle search cancellation - clear filter and exit."""
+        self.search_mode = False
+
     def action_toggle_info(self) -> None:
         self.info_mode = not self.info_mode
 
@@ -541,11 +653,17 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
             pass
 
     def _update_hint(self) -> None:
-        base = "j/k nav  n new  a attach  ? help  q quit"
+        base = "j/k nav  n new  a attach  / search  ? help  q quit"
+        modes = []
         if self.info_mode:
-            self.hint.update(f"{base}  [dim]◦ info[/dim]")
-        elif self._streaming:
-            self.hint.update(f"{base}  [dim]◦ stream[/dim]")
+            modes.append("info")
+        if self._streaming:
+            modes.append("stream")
+        if self.session_list.search_filter:
+            modes.append(f"/{self.session_list.search_filter}")
+        if modes:
+            mode_str = " ".join(modes)
+            self.hint.update(f"{base}  [dim]◦ {mode_str}[/dim]")
         else:
             self.hint.update(base)
 
@@ -574,6 +692,19 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
             self.post_message(svc.error(message))
         else:
             self.post_message(svc.success(message))
+
+    def _on_session_event(
+        self,
+        event: SessionCreatedEvent | SessionPausedEvent | SessionKilledEvent | SessionCleanedEvent,
+    ) -> None:
+        """Handle session lifecycle events from EventBus.
+
+        Reactively refreshes the session list when sessions are created,
+        paused, killed, or cleaned - eliminating need for constant polling.
+        """
+        self._manager.refresh_states()
+        self._refresh_sessions()
+        self._refresh_selected_output()
 
     def _on_proxy_status_change(self, event: ProxyStatusEvent) -> None:
         """Handle proxy status change events for proactive notifications."""
@@ -605,4 +736,10 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
 
     async def on_unmount(self) -> None:
         """Clean up when screen is unmounted."""
+        # Unsubscribe from EventBus
+        self._bus.unsubscribe(SessionCreatedEvent, self._on_session_event)
+        self._bus.unsubscribe(SessionPausedEvent, self._on_session_event)
+        self._bus.unsubscribe(SessionKilledEvent, self._on_session_event)
+        self._bus.unsubscribe(SessionCleanedEvent, self._on_session_event)
+
         await self._cleanup_monitoring()

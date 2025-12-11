@@ -74,6 +74,7 @@ zen_portal/
 **Architecture Patterns**:
 - **Services Container** (`app.py`): DI via dataclass, `Services.create()` wires deps
 - **EventBus** (`services/events.py`): Typed pub/sub, SessionManager emits domain events
+- **UI Subscriptions**: MainScreen subscribes to `SessionCreatedEvent`, `SessionPausedEvent`, `SessionKilledEvent`, `SessionCleanedEvent` for reactive updates
 - **Exception Hierarchy** (`models/exceptions.py`): `ZenError` base, specific subclasses
 - **Validation** (`services/validation.py`): `SessionValidator`, `ValidationResult`
 - **State Persistence** (`session_state.py`): RLock, atomic writes, cursor position, JSONL history
@@ -100,6 +101,27 @@ finally:
     self._updating = False
 ```
 
+**Focus & Binding Control** (prevent key capture issues):
+```python
+# 1. Hidden widgets can still steal focus - control can_focus with visibility
+search_input.can_focus = False  # Set False when hidden
+search_input.add_class("hidden")
+
+# 2. Widget bindings shadow parent even with has_focus guards
+# Use dynamic binding add/remove for mode-specific behavior
+def enable_mode(self) -> None:
+    self.can_focus = True
+    self._bindings.bind("j", "nav_down", "Down", show=False)
+
+def disable_mode(self) -> None:
+    self.can_focus = False
+    if "j" in self._bindings.key_to_bindings:
+        del self._bindings.key_to_bindings["j"]
+
+# 3. Always return focus to screen after hiding modal widgets
+self.focus()  # Screen bindings only work when screen has focus
+```
+
 ---
 
 ## hydrate.concept.refine
@@ -108,9 +130,9 @@ finally:
 ```
 j/k navigate    n new      l move mode    p pause
 a   attach      x kill     v revive       d clean
-e   rename      c config   i insert       / zen ai
-I   info        A analyze  C completed    S search
-:   palette     T template ?  help        q quit
+e   rename      c config   i insert       / search
+I   info        S output   :  palette     T template
+?   help        q quit
 ```
 
 **Config**: `~/.config/zen-portal/config.json`
@@ -124,8 +146,8 @@ I   info        A analyze  C completed    S search
 - `new_session_modal.py`: 783 lines (widget caching added 68 lines for lazy properties)
 
 **Refactoring Progress**:
-- ✓ Phase 1-5: Services container, EventBus, ZenError, SessionValidator, widget caching
-- Next: UI subscriptions to EventBus, session search feature
+- ✓ Phase 1-7: Services container, EventBus, ZenError, SessionValidator, widget caching, UI subscriptions, session search
+- Next: Zen AI UX redesign (lightweight chat interface)
 
 See `docs/ENHANCEMENT_PLAN.md` for detailed roadmap.
 

@@ -275,49 +275,9 @@ class MainScreenActionsMixin:
 
         self.app.push_screen(InsertModal(selected.display_name), handle_result)
 
-    def action_zen_prompt(self) -> None:
-        """Open Zen AI prompt modal for quick queries."""
-        self._open_zen_ai_modal()
-
-    def action_analyze(self) -> None:
-        """Analyze the selected session with AI reflection."""
-        self._open_zen_ai_modal(
-            preset_prompt="Analyze this session. What patterns do you see? Any suggestions?"
-        )
-
-    def _open_zen_ai_modal(self, preset_prompt: str | None = None) -> None:
-        """Open Zen AI modal, optionally with a preset prompt."""
-        from .zen_prompt import ZenPromptModal
-        from ..services.zen_ai import ZenAI
-        from ..services.config import ZenAIConfig
-
-        # Get Zen AI config
-        features = self._config.resolve_features()
-        zen_ai_config = features.zen_ai or ZenAIConfig()
-
-        # Check if Zen AI is available
-        if not zen_ai_config.enabled:
-            self.zen_notify("zen ai not enabled (configure in settings)", "warning")
-            return
-
-        # Create ZenAI service
-        proxy_settings = features.openrouter_proxy
-        zen_ai = ZenAI(zen_ai_config, proxy_settings)
-
-        if not zen_ai.is_available:
-            self.zen_notify("zen ai not available (check claude or api key)", "warning")
-            return
-
-        # Get current session for context
-        selected = self.session_list.get_selected()
-
-        def handle_result(result: str | None) -> None:
-            pass  # Modal handles display
-
-        self.app.push_screen(
-            ZenPromptModal(zen_ai, selected, self._manager, preset_prompt),
-            handle_result,
-        )
+    # NOTE: action_zen_prompt and action_analyze removed.
+    # The Zen AI backend (services/zen_ai.py) is preserved for future use
+    # with a better UX (non-blocking chat interface).
 
 
 class MainScreenExitMixin:

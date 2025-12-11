@@ -7,11 +7,22 @@ Visual Calm Strategy:
 """
 
 from textual.app import ComposeResult
+from textual.message import Message
 from textual.reactive import reactive
 from textual.widgets import Static
 
 from ..models.session import Session, SessionState, SessionType
 from ..models.events import SessionSelected
+
+
+class SearchConfirmed(Message):
+    """Posted when user confirms search selection (Enter/Tab from list)."""
+    pass
+
+
+class SearchCancelled(Message):
+    """Posted when user cancels search (Escape from list)."""
+    pass
 
 
 class SessionListItem(Static):
@@ -112,14 +123,54 @@ class SessionListItem(Static):
 class SessionList(Static, can_focus=False):
     """List of all sessions with keyboard navigation and move mode for reordering.
 
-    This widget is intentionally non-focusable - all navigation is handled
-    by the MainScreen keybindings which delegate to SessionList methods.
+    Navigation is handled by MainScreen keybindings. During search mode,
+    focus is temporarily enabled for j/k navigation within filtered results.
     """
+
+    def enable_focus(self) -> None:
+        """Temporarily enable focus for search navigation."""
+        self.can_focus = True
+        # Dynamically add bindings when focused for search mode
+        self._bindings.bind("j", "nav_down", "Down", show=False)
+        self._bindings.bind("k", "nav_up", "Up", show=False)
+        self._bindings.bind("down", "nav_down", "Down", show=False)
+        self._bindings.bind("up", "nav_up", "Up", show=False)
+        self._bindings.bind("enter", "confirm_selection", "Select", show=False)
+        self._bindings.bind("escape", "exit_search", "Exit", show=False)
+
+    def disable_focus(self) -> None:
+        """Disable focus after search ends."""
+        self.can_focus = False
+        # Remove bindings to prevent shadowing MainScreen navigation
+        for key in ["j", "k", "down", "up", "enter", "escape"]:
+            if key in self._bindings.key_to_bindings:
+                del self._bindings.key_to_bindings[key]
 
     sessions: reactive[list[Session]] = reactive(list, recompose=True)
     selected_index: reactive[int] = reactive(0)
     move_mode: reactive[bool] = reactive(False)
     show_completed: reactive[bool] = reactive(False)
+    search_filter: reactive[str] = reactive("")
+
+    def action_nav_down(self) -> None:
+        """Navigate down when focused (search mode only)."""
+        if self.has_focus:
+            self.move_down()
+
+    def action_nav_up(self) -> None:
+        """Navigate up when focused (search mode only)."""
+        if self.has_focus:
+            self.move_up()
+
+    def action_confirm_selection(self) -> None:
+        """Confirm current selection and exit search (search mode only)."""
+        if self.has_focus:
+            self.post_message(SearchConfirmed())
+
+    def action_exit_search(self) -> None:
+        """Cancel search and restore previous state (search mode only)."""
+        if self.has_focus:
+            self.post_message(SearchCancelled())
 
     DEFAULT_CSS = """
     SessionList {
@@ -148,17 +199,31 @@ class SessionList(Static, can_focus=False):
     }
     """
 
+    @property
+    def filtered_sessions(self) -> list[Session]:
+        """Get sessions filtered by search query (fuzzy match on name)."""
+        if not self.search_filter:
+            return self.sessions
+        query = self.search_filter.lower()
+        return [s for s in self.sessions if query in s.display_name.lower()]
+
     def compose(self) -> ComposeResult:
-        # All sessions are visible by default (dead sessions show until cleaned)
-        # show_completed toggle is removed - sessions remain visible until explicit cleanup
-        visible_sessions = self.sessions
+        visible_sessions = self.filtered_sessions
 
         if not visible_sessions:
-            yield Static("\n\n\n\n      ○\n\n    empty\n\n    n  new session", classes="empty-message")
+            if self.search_filter:
+                yield Static(f"\n\n    no matches for '{self.search_filter}'", classes="empty-message")
+            else:
+                yield Static("\n\n\n\n      ○\n\n    empty\n\n    n  new session", classes="empty-message")
             return
 
         title_classes = "title move-mode" if self.move_mode else "title"
-        title_text = "≡ move" if self.move_mode else "sessions"
+        if self.search_filter:
+            title_text = f"/{self.search_filter}"
+        elif self.move_mode:
+            title_text = "≡ move"
+        else:
+            title_text = "sessions"
         yield Static(title_text, classes=title_classes)
         for i, session in enumerate(visible_sessions):
             is_selected = i == self.selected_index
@@ -167,27 +232,35 @@ class SessionList(Static, can_focus=False):
 
     def watch_selected_index(self, index: int) -> None:
         """Emit selection event when index changes."""
-        if self.sessions and 0 <= index < len(self.sessions):
-            self.post_message(SessionSelected(self.sessions[index]))
+        filtered = self.filtered_sessions
+        if filtered and 0 <= index < len(filtered):
+            self.post_message(SessionSelected(filtered[index]))
+
+    def watch_search_filter(self, filter_text: str) -> None:
+        """Reset selection when filter changes."""
+        self.selected_index = 0
+        self.refresh(recompose=True)
 
     def move_down(self) -> None:
         """Move selection down, or move session down if in move mode."""
-        if not self.sessions:
+        filtered = self.filtered_sessions
+        if not filtered:
             return
         if self.move_mode:
             self._move_session_down()
         else:
-            self.selected_index = (self.selected_index + 1) % len(self.sessions)
+            self.selected_index = (self.selected_index + 1) % len(filtered)
         self.refresh(recompose=True)
 
     def move_up(self) -> None:
         """Move selection up, or move session up if in move mode."""
-        if not self.sessions:
+        filtered = self.filtered_sessions
+        if not filtered:
             return
         if self.move_mode:
             self._move_session_up()
         else:
-            self.selected_index = (self.selected_index - 1) % len(self.sessions)
+            self.selected_index = (self.selected_index - 1) % len(filtered)
         self.refresh(recompose=True)
 
     def _move_session_down(self) -> None:
@@ -225,10 +298,19 @@ class SessionList(Static, can_focus=False):
             self.refresh(recompose=True)
 
     def get_selected(self) -> Session | None:
-        """Get the currently selected session."""
-        if self.sessions and 0 <= self.selected_index < len(self.sessions):
-            return self.sessions[self.selected_index]
+        """Get the currently selected session (respects filter)."""
+        filtered = self.filtered_sessions
+        if filtered and 0 <= self.selected_index < len(filtered):
+            return filtered[self.selected_index]
         return None
+
+    def set_search(self, query: str) -> None:
+        """Set search filter and refresh."""
+        self.search_filter = query
+
+    def clear_search(self) -> None:
+        """Clear search filter."""
+        self.search_filter = ""
 
     def get_session_order(self) -> list[str]:
         """Get session IDs in current display order."""

@@ -154,15 +154,8 @@ def create_default_registry() -> CommandRegistry:
             requires_selection=True,
             description="Open a shell in the session's worktree",
         ),
-        Command(
-            id="analyze",
-            label="Analyze session",
-            action="action_analyze",
-            category=CommandCategory.SESSION,
-            keybinding="A",
-            requires_selection=True,
-            description="Run AI analysis on the session output",
-        ),
+        # NOTE: "analyze" command removed - Zen AI UX needs redesign
+        # Backend preserved in services/zen_ai.py for future use
     ])
 
     # Navigation actions
@@ -264,12 +257,12 @@ def create_default_registry() -> CommandRegistry:
             description="Attach an existing tmux session",
         ),
         Command(
-            id="zen_prompt",
-            label="Ask AI (Zen AI)",
-            action="action_zen_prompt",
+            id="search_sessions",
+            label="Search sessions",
+            action="action_search_sessions",
             category=CommandCategory.APP,
             keybinding="/",
-            description="Quick AI query without creating a session",
+            description="Filter sessions by name",
         ),
         Command(
             id="config",

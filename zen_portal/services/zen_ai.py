@@ -5,6 +5,16 @@ Provides direct AI queries via:
 - OpenRouter API for other models
 
 Designed for quick, ephemeral interactions within Zenportal.
+
+NOTE: This backend is currently unused in the UI. The previous modal UX
+(blocking wait for response) was poor. Future plans:
+- Lightweight chat sidebar that doesn't block main workflow
+- Background query with notification when response ready
+- Integration with session context via @refs
+
+The API is stable and tested - only the UX needs redesign.
+See: services/context_parser.py for @ref syntax
+See: services/config.py ZenAIConfig for settings
 """
 
 import asyncio
