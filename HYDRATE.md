@@ -47,7 +47,7 @@ zen_portal/
 ├── models/                   # Session, Template, events, enums, exceptions
 │   └── exceptions.py         # ZenError hierarchy
 ├── services/                 # business logic (no UI)
-│   ├── session_manager.py    # lifecycle (678 lines)
+│   ├── session_manager.py    # lifecycle (686 lines)
 │   ├── events.py             # EventBus pub/sub (235 lines)
 │   ├── session_state.py      # thread-safe persistence
 │   ├── validation.py         # SessionValidator, ValidationResult
@@ -81,6 +81,7 @@ zen_portal/
 - **Pipelines** (`pipelines/`): Composable steps, `T → StepResult[U]`
 - **Mixins** (`screens/main_*.py`): MainScreen organization
 - **Widget Caching**: Lazy properties for frequently-accessed widgets
+- **Session Matching**: Match claude sessions by `modified_at >= session.created_at` (prevents wrong session on revive)
 
 **Widget ID Rules** (prevent DuplicateIds):
 ```python

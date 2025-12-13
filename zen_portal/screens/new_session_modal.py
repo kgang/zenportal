@@ -203,7 +203,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
 
             with Horizontal(id="options-row"):
                 yield Checkbox("worktree", id="worktree-check")
-                yield Checkbox("dangerous", id="dangerous-check")
+                yield Checkbox("dangerous", value=True, id="dangerous-check")
 
             with Horizontal(id="default-dir-row"):
                 yield Checkbox("set as default dir", id="set-default-dir-check")

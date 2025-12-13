@@ -295,10 +295,18 @@ class SessionManager:
                 discovery = DiscoveryService(session.resolved_working_dir)
                 sessions = discovery.list_claude_sessions(
                     project_path=session.resolved_working_dir,
-                    limit=1,
+                    limit=5,
                 )
-                if sessions:
-                    session.claude_session_id = sessions[0].session_id
+                # Find the most recent session modified after this zenportal session started
+                # This prevents reviving the wrong claude session when multiple exist
+                for claude_session in sessions:
+                    if claude_session.modified_at >= session.created_at:
+                        session.claude_session_id = claude_session.session_id
+                        break
+                else:
+                    # Fallback to most recent if none match the time window
+                    if sessions:
+                        session.claude_session_id = sessions[0].session_id
 
         command_args = self._commands.build_revive_command(session, was_failed)
 
