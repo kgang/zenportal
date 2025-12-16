@@ -4,6 +4,7 @@ import os
 import re
 import shlex
 import shutil
+import tempfile
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -11,6 +12,9 @@ from ..models.session import Session, SessionType
 from .banner import generate_banner_command
 from .config import ClaudeModel, ProxySettings
 
+
+# Tmux has a command length limit (~16KB). Commands exceeding this need special handling.
+_TMUX_CMD_LENGTH_THRESHOLD = 12000  # Leave margin for banner and other parts
 
 # Validation patterns
 _API_KEY_PATTERN = re.compile(r'^[a-zA-Z0-9_-]+$')
@@ -51,6 +55,7 @@ class SessionCommandBuilder:
         provider: str = "claude",
         model: ClaudeModel | None = None,
         prompt: str = "",
+        system_prompt: str = "",
         dangerous_mode: bool = False,
     ) -> list[str]:
         """Build command args for creating a new session.
@@ -61,6 +66,7 @@ class SessionCommandBuilder:
             provider: AI provider (claude, codex, gemini, openrouter) for AI sessions
             model: Claude model to use (Claude provider only)
             prompt: Initial prompt (AI sessions only)
+            system_prompt: System prompt for Claude (--system-prompt argument)
             dangerous_mode: Skip permissions (Claude only)
 
         Returns:
@@ -73,6 +79,8 @@ class SessionCommandBuilder:
                     command_args.extend(["--model", model.value])
                 if dangerous_mode:
                     command_args.append("--dangerously-skip-permissions")
+                if system_prompt:
+                    command_args.extend(["--system-prompt", system_prompt])
                 if prompt:
                     command_args.append(prompt)
 
@@ -298,6 +306,9 @@ class SessionCommandBuilder:
             env_vars: Optional environment variables to export before running
 
         Returns a bash command that prints the banner then execs the original command.
+
+        For large commands (>12KB), writes a launcher script to a temp file
+        to avoid tmux's command length limit (~16KB).
         """
         banner_cmd = generate_banner_command(session_name, session_id)
 
@@ -309,9 +320,52 @@ class SessionCommandBuilder:
 
         # Shell-escape the original command args
         escaped_cmd = " ".join(shlex.quote(arg) for arg in command)
-        # Create a bash script that prints banner then execs command
-        # Run command and wait on error
-        # Use login shell (-l) for proper terminal environment setup
-        # This fixes scrollback issues with TUI apps like Claude Code
-        script = f"{banner_cmd}; {env_exports}{escaped_cmd} || read -p 'Session ended with error. Press enter to close...'"
-        return ["bash", "-l", "-c", script]
+
+        # Check if command would exceed tmux's limit
+        inline_script = f"{banner_cmd}; {env_exports}{escaped_cmd} || read -p 'Session ended with error. Press enter to close...'"
+
+        if len(inline_script) > _TMUX_CMD_LENGTH_THRESHOLD:
+            # Write to temp file to bypass tmux command length limit
+            return self._create_launcher_script(
+                banner_cmd, env_exports, escaped_cmd, session_id
+            )
+
+        # Standard inline approach for small commands
+        return ["bash", "-l", "-c", inline_script]
+
+    def _create_launcher_script(
+        self,
+        banner_cmd: str,
+        env_exports: str,
+        escaped_cmd: str,
+        session_id: str,
+    ) -> list[str]:
+        """Create a launcher script file for commands exceeding tmux's limit.
+
+        Writes a shell script to a temp file and returns a command to execute it.
+        The script removes itself after running (self-cleaning).
+        """
+        # Create temp dir for zen-portal scripts if needed
+        script_dir = Path(tempfile.gettempdir()) / "zen-portal"
+        script_dir.mkdir(exist_ok=True)
+
+        # Use session_id to make script name unique and traceable
+        script_path = script_dir / f"launch-{session_id}.sh"
+
+        # Build the script content
+        script_content = f"""#!/bin/bash -l
+# Auto-generated launcher script for zen-portal session
+# This file self-deletes after running
+
+{banner_cmd}
+{env_exports}{escaped_cmd} || read -p 'Session ended with error. Press enter to close...'
+
+# Self-cleanup
+rm -f "$0"
+"""
+        # Write script with secure permissions
+        script_path.write_text(script_content, encoding="utf-8")
+        script_path.chmod(0o700)  # Owner execute only
+
+        # Return command to run the script
+        return ["bash", "-l", str(script_path)]

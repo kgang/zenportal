@@ -304,3 +304,82 @@ class TestBuildOpenRouterEnvVarsAlias:
         result1 = builder.build_proxy_env_vars(settings)
         result2 = builder.build_openrouter_env_vars(settings)
         assert result1 == result2
+
+
+class TestWrapWithBannerLargeCommands:
+    """Tests for wrap_with_banner handling large commands."""
+
+    @pytest.fixture
+    def builder(self):
+        return SessionCommandBuilder()
+
+    def test_small_command_uses_inline_script(self, builder):
+        """Small commands use inline bash -c approach."""
+        command = ["claude", "--dangerously-skip-permissions"]
+        result = builder.wrap_with_banner(command, "test", "test-123")
+        assert result[0] == "bash"
+        assert result[1] == "-l"
+        assert result[2] == "-c"
+        assert "claude" in result[3]
+
+    def test_large_command_uses_launcher_script(self, builder, tmp_path):
+        """Large commands (>12KB) create a launcher script file."""
+        # Create a command that exceeds the threshold
+        large_prompt = "x" * 15000  # > _TMUX_CMD_LENGTH_THRESHOLD
+        command = ["claude", "--system-prompt", large_prompt]
+        result = builder.wrap_with_banner(command, "test", "test-large-123")
+
+        # Should return a path to a script file instead of inline
+        assert result[0] == "bash"
+        assert result[1] == "-l"
+        # Third arg should be a path, not "-c"
+        assert result[2].endswith(".sh")
+
+    def test_launcher_script_is_executable(self, builder):
+        """Launcher script has execute permissions."""
+        large_prompt = "x" * 15000
+        command = ["claude", "--system-prompt", large_prompt]
+        result = builder.wrap_with_banner(command, "test", "test-perm-123")
+
+        from pathlib import Path
+        script_path = Path(result[2])
+        assert script_path.exists()
+        # Check owner has execute permission
+        import stat
+        mode = script_path.stat().st_mode
+        assert mode & stat.S_IXUSR
+
+        # Cleanup
+        script_path.unlink()
+
+    def test_launcher_script_contains_command(self, builder):
+        """Launcher script contains the full command."""
+        large_prompt = "MARKER_" + "x" * 15000
+        command = ["claude", "--system-prompt", large_prompt]
+        result = builder.wrap_with_banner(command, "test", "test-content-123")
+
+        from pathlib import Path
+        script_path = Path(result[2])
+        content = script_path.read_text()
+
+        assert "claude" in content
+        assert "MARKER_" in content
+        assert "test-content-123" in content or "test" in content
+
+        # Cleanup
+        script_path.unlink()
+
+    def test_launcher_script_self_cleans(self, builder):
+        """Launcher script contains self-cleanup command."""
+        large_prompt = "x" * 15000
+        command = ["claude", "--system-prompt", large_prompt]
+        result = builder.wrap_with_banner(command, "test", "test-clean-123")
+
+        from pathlib import Path
+        script_path = Path(result[2])
+        content = script_path.read_text()
+
+        assert 'rm -f "$0"' in content
+
+        # Cleanup
+        script_path.unlink()
