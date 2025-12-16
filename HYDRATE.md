@@ -319,8 +319,7 @@ to bypass tmux's ~16KB command length limit.
 - ✓ Phase 7: **Reactive Architecture** - eliminated polling, async tmux calls
 - Next: Zen AI UX redesign (lightweight chat interface)
 
-**Stale Docs**:
-- `docs/ARCHITECTURE.md`: Being updated (see docs/REACTIVE.md for new patterns)
+**Stale Docs**: None - docs updated with reactive architecture
 
 See `docs/ENHANCEMENT_PLAN.md` for detailed roadmap.
 
@@ -330,7 +329,8 @@ See `docs/ENHANCEMENT_PLAN.md` for detailed roadmap.
 
 **Recent commits** (git log --oneline -10):
 ```
-[pending] feat: reactive architecture - eliminate polling, async tmux calls
+41c3bf4 fix: unset VIRTUAL_ENV to prevent zen-portal venv leaking into sessions
+d053476 feat: reactive architecture - eliminate polling with async tmux calls
 d3caa24 docs: update HYDRATE.md with test count and tmux limit note
 c02634e fix: handle large system prompts by using launcher scripts for tmux
 4527f5d feat: add system prompt support to session creation pipeline
@@ -339,7 +339,6 @@ c02634e fix: handle large system prompts by using launcher scripts for tmux
 133ac92 fix: session revival matches correct claude session, dangerous mode default on
 df5ef63 fix: resolve search mode breaking j/k navigation hotkeys
 6704ed3 docs: update HYDRATE.md for Phase 5 completion
-dfd9729 feat: add EventBus for decoupled service-to-UI communication
 ```
 
 ---
