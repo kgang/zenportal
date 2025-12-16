@@ -1,5 +1,6 @@
 """NewSessionModal: Create, attach, or resume sessions."""
 
+import re
 from pathlib import Path
 
 from textual.app import ComposeResult
@@ -22,6 +23,71 @@ from .new_session.billing_widget import BillingWidget, BillingMode
 
 # Re-export for backwards compatibility
 SessionType = NewSessionType
+
+# Pattern for @filepath expansion: @/path/to/file or @~/path or @./path
+_FILE_REF_PATTERN = re.compile(r'^@(.+)$')
+
+# Max file size for prompt files (1MB - prompts shouldn't be larger)
+_MAX_PROMPT_FILE_SIZE = 1024 * 1024
+
+
+def expand_file_reference(text: str, working_dir: Path | None = None) -> tuple[str, str | None]:
+    """Expand @filepath references to file contents.
+
+    Supports:
+        @/absolute/path.md
+        @~/home/relative.md
+        @./relative/to/workdir.md
+        @relative/to/workdir.md
+
+    Returns:
+        Tuple of (expanded_text, error_message).
+        - On success: (file_contents, None)
+        - On error: (original_text, error_description)
+        - Not a file ref: (original_text, None)
+    """
+    if not text:
+        return text, None
+
+    text = text.strip()
+    match = _FILE_REF_PATTERN.match(text)
+    if not match:
+        return text, None
+
+    file_path_str = match.group(1).strip()
+
+    # Expand ~ to home directory
+    if file_path_str.startswith("~"):
+        file_path = Path(file_path_str).expanduser()
+    elif file_path_str.startswith("/"):
+        file_path = Path(file_path_str)
+    else:
+        # Relative path - resolve against working directory
+        base = working_dir or Path.cwd()
+        file_path = base / file_path_str
+
+    file_path = file_path.resolve()
+
+    # Validate file exists
+    if not file_path.is_file():
+        return text, f"file not found: {file_path}"
+
+    # Check file size
+    try:
+        size = file_path.stat().st_size
+        if size > _MAX_PROMPT_FILE_SIZE:
+            return text, f"file too large: {size // 1024}KB (max 1MB)"
+    except OSError as e:
+        return text, f"cannot stat file: {e}"
+
+    # Read with explicit encoding
+    try:
+        content = file_path.read_text(encoding="utf-8").strip()
+        return content, None
+    except UnicodeDecodeError:
+        return text, f"file not UTF-8: {file_path.name}"
+    except (OSError, PermissionError) as e:
+        return text, f"cannot read file: {e}"
 
 
 class NewSessionModal(ModalScreen[NewSessionResult | None]):
@@ -76,6 +142,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         self._type_select: Select | None = None
         self._provider_select: Select | None = None
         self._prompt_input: Input | None = None
+        self._system_prompt_input: Input | None = None
         self._dir_path_input: Input | None = None
         self._dir_browser: DirectoryBrowser | None = None
         self._advanced_config: Collapsible | None = None
@@ -173,7 +240,20 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         yield Static("", id="conflict-hint")
 
         yield Static("prompt", classes="field-label", id="prompt-label")
-        yield Input(placeholder="initial prompt for claude", id="prompt-input", classes="field-input")
+        yield Input(
+            placeholder="prompt or @/path/to/file.md",
+            value=resolved.default_prompt or "",
+            id="prompt-input",
+            classes="field-input",
+        )
+
+        yield Static("system prompt", classes="field-label", id="system-prompt-label")
+        yield Input(
+            placeholder="system prompt or @/path/to/file.md",
+            value=resolved.default_system_prompt or "",
+            id="system-prompt-input",
+            classes="field-input",
+        )
 
         yield Static("directory", classes="field-label", id="dir-label")
         with Horizontal(id="dir-path-row"):
@@ -240,6 +320,13 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         return self._prompt_input
 
     @property
+    def system_prompt_input(self) -> Input:
+        """Cached system prompt input widget."""
+        if self._system_prompt_input is None:
+            self._system_prompt_input = self.query_one("#system-prompt-input", Input)
+        return self._system_prompt_input
+
+    @property
     def dir_path_input(self) -> Input:
         """Cached directory path input widget."""
         if self._dir_path_input is None:
@@ -282,6 +369,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         self._type_select = self.query_one("#type-select", Select)
         self._provider_select = self.query_one("#provider-select", Select)
         self._prompt_input = self.query_one("#prompt-input", Input)
+        self._system_prompt_input = self.query_one("#system-prompt-input", Input)
         self._dir_path_input = self.query_one("#dir-path-input", Input)
         self._dir_browser = self.query_one("#dir-browser", DirectoryBrowser)
         self._advanced_config = self.query_one("#advanced-config", Collapsible)
@@ -406,6 +494,10 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         is_claude = is_ai and self.provider_select.value == AIProvider.CLAUDE
         self.advanced_config.display = is_claude
 
+        # Show system prompt only for Claude
+        self.query_one("#system-prompt-label", Static).display = is_claude
+        self.system_prompt_input.display = is_claude
+
         # Show shell options only for shell sessions
         shell_options = self.query_one("#shell-options", Horizontal)
         shell_options.remove_class("hidden") if is_shell else shell_options.add_class("hidden")
@@ -438,6 +530,10 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         is_claude = is_ai and self.provider_select.value == AIProvider.CLAUDE
         self.advanced_config.display = is_claude
 
+        # Show/hide system prompt (only for Claude)
+        self.query_one("#system-prompt-label", Static).display = is_claude
+        self.system_prompt_input.display = is_claude
+
         # Show/hide shell options
         shell_options = self.query_one("#shell-options", Horizontal)
         shell_options.remove_class("hidden") if is_shell else shell_options.add_class("hidden")
@@ -452,6 +548,10 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         # Show advanced config only for Claude
         is_claude = value == AIProvider.CLAUDE
         self.advanced_config.display = is_claude
+
+        # Show/hide system prompt (only for Claude)
+        self.query_one("#system-prompt-label", Static).display = is_claude
+        self.system_prompt_input.display = is_claude
 
         # Auto-update name if not customized
         if self.name_input.value.startswith("session") or self.name_input.value.startswith(self._initial_dir.name):
@@ -710,6 +810,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         provider = self.provider_select.value if self.provider_select.value is not Select.BLANK else AIProvider.CLAUDE
 
         prompt = ""
+        system_prompt = ""
         model = None
         use_worktree = None
 
@@ -718,6 +819,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
 
             # Advanced options only for Claude
             if provider == AIProvider.CLAUDE:
+                system_prompt = self.system_prompt_input.value.strip()
                 model_select = self.query_one("#model-select", Select)
                 model = model_select.value if model_select.value is not Select.BLANK else None
                 worktree_check = self.query_one("#worktree-check", Checkbox)
@@ -744,6 +846,16 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         except Exception:
             working_dir = self._initial_dir
 
+        # Expand @filepath references in prompts (notify on errors)
+        if prompt:
+            prompt, prompt_err = expand_file_reference(prompt, working_dir)
+            if prompt_err:
+                self.notify(f"prompt: {prompt_err}", severity="warning")
+        if system_prompt:
+            system_prompt, sys_err = expand_file_reference(system_prompt, working_dir)
+            if sys_err:
+                self.notify(f"system prompt: {sys_err}", severity="warning")
+
         # Save as default if checked
         if self.query_one("#set-default-dir-check", Checkbox).value:
             from ..services.config import FeatureSettings
@@ -761,6 +873,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
             result_type=ResultType.NEW,
             name=name,
             prompt=prompt,
+            system_prompt=system_prompt,
             features=features,
             session_type=session_type,
             provider=provider,

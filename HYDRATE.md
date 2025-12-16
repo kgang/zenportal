@@ -22,7 +22,7 @@ hydrate.time.witness       → git log, recent changes
 | Note enablement | `hydrate.project.afford` | Announce what you enable |
 | Update shared | `hydrate.concept.refine` | Prefix `[STALE?]` if uncertain |
 
-**Status**: 338 tests | Branch: `main` | Files: 20k lines
+**Status**: 350 tests | Branch: `main` | Files: 64k lines
 ################################################################################
 
 ## hydrate.project.manifest
@@ -144,7 +144,7 @@ I   info        S output   :  palette     T template
 ## hydrate.void.witness
 
 **Tech debt** (acknowledged, not ignored):
-- `new_session_modal.py`: 783 lines (widget caching added 68 lines for lazy properties)
+- `new_session_modal.py`: 873 lines (widget caching, @filepath expansion)
 
 **Refactoring Progress**:
 - ✓ Phase 1-7: Services container, EventBus, ZenError, SessionValidator, widget caching, UI subscriptions, session search
