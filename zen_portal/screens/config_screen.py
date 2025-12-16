@@ -4,7 +4,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.screen import ModalScreen
 from textual.containers import Vertical, Horizontal
-from textual.widgets import Button, Static, Select, OptionList
+from textual.widgets import Button, Input, Static, Select, OptionList
 from textual.widgets.option_list import Option
 
 from ..services.config import ConfigManager, ExitBehavior, FeatureSettings, ALL_SESSION_TYPES
@@ -54,14 +54,24 @@ class ConfigScreen(ModalScreen[None]):
     ]
 
     DEFAULT_CSS = """
-    /* Component-specific: settings layout */
-    ConfigScreen .section-title {
-        color: $text-disabled;
-        margin-top: 1;
+    /* Config screen unified layout */
+    ConfigScreen .section-group {
+        width: 100%;
+        height: auto;
+        margin-bottom: 1;
+        padding: 0;
+    }
+
+    ConfigScreen .section-header {
+        color: $text-muted;
+        text-style: bold;
+        height: 1;
+        margin-bottom: 0;
     }
 
     ConfigScreen .section-desc {
         color: $text-disabled;
+        height: 1;
         margin-bottom: 0;
     }
 
@@ -72,7 +82,7 @@ class ConfigScreen(ModalScreen[None]):
     }
 
     ConfigScreen .setting-label {
-        width: 20;
+        width: 16;
         height: 3;
         content-align: left middle;
         color: $text-muted;
@@ -82,22 +92,14 @@ class ConfigScreen(ModalScreen[None]):
         width: 1fr;
     }
 
+    ConfigScreen Input {
+        width: 1fr;
+    }
+
     ConfigScreen OptionList {
         width: 100%;
-        height: 6;
+        height: 5;
         margin-top: 0;
-    }
-
-    ConfigScreen .path-row {
-        width: 100%;
-        height: auto;
-        margin: 0;
-    }
-
-    ConfigScreen .path-label {
-        color: $text-disabled;
-        height: 1;
-        margin-bottom: 0;
     }
 
     ConfigScreen #button-row {
@@ -112,11 +114,11 @@ class ConfigScreen(ModalScreen[None]):
     }
 
     ConfigScreen SessionTypeDropdown {
-        margin-bottom: 1;
+        margin-bottom: 0;
     }
 
     ConfigScreen ZenAIDropdown {
-        margin-bottom: 1;
+        margin-bottom: 0;
     }
     """
 
@@ -128,62 +130,78 @@ class ConfigScreen(ModalScreen[None]):
 
     def compose(self) -> ComposeResult:
         self.add_class("modal-base", "modal-lg")
+        defaults = self._config_manager.config.defaults
+        project = self._config_manager.config.project
         current_exit = self._config_manager.config.exit_behavior
-        global_dir = self._config_manager.config.defaults.working_dir
-        instance_dir = self._config_manager.config.project.working_dir
-        enabled_types = self._config_manager.config.defaults.enabled_session_types
-        zen_ai_config = self._config_manager.config.defaults.zen_ai
 
         with Vertical(id="dialog"):
             yield Static("settings", classes="dialog-title")
 
-            # Session types section
-            yield SessionTypeDropdown(enabled_types=enabled_types, id="session-types")
+            # Features section (dropdowns)
+            with Vertical(classes="section-group"):
+                yield Static("features", classes="section-header")
+                yield SessionTypeDropdown(enabled_types=defaults.enabled_session_types, id="session-types")
+                yield ZenAIDropdown(zen_ai_config=defaults.zen_ai, id="zen-ai")
 
-            # Zen AI section
-            yield ZenAIDropdown(zen_ai_config=zen_ai_config, id="zen-ai")
+            # Session defaults section
+            with Vertical(classes="section-group"):
+                yield Static("session defaults", classes="section-header")
+                with Horizontal(classes="setting-row"):
+                    yield Static("prompt:", classes="setting-label")
+                    yield Input(
+                        value=defaults.default_prompt or "",
+                        placeholder="default initial prompt",
+                        id="default-prompt-input",
+                    )
+                with Horizontal(classes="setting-row"):
+                    yield Static("system:", classes="setting-label")
+                    yield Input(
+                        value=defaults.default_system_prompt or "",
+                        placeholder="default system prompt",
+                        id="default-system-prompt-input",
+                    )
 
-            # Exit behavior section
-            yield Static("exit behavior", classes="section-title")
-            with Horizontal(classes="setting-row"):
-                yield Static("On quit:", classes="setting-label")
-                yield Select(
-                    [
-                        ("Ask every time", ExitBehavior.ASK.value),
-                        ("Kill all sessions", ExitBehavior.KILL_ALL.value),
-                        ("Kill dead only", ExitBehavior.KILL_DEAD.value),
-                        ("Keep all running", ExitBehavior.KEEP_ALL.value),
-                    ],
-                    value=current_exit.value,
-                    id="exit-behavior",
+            # Directories section
+            with Vertical(classes="section-group"):
+                yield Static("directories", classes="section-header")
+                with Horizontal(classes="setting-row"):
+                    yield Static("global:", classes="setting-label")
+                    yield PathInput(
+                        initial_path=defaults.working_dir,
+                        placeholder="~/projects (empty = cwd)",
+                        id="global-dir-input",
+                    )
+                with Horizontal(classes="setting-row"):
+                    yield Static("instance:", classes="setting-label")
+                    yield PathInput(
+                        initial_path=project.working_dir,
+                        placeholder="(empty = use global)",
+                        id="instance-dir-input",
+                    )
+
+            # Behavior section
+            with Vertical(classes="section-group"):
+                yield Static("behavior", classes="section-header")
+                with Horizontal(classes="setting-row"):
+                    yield Static("on quit:", classes="setting-label")
+                    yield Select(
+                        [
+                            ("Ask every time", ExitBehavior.ASK.value),
+                            ("Kill all sessions", ExitBehavior.KILL_ALL.value),
+                            ("Kill dead only", ExitBehavior.KILL_DEAD.value),
+                            ("Keep all running", ExitBehavior.KEEP_ALL.value),
+                        ],
+                        value=current_exit.value,
+                        id="exit-behavior",
+                    )
+
+            # Theme section
+            with Vertical(classes="section-group"):
+                yield Static("theme", classes="section-header")
+                yield OptionList(
+                    *[Option(display, id=theme_id) for theme_id, display in THEMES],
+                    id="theme-list",
                 )
-
-            # Global working directory
-            yield Static("global directory", classes="section-title")
-            with Vertical(classes="path-row"):
-                yield Static("default for all zen-portal instances", classes="path-label")
-                yield PathInput(
-                    initial_path=global_dir,
-                    placeholder="~/path/to/projects (empty = current directory)",
-                    id="global-dir-input",
-                )
-
-            # Instance working directory
-            yield Static("instance directory", classes="section-title")
-            with Vertical(classes="path-row"):
-                yield Static("override for this session only", classes="path-label")
-                yield PathInput(
-                    initial_path=instance_dir,
-                    placeholder="(empty = use global)",
-                    id="instance-dir-input",
-                )
-
-            # Theme selection
-            yield Static("theme", classes="section-title")
-            yield OptionList(
-                *[Option(display, id=theme_id) for theme_id, display in THEMES],
-                id="theme-list",
-            )
 
             with Horizontal(id="button-row"):
                 yield Button("Save", variant="primary", id="save")
@@ -240,10 +258,18 @@ class ConfigScreen(ModalScreen[None]):
         global_input = self.query_one("#global-dir-input", PathInput)
         global_path = global_input.get_path()
 
+        # Save prompt defaults
+        prompt_input = self.query_one("#default-prompt-input", Input)
+        system_prompt_input = self.query_one("#default-system-prompt-input", Input)
+        default_prompt = prompt_input.value.strip() or None
+        default_system_prompt = system_prompt_input.value.strip() or None
+
         config = self._config_manager.config
         config.defaults.working_dir = global_path
         config.defaults.enabled_session_types = enabled_types_to_save
         config.defaults.zen_ai = zen_ai_config
+        config.defaults.default_prompt = default_prompt
+        config.defaults.default_system_prompt = default_system_prompt
         self._config_manager.save_config(config)
 
         # Save instance directory (now as project setting)
@@ -295,9 +321,11 @@ class ConfigScreen(ModalScreen[None]):
         return [
             "#session-types",
             "#zen-ai",
-            "#exit-behavior",
+            "#default-prompt-input",
+            "#default-system-prompt-input",
             "#global-dir-input",
             "#instance-dir-input",
+            "#exit-behavior",
             "#theme-list",
             "#save",
         ]

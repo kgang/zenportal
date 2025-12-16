@@ -492,6 +492,7 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
                     session = self._manager.create_session(
                         result.name,
                         result.prompt,
+                        system_prompt=result.system_prompt,
                         features=result.features,
                         session_type=session_type,
                         provider=provider,

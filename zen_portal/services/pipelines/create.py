@@ -19,6 +19,7 @@ class CreateContext:
     # Input parameters
     name: str
     prompt: str = ""
+    system_prompt: str = ""  # Claude --system-prompt argument
     session_type: SessionType = SessionType.AI
     provider: str = "claude"  # AI provider for AI sessions
     features: SessionFeatures | None = None
@@ -168,6 +169,7 @@ class BuildCommand:
             provider=ctx.provider,
             model=ctx.resolved_config.model,
             prompt=ctx.prompt,
+            system_prompt=ctx.system_prompt,
             dangerous_mode=ctx.dangerous_mode,
         )
 

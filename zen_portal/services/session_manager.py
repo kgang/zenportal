@@ -167,6 +167,7 @@ class SessionManager:
         self,
         name: str,
         prompt: str = "",
+        system_prompt: str = "",
         features: SessionFeatures | None = None,
         session_type: SessionType = SessionType.AI,
         provider: str = "claude",
@@ -176,6 +177,7 @@ class SessionManager:
         Args:
             name: Display name for the session
             prompt: Optional initial prompt (AI sessions only)
+            system_prompt: System prompt for Claude (--system-prompt argument)
             features: Optional session-level feature overrides
             session_type: Type of session to create (AI or SHELL)
             provider: AI provider (claude, codex, gemini, openrouter) for AI sessions
@@ -186,6 +188,7 @@ class SessionManager:
         ctx = CreateContext(
             name=name,
             prompt=prompt,
+            system_prompt=system_prompt,
             session_type=session_type,
             provider=provider,
             features=features,

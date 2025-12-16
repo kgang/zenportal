@@ -39,6 +39,7 @@ class NewSessionResult:
     # For NEW sessions
     name: str = ""
     prompt: str = ""
+    system_prompt: str = ""  # Claude --system-prompt argument
     features: SessionFeatures | None = None
     session_type: NewSessionType = NewSessionType.AI
     provider: AIProvider = AIProvider.CLAUDE  # AI provider for AI sessions

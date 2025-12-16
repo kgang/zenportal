@@ -302,6 +302,9 @@ class FeatureSettings:
     openrouter_proxy: ProxySettings | None = None
     # Zen AI settings for inline AI queries
     zen_ai: ZenAIConfig | None = None
+    # Default prompts for new sessions
+    default_prompt: str | None = None  # Initial prompt for AI sessions
+    default_system_prompt: str | None = None  # System prompt for Claude sessions
 
     def to_dict(self) -> dict:
         result = {}
@@ -321,6 +324,10 @@ class FeatureSettings:
             result["openrouter_proxy"] = self.openrouter_proxy.to_dict()
         if self.zen_ai is not None:
             result["zen_ai"] = self.zen_ai.to_dict()
+        if self.default_prompt is not None:
+            result["default_prompt"] = self.default_prompt
+        if self.default_system_prompt is not None:
+            result["default_system_prompt"] = self.default_system_prompt
         return result
 
     @classmethod
@@ -340,6 +347,8 @@ class FeatureSettings:
             openrouter_model=data.get("openrouter_model"),
             openrouter_proxy=openrouter_proxy,
             zen_ai=zen_ai,
+            default_prompt=data.get("default_prompt"),
+            default_system_prompt=data.get("default_system_prompt"),
         )
 
     def merge_with(self, override: "FeatureSettings") -> "FeatureSettings":
@@ -372,6 +381,8 @@ class FeatureSettings:
             openrouter_model=override.openrouter_model if override.openrouter_model is not None else self.openrouter_model,
             openrouter_proxy=merged_openrouter_proxy,
             zen_ai=merged_zen_ai,
+            default_prompt=override.default_prompt if override.default_prompt is not None else self.default_prompt,
+            default_system_prompt=override.default_system_prompt if override.default_system_prompt is not None else self.default_system_prompt,
         )
 
 

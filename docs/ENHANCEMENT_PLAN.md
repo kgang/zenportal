@@ -4,14 +4,14 @@
 
 ## hydrate.project.manifest
 
-**Current State**: Solid foundation with good test coverage (328 tests). Phase 1-4 complete. EventBus added for decoupled service-UI communication. Widget caching in main screens.
+**Current State**: Solid foundation with good test coverage (356 tests). Phase 1-6 complete. EventBus added for decoupled service-UI communication. Widget caching in main screens. @filepath expansion for prompts.
 
 **Key Metrics**:
 | Metric | Current | Target |
 |--------|---------|--------|
-| Tests | 328 | 350+ |
+| Tests | 356 | 400+ |
 | Files > 500 lines | 3 | 0 |
-| Total lines | 19,200 | ~17,000 |
+| Total lines | 20,857 | ~18,000 |
 
 ---
 
