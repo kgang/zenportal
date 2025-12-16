@@ -2,77 +2,146 @@
 
 ## Overview
 
-Zen Portal is a contemplative TUI built with [Textual](https://textual.textualize.io/). It provides a minimal interface for interacting with Claude Code.
+Zen Portal is a contemplative TUI built with [Textual](https://textual.textualize.io/). It provides a minimal interface for managing AI assistant sessions (Claude, Codex, Gemini, OpenRouter) running in parallel via tmux.
 
-## Core Concepts
+## Core Architecture
 
-### AAU Budget System
+### Services Container (`app.py`)
 
-"Arbitrary Agent Unit" is an attention budget that prevents notification fatigue:
+Dependency injection via a dataclass container:
 
 ```python
-daily_budget: 1.0 AAU
-  - pattern nudge: 0.15 AAU
-  - assumption check: 0.25 AAU
-  - question: 0.10 AAU
-  - summary: 0.30 AAU
+@dataclass
+class Services:
+    tmux: TmuxService           # Low-level tmux operations
+    config: ConfigManager       # 3-tier config resolution
+    sessions: SessionManager    # Session lifecycle
+    state: SessionStateService  # Thread-safe persistence
+    worktree: WorktreeService   # Git worktree management
+    event_bus: EventBus         # Pub/sub for decoupling
 ```
 
-Budget resets daily. The agent queues nudges but only delivers them when:
-1. Budget allows the cost
-2. User requests reflection (`r` key)
+### Reactive State Management
 
-This is **pull-based** by design - the agent suggests, but the developer controls when to receive interruptions.
-
-### Garden Service (tmux integration)
-
-The `Garden` service manages Claude sessions via tmux:
+**The critical architectural decision**: No blocking calls on the UI thread.
 
 ```python
-# Plant a seed
-tmux new-session -d -s zen-claude-{id} -c {cwd} claude --print "{prompt}"
+# OLD (blocking polling - caused freezes)
+self.set_interval(1.0, self._poll_sessions)  # Blocked UI
 
-# Check if session exists
-tmux has-session -t zen-claude-{id}
+# NEW (async reactive)
+self._watcher = SessionStateWatcher(AsyncTmuxService(tmux), manager)
+await self._watcher.start()  # Non-blocking via asyncio.to_thread()
+```
+
+See `docs/REACTIVE.md` for the full reactive architecture documentation.
+
+### Event-Driven Updates
+
+The EventBus enables decoupled communication:
+
+```python
+bus = EventBus.get()  # Singleton
+bus.emit(SessionCreatedEvent(session_id="x", session_name="y"))
+bus.subscribe(SessionCreatedEvent, self._on_session_created)
+```
+
+Events flow unidirectionally: Services → EventBus → UI
+
+### tmux Integration
+
+Sessions run in tmux for:
+- True background execution (survives TUI restarts)
+- Easy output capture via `capture-pane`
+- Session persistence across restarts
+- Multiple parallel sessions
+
+```python
+# Create session
+tmux new-session -d -s zen-{id} -c {cwd} claude "{prompt}"
+
+# Check state (now async via asyncio.to_thread)
+await async_tmux.session_exists(name)
+await async_tmux.is_pane_dead(name)
 
 # Capture output
-tmux capture-pane -t zen-claude-{id} -p
+tmux capture-pane -t zen-{id} -p -S -100
 ```
-
-Sessions are named `zen-claude-{8-char-uuid}` for easy identification.
 
 ## Module Structure
 
 ```
 zen_portal/
-├── app.py                 # Main App + command palette
-├── models/__init__.py     # Dataclasses (Nudge, Session, JournalEntry)
-├── agents/
-│   └── reflection.py      # AAUBudget + ReflectionAgent
-├── services/
-│   └── garden.py          # Garden + Plant (tmux integration)
-├── screens/
-│   ├── ai_prompt.py      # Modal for planting seeds
-│   └── help.py           # Key binding reference
-└── widgets/
-    ├── reflection.py     # Nudge display + budget indicator
-    └── status.py         # Session time + AAU bar
+├── app.py                    # Entry + Services container (DI)
+├── models/                   # Data models
+│   ├── session.py            # Session, SessionState, SessionType
+│   └── template.py           # SessionTemplate
+├── services/                 # Business logic (no UI)
+│   ├── session_manager.py    # Lifecycle management
+│   ├── events.py             # EventBus pub/sub
+│   ├── tmux.py               # Low-level tmux (sync)
+│   ├── tmux_async.py         # Async tmux wrapper
+│   ├── reactive/             # Reactive architecture
+│   │   ├── signal.py         # Signal[T], Computed[T], Effect
+│   │   └── session_watcher.py # Async state monitoring
+│   ├── core/                 # Extracted services
+│   ├── pipelines/            # Multi-step operations
+│   └── ...
+├── screens/                  # Textual UI screens
+├── widgets/                  # Reusable widgets
+└── tests/                    # 361 unit tests
 ```
 
-## Textual Patterns
+## Design Principles
 
-See `TEXTUAL_PATTERNS.md` for framework patterns reference.
+### 1. Never Block the UI Thread
 
-## Design Decisions
+All blocking operations (subprocess, file I/O) use `asyncio.to_thread()`:
 
-### Why tmux?
-- True background execution (survives TUI restarts)
-- Easy output capture
-- Session persistence
-- Multiple parallel sessions
+```python
+async def session_exists(self, name: str) -> bool:
+    return await asyncio.to_thread(self._tmux.session_exists, name)
+```
 
-### Why AAU budget?
-- Prevents notification spam
-- Empowers developer control
-- Makes interruption cost explicit
-- Natural daily reset
+### 2. Event-Driven Over Polling
+
+Push updates when state changes, don't constantly poll:
+
+```python
+# After user action
+await self._watcher.refresh_now()  # Event-triggered
+
+# Background heartbeat is infrequent (10s) not aggressive (1s)
+```
+
+### 3. Progressive Disclosure
+
+Keep files under 500 lines. Large modules split into `core/` subdirectories. Essential code first, details extracted.
+
+### 4. Graceful Degradation
+
+Operations return tuples for error handling without exceptions:
+
+```python
+def expand_file_reference(text: str) -> tuple[str, str | None]:
+    """Return (result, error). Caller decides how to handle."""
+```
+
+## Configuration
+
+3-tier resolution with overrides:
+
+```
+session > portal > config > defaults
+```
+
+Files:
+- `~/.config/zen-portal/config.json` - User defaults
+- `~/.config/zen-portal/portal.json` - Project state
+- `~/.zen_portal/state.json` - Session persistence
+
+## Further Reading
+
+- `docs/REACTIVE.md` - Reactive architecture deep dive
+- `docs/TEXTUAL_PATTERNS.md` - Textual framework patterns
+- `HYDRATE.md` - Living documentation (AGENTESE format)

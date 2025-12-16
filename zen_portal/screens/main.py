@@ -1,5 +1,7 @@
 """MainScreen: The primary session management interface."""
 
+import asyncio
+
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal
@@ -18,6 +20,8 @@ from ..services.events import (
     SessionCleanedEvent,
 )
 from ..services.config import ConfigManager
+from ..services.tmux_async import AsyncTmuxService
+from ..services.reactive.session_watcher import SessionStateWatcher
 from ..services.profile import ProfileManager
 from ..services.command_registry import create_default_registry
 from ..services.template_manager import TemplateManager
@@ -140,8 +144,10 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
         self._profile = profile_manager or ProfileManager()
         self._focus_tmux_session = focus_tmux_session
         self._streaming = False
-        self._rapid_refresh_timer = None
-        self._rapid_refresh_count = 0
+
+        # Reactive state watcher (replaces polling)
+        self._watcher: SessionStateWatcher | None = None
+        self._rapid_refresh_task: asyncio.Task | None = None
 
         # Cached widget references (set in on_mount)
         self._session_list: SessionList | None = None
@@ -183,7 +189,7 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
         yield from super().compose()
 
     async def on_mount(self) -> None:
-        """Initialize and start polling."""
+        """Initialize and start async state watching."""
         # Cache widget references for performance (avoids repeated DOM queries)
         self._session_list = self.query_one("#session-list", SessionList)
         self._output_view = self.query_one("#output-view", OutputView)
@@ -203,7 +209,14 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
         else:
             self._restore_cursor_position()
         self._refresh_selected_output()
-        self.set_interval(1.0, self._poll_sessions)
+
+        # Start async state watcher (replaces polling)
+        self._watcher = SessionStateWatcher(
+            AsyncTmuxService(self._manager._tmux),
+            self._manager,
+            on_state_change=lambda _: self._on_watcher_state_change(),
+        )
+        await self._watcher.start()
 
         # Start proxy monitoring if available
         if self._proxy_monitor:
@@ -284,31 +297,32 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
             return  # Don't overwrite user's reordering
         self.session_list.update_sessions(self._manager.sessions)
 
-    def _poll_sessions(self) -> None:
-        """Periodic refresh of session states."""
-        self._manager.refresh_states()
+    def _on_watcher_state_change(self) -> None:
+        """Handle state changes from async watcher."""
         self._refresh_sessions()
         if self._streaming:
             self._refresh_selected_output()
 
     def _start_rapid_refresh(self) -> None:
-        """Start rapid refresh for 3 seconds after session creation."""
-        if self._rapid_refresh_timer:
-            self._rapid_refresh_timer.stop()
-        self._rapid_refresh_count = 0
-        self._rapid_refresh_timer = self.set_interval(1/3, self._rapid_refresh_tick)
+        """Start rapid async refresh for 3 seconds after session creation."""
+        # Cancel any existing rapid refresh
+        if self._rapid_refresh_task and not self._rapid_refresh_task.done():
+            self._rapid_refresh_task.cancel()
+        self._rapid_refresh_task = asyncio.create_task(self._rapid_refresh_async())
 
-    def _rapid_refresh_tick(self) -> None:
-        """Single tick of rapid refresh."""
-        self._rapid_refresh_count += 1
-        self._manager.refresh_states()
-        self._refresh_sessions()
-        self._refresh_selected_output()
-
-        if self._rapid_refresh_count >= 9:
-            if self._rapid_refresh_timer:
-                self._rapid_refresh_timer.stop()
-                self._rapid_refresh_timer = None
+    async def _rapid_refresh_async(self) -> None:
+        """Async rapid refresh - non-blocking."""
+        if not self._watcher:
+            return
+        for _ in range(6):  # 6 checks over 3 seconds
+            try:
+                changed = await self._watcher.refresh_now()
+                if changed:
+                    self._refresh_sessions()
+                    self._refresh_selected_output()
+                await asyncio.sleep(0.5)
+            except asyncio.CancelledError:
+                break
 
     def on_session_selected(self, event: SessionSelected) -> None:
         """Handle session selection changes."""
@@ -553,9 +567,11 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
             handle_result,
         )
 
-    def action_refresh_output(self) -> None:
+    async def action_refresh_output(self) -> None:
+        """Manual refresh - triggers async state check."""
         self._refresh_selected_output()
-        self._manager.refresh_states()
+        if self._watcher:
+            await self._watcher.refresh_now()
         self._refresh_sessions()
 
     def action_toggle_streaming(self) -> None:
@@ -701,9 +717,9 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
         """Handle session lifecycle events from EventBus.
 
         Reactively refreshes the session list when sessions are created,
-        paused, killed, or cleaned - eliminating need for constant polling.
+        paused, killed, or cleaned. State is already updated by the action
+        that triggered the event, so we just refresh the UI.
         """
-        self._manager.refresh_states()
         self._refresh_sessions()
         self._refresh_selected_output()
 
@@ -742,5 +758,13 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
         self._bus.unsubscribe(SessionPausedEvent, self._on_session_event)
         self._bus.unsubscribe(SessionKilledEvent, self._on_session_event)
         self._bus.unsubscribe(SessionCleanedEvent, self._on_session_event)
+
+        # Stop async state watcher
+        if self._watcher:
+            await self._watcher.stop()
+
+        # Cancel rapid refresh if running
+        if self._rapid_refresh_task and not self._rapid_refresh_task.done():
+            self._rapid_refresh_task.cancel()
 
         await self._cleanup_monitoring()

@@ -22,7 +22,7 @@ hydrate.time.witness       → git log, recent changes
 | Note enablement | `hydrate.project.afford` | Announce what you enable |
 | Update shared | `hydrate.concept.refine` | Prefix `[STALE?]` if uncertain |
 
-**Status**: 361 tests | Branch: `main` | Lines: ~20,857 | Version: 0.3.0
+**Status**: 361 tests | Branch: `main` | Lines: ~21,300 | Version: 0.3.1
 ################################################################################
 
 ## hydrate.project.manifest
@@ -68,8 +68,12 @@ zen_portal/
 │   ├── zen_ai.py             # Lightweight AI queries (unused)
 │   ├── core/                 # Extracted core services
 │   │   ├── detection.py      # Session state detection
-│   │   ├── state_refresher.py # Background polling
+│   │   ├── state_refresher.py # [LEGACY] Sync polling (replaced by reactive)
 │   │   └── token_manager.py  # Token tracking + sparklines
+│   ├── reactive/             # Reactive architecture (replaces polling)
+│   │   ├── signal.py         # Signal[T], Computed[T], Effect primitives
+│   │   └── session_watcher.py # Async state monitoring (10s heartbeat)
+│   ├── tmux_async.py         # Async tmux wrapper (asyncio.to_thread)
 │   ├── git/                  # Git integration
 │   │   └── git_service.py    # Centralized git ops
 │   ├── openrouter/           # OpenRouter proxy support
@@ -141,6 +145,52 @@ bus.subscribe(SessionCreatedEvent, self._on_session_created)
 # Events: SessionCreated, SessionPaused, SessionKilled, SessionCleaned,
 #         SessionOutput, SessionTokenUpdate, ProxyStatusChanged, ConfigChanged
 ```
+
+**Reactive Architecture** (`services/reactive/`, `services/tmux_async.py`):
+
+The critical breakthrough: **async tmux calls via `asyncio.to_thread()` eliminate UI freezing**.
+
+```python
+# OLD: Blocking polling caused 5s UI freezes
+self.set_interval(1.0, self._poll_sessions)  # Every 1s
+def _poll_sessions(self):
+    self._manager.refresh_states()  # → subprocess.run() BLOCKS
+
+# NEW: Async watcher with non-blocking tmux calls
+self._watcher = SessionStateWatcher(AsyncTmuxService(tmux), manager)
+await self._watcher.start()  # 10s heartbeat, event-triggered refreshes
+
+# AsyncTmuxService wraps blocking calls
+async def session_exists(self, name: str) -> bool:
+    return await asyncio.to_thread(self._tmux.session_exists, name)
+```
+
+**Reactive Primitives** (ported from kgents):
+```python
+# Signal[T] - observable state with subscribers
+count = Signal.of(0)
+unsub = count.subscribe(lambda v: print(f"Count: {v}"))
+count.set(1)  # → prints "Count: 1"
+
+# Computed[T] - lazy derived state
+full_name = Computed.of(
+    compute=lambda: f"{first.value} {last.value}",
+    sources=[first, last]
+)
+
+# Effect - side effects with cleanup
+effect = Effect.of(fn=log_count, sources=[count])
+effect.run_if_dirty()
+```
+
+**Why this works**:
+| Aspect | Before (Polling) | After (Reactive) |
+|--------|------------------|------------------|
+| Interval | 1s blocking | 10s async heartbeat |
+| Rapid refresh | 333ms × 9 ticks | 500ms × 6 async |
+| tmux calls | subprocess.run() blocks | asyncio.to_thread() |
+| UI freeze | 5s timeout risk | Never blocks |
+| CPU usage | Constant polling | Zero when idle |
 
 **Pipeline Pattern** (`services/pipelines/create.py`):
 ```python
@@ -266,11 +316,11 @@ to bypass tmux's ~16KB command length limit.
 - ✓ Phase 1-4: Services container, EventBus, ZenError, SessionValidator, widget caching
 - ✓ Phase 5: @filepath expansion, session revival fixes
 - ✓ Phase 6: Search mode j/k hotkey fix
+- ✓ Phase 7: **Reactive Architecture** - eliminated polling, async tmux calls
 - Next: Zen AI UX redesign (lightweight chat interface)
 
 **Stale Docs**:
-- `docs/ARCHITECTURE.md`: References old AAU Budget system (removed)
-- `docs/ENHANCEMENT_PLAN.md`: Test count says 328, actual is 356
+- `docs/ARCHITECTURE.md`: Being updated (see docs/REACTIVE.md for new patterns)
 
 See `docs/ENHANCEMENT_PLAN.md` for detailed roadmap.
 
@@ -280,7 +330,8 @@ See `docs/ENHANCEMENT_PLAN.md` for detailed roadmap.
 
 **Recent commits** (git log --oneline -10):
 ```
-012bc86 docs: update HYDRATE.md with test count and tmux limit note
+[pending] feat: reactive architecture - eliminate polling, async tmux calls
+d3caa24 docs: update HYDRATE.md with test count and tmux limit note
 c02634e fix: handle large system prompts by using launcher scripts for tmux
 4527f5d feat: add system prompt support to session creation pipeline
 564664e chore: add .envrc to gitignore
@@ -289,7 +340,6 @@ c02634e fix: handle large system prompts by using launcher scripts for tmux
 df5ef63 fix: resolve search mode breaking j/k navigation hotkeys
 6704ed3 docs: update HYDRATE.md for Phase 5 completion
 dfd9729 feat: add EventBus for decoupled service-to-UI communication
-14b6ce7 docs: update HYDRATE.md for Phase 3 completion
 ```
 
 ---
