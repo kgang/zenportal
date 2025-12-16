@@ -313,10 +313,11 @@ class SessionCommandBuilder:
         banner_cmd = generate_banner_command(session_name, session_id)
 
         # Build env var exports if provided
-        env_exports = ""
+        # Always unset VIRTUAL_ENV to prevent zen-portal's venv from leaking into sessions
+        env_exports = "unset VIRTUAL_ENV && "
         if env_vars:
             exports = [f"export {k}={shlex.quote(v)}" for k, v in env_vars.items()]
-            env_exports = " && ".join(exports) + " && "
+            env_exports += " && ".join(exports) + " && "
 
         # Shell-escape the original command args
         escaped_cmd = " ".join(shlex.quote(arg) for arg in command)
