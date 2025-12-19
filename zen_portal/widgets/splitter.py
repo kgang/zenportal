@@ -27,6 +27,10 @@ class VerticalSplitter(Widget):
     }
     """
 
+    def render(self) -> str:
+        """Render empty content - splitter is a visual divider only."""
+        return ""
+
     class SplitterMoved:
         """Message sent when the splitter is dragged."""
 

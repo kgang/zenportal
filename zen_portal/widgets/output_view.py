@@ -82,6 +82,7 @@ class OutputView(Static, can_focus=False):
     OutputView .content {
         height: 1fr;
         padding: 0;
+        overflow-x: hidden;
     }
 
     OutputView .empty-message {
@@ -129,7 +130,8 @@ class OutputView(Static, can_focus=False):
         yield search_input
 
         # Output content (non-focusable to ensure MainScreen handles all keys)
-        log = RichLog(classes="content", highlight=True, markup=False)
+        # wrap=True ensures text wraps instead of creating horizontal scroll
+        log = RichLog(classes="content", highlight=True, markup=False, wrap=True)
         log.can_focus = False
         log.write(self._get_filtered_output())
         yield log

@@ -330,6 +330,7 @@ See `docs/ENHANCEMENT_PLAN.md` for detailed roadmap.
 
 **Recent commits** (git log --oneline -10):
 ```
+(pending) fix: remove splitter text, enable output text wrapping
 e73d852 feat: slim UI with draggable sidebar splitter
 41c3bf4 fix: unset VIRTUAL_ENV to prevent zen-portal venv leaking into sessions
 d053476 feat: reactive architecture - eliminate polling with async tmux calls
