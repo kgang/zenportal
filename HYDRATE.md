@@ -338,7 +338,7 @@ See `docs/ENHANCEMENT_PLAN.md` for detailed roadmap.
 
 **Recent commits** (git log --oneline -10):
 ```
-[pending] feat: elastic sidebar resize - session list adapts to splitter width
+3593856 feat: elastic sidebar resize - session list adapts to splitter width
 047400f fix: remove splitter text, enable output text wrapping
 e73d852 feat: slim UI with draggable sidebar splitter
 41c3bf4 fix: unset VIRTUAL_ENV to prevent zen-portal venv leaking into sessions
