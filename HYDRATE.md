@@ -330,6 +330,7 @@ See `docs/ENHANCEMENT_PLAN.md` for detailed roadmap.
 
 **Recent commits** (git log --oneline -10):
 ```
+e73d852 feat: slim UI with draggable sidebar splitter
 41c3bf4 fix: unset VIRTUAL_ENV to prevent zen-portal venv leaking into sessions
 d053476 feat: reactive architecture - eliminate polling with async tmux calls
 d3caa24 docs: update HYDRATE.md with test count and tmux limit note
@@ -339,7 +340,6 @@ c02634e fix: handle large system prompts by using launcher scripts for tmux
 6676ea3 feat: add @filepath expansion for prompts in new session modal
 133ac92 fix: session revival matches correct claude session, dangerous mode default on
 df5ef63 fix: resolve search mode breaking j/k navigation hotkeys
-6704ed3 docs: update HYDRATE.md for Phase 5 completion
 ```
 
 ---
