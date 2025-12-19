@@ -30,6 +30,7 @@ from ..services.git import GitService
 from ..widgets.session_list import SessionList, SearchConfirmed, SearchCancelled
 from ..widgets.output_view import OutputView
 from ..widgets.session_info import SessionInfoView
+from ..widgets.splitter import VerticalSplitter
 from .base import ZenScreen
 from .main_actions import MainScreenActionsMixin, MainScreenExitMixin
 from .main_templates import MainScreenTemplateMixin, MainScreenPaletteMixin
@@ -77,7 +78,7 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
     DEFAULT_CSS = """
     MainScreen {
         layout: vertical;
-        padding: 1 2;
+        padding: 0;
         layers: base notification;
     }
 
@@ -86,21 +87,33 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
     }
 
     MainScreen #session-list {
-        width: 2fr;
-        min-width: 30;
-        max-width: 30vw;
+        width: 28;
+        min-width: 20;
+        max-width: 50;
+    }
+
+    MainScreen #splitter {
+        width: 1;
+        height: 100%;
+        background: $surface-lighten-1;
+    }
+
+    MainScreen #splitter:hover {
+        background: $primary;
+    }
+
+    MainScreen #splitter.-dragging {
+        background: $primary;
     }
 
     MainScreen #output-view {
-        width: 3fr;
-        border-left: solid $surface-lighten-1;
-        padding-left: 2;
+        width: 1fr;
+        padding-left: 1;
     }
 
     MainScreen #info-view {
-        width: 3fr;
-        border-left: solid $surface-lighten-1;
-        padding-left: 2;
+        width: 1fr;
+        padding-left: 1;
     }
 
     MainScreen .hint {
@@ -108,13 +121,16 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
         height: 1;
         color: $text-disabled;
         text-align: center;
-        margin-top: 1;
+        margin: 0;
+        padding: 0 1;
     }
 
     MainScreen #notifications {
-        dock: bottom;
         layer: notification;
-        margin-bottom: 2;
+        dock: bottom;
+        height: auto;
+        width: auto;
+        margin: 0 0 1 1;
     }
 
     MainScreen #search-input {
@@ -177,6 +193,7 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
         yield Header()
         with Horizontal(id="content"):
             yield SessionList(id="session-list")
+            yield VerticalSplitter(target_id="session-list", min_width=20, max_width=60, id="splitter")
             yield OutputView(id="output-view")
             info_view = SessionInfoView(proxy_monitor=self._proxy_monitor, id="info-view")
             info_view.display = False

@@ -32,7 +32,15 @@ class ZenNotification(Static):
 
 
 class ZenNotificationRack(Container):
-    """Container managing notification display."""
+    """Container managing notification display.
+
+    Hides itself when empty to prevent layout participation.
+    Shows only when a notification is active.
+    """
+
+    def on_mount(self) -> None:
+        """Start hidden - no notifications yet."""
+        self.display = False
 
     def show(
         self,
@@ -45,6 +53,17 @@ class ZenNotificationRack(Container):
         for child in self.children:
             child.remove()
 
-        # Mount new notification
+        # Mount new notification and show rack
         notification = ZenNotification(message, severity, timeout)
         self.mount(notification)
+        self.display = True
+
+    def _hide_if_empty(self) -> None:
+        """Hide rack when no notifications remain."""
+        if not self.children:
+            self.display = False
+
+    def on_descendant_removed(self, event) -> None:
+        """Called when a child is removed - check if we should hide."""
+        # Schedule the check after the removal is complete
+        self.set_timer(0.01, self._hide_if_empty)

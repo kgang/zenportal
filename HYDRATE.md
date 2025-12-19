@@ -104,9 +104,10 @@ zen_portal/
 │   ├── model_selector.py     # Claude/OpenRouter model dropdown
 │   ├── proxy_status.py       # OpenRouter health/billing display
 │   ├── zen_dropdown.py       # Custom dropdown with search
+│   ├── splitter.py           # Draggable vertical splitter for resizable panes
 │   └── notification.py       # Toast widget
 ├── styles/                   # CSS styling
-└── tests/                    # 356 unit tests
+└── tests/                    # 361 unit tests
     ├── conftest.py           # Pytest fixtures
     └── test_*.py             # Test modules
 ```

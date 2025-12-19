@@ -11,7 +11,7 @@ MODAL_CSS = """
 .modal-base #dialog {
     height: auto;
     max-height: 90%;
-    padding: 1 2;
+    padding: 1 1;
     background: $surface;
     border: round $surface-lighten-1;
     overflow-y: auto;
@@ -148,45 +148,40 @@ COMMON_CSS = """
 
 # Notification styles - zen minimalism
 # Eye strain optimization: left-aligned near session list (action source)
+# Pure overlay on notification layer - never affects base layout
 NOTIFICATION_CSS = """
-/* Notification rack - full width container, content aligned left */
+/* Notification rack - full-screen overlay container */
 ZenNotificationRack {
-    height: auto;
-    width: 100%;
-    align-horizontal: left;
+    /* Inherits layer-specific sizing from screen CSS */
 }
 
 /* Base notification styling */
 ZenNotification {
     width: auto;
-    height: 3;
-    padding: 0 2;
-    margin-left: 2;
+    height: 1;
+    padding: 0 1;
+    margin-left: 1;
     content-align: center middle;
     text-align: center;
     background: $surface;
-    border: round $surface-lighten-1;
+    border: none;
     color: $text-muted;
 }
 
 /* Severity variants */
 ZenNotification.-success {
-    border: round $surface-lighten-1;
     color: $text-muted;
 }
 
 ZenNotification.-warning {
-    border: round $warning-darken-2;
     color: $warning;
 }
 
 ZenNotification.-error {
-    border: round $error-darken-2;
     color: $error;
 }
 
 ZenNotification.-ai {
-    border: round $primary-darken-2;
     color: $primary;
 }
 

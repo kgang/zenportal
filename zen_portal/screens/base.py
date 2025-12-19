@@ -28,12 +28,12 @@ class ZenScreen(Screen):
     }
 
     ZenScreen > ZenNotificationRack {
-        dock: bottom;
         layer: notification;
+        dock: bottom;
         height: auto;
-        width: 100%;
-        align: left bottom;
-        margin-bottom: 2;
+        width: auto;
+        margin: 0 0 1 1;
+        /* display toggled by widget - hidden when empty */
     }
     """
 
