@@ -7,6 +7,7 @@ Visual Calm Strategy:
 """
 
 from textual.app import ComposeResult
+from textual.events import Resize
 from textual.message import Message
 from textual.reactive import reactive
 from textual.widgets import Static
@@ -30,6 +31,9 @@ class SessionListItem(Static):
 
     Supports in-place updates for visual calm - can update session data
     without requiring parent to rebuild entire widget tree.
+
+    Elastic width: Renders content based on available width, gracefully
+    degrading from full display to truncated name to hiding time.
     """
 
     DEFAULT_CSS = """
@@ -76,9 +80,43 @@ class SessionListItem(Static):
         self.add_class(session.state.value)
 
     def render(self) -> str:
+        """Render session row with elastic width adaptation.
+
+        Layout breakdown for width calculation:
+        - Padding: 2 chars (1 left + 1 right from CSS)
+        - Glyph: 1 char
+        - Spacing after glyph: 2 chars
+        - Age display: 5 chars (e.g., "  3m")
+        - Spacing before age: 1 char minimum
+        Total fixed: 11 chars, leaving (width - 11) for name
+
+        Progressive disclosure:
+        - Width >= 25: Show glyph + name + age
+        - Width < 25: Show glyph + name (hide age)
+        """
         s = self.session
-        # Minimal format: glyph + name + age (no type prefixes - cleaner)
-        return f"{s.status_glyph}  {s.display_name:<32} {s.age_display:>5}"
+
+        # Get content width (size.width minus padding)
+        content_width = self.size.width - 2  # 2 chars padding
+
+        # Fixed elements: glyph (1) + spacing (2) + age (5) + min spacing (1) = 9
+        # But we need at least some name, so threshold for showing age
+        min_width_for_age = 25
+
+        if content_width >= min_width_for_age:
+            # Full layout: glyph + name + age
+            # Reserve: glyph(1) + spacing(2) + age(5) + spacing(1) = 9 chars
+            name_width = content_width - 9
+            name_width = max(1, name_width)  # At least 1 char for name
+            truncated_name = s.display_name[:name_width]
+            return f"{s.status_glyph}  {truncated_name:<{name_width}} {s.age_display:>5}"
+        else:
+            # Narrow: hide age, show glyph + name only
+            # Reserve: glyph(1) + spacing(2) = 3 chars
+            name_width = content_width - 3
+            name_width = max(1, name_width)
+            truncated_name = s.display_name[:name_width]
+            return f"{s.status_glyph}  {truncated_name}"
 
     def update_in_place(self, session: Session, selected: bool, moving: bool) -> bool:
         """Update this item in-place if possible.
@@ -229,6 +267,17 @@ class SessionList(Static, can_focus=False):
             is_selected = i == self.selected_index
             is_moving = is_selected and self.move_mode
             yield SessionListItem(session, selected=is_selected, moving=is_moving)
+
+    def on_resize(self, event: Resize) -> None:
+        """Handle resize - refresh items to adapt to new width.
+
+        Elastic width: When the sidebar is resized via the splitter,
+        SessionListItems re-render with appropriate name truncation
+        and show/hide age display based on available space.
+        """
+        # Refresh all items so they re-render with new width
+        for item in self.query(SessionListItem):
+            item.refresh()
 
     def watch_selected_index(self, index: int) -> None:
         """Emit selection event when index changes."""

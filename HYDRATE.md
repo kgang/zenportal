@@ -260,6 +260,14 @@ self.focus()
 # Full recompose only on structural changes (add/remove sessions)
 ```
 
+**Elastic Width** (SessionListItem):
+```python
+# SessionListItem.render() adapts to available width
+# - Wide (>=25): glyph + name + age
+# - Narrow (<25): glyph + name only (hide age)
+# SessionList.on_resize() refreshes all items when splitter moves
+```
+
 ---
 
 ## hydrate.concept.refine
@@ -330,6 +338,7 @@ See `docs/ENHANCEMENT_PLAN.md` for detailed roadmap.
 
 **Recent commits** (git log --oneline -10):
 ```
+[pending] feat: elastic sidebar resize - session list adapts to splitter width
 047400f fix: remove splitter text, enable output text wrapping
 e73d852 feat: slim UI with draggable sidebar splitter
 41c3bf4 fix: unset VIRTUAL_ENV to prevent zen-portal venv leaking into sessions
@@ -339,8 +348,6 @@ c02634e fix: handle large system prompts by using launcher scripts for tmux
 4527f5d feat: add system prompt support to session creation pipeline
 564664e chore: add .envrc to gitignore
 6676ea3 feat: add @filepath expansion for prompts in new session modal
-133ac92 fix: session revival matches correct claude session, dangerous mode default on
-df5ef63 fix: resolve search mode breaking j/k navigation hotkeys
 ```
 
 ---
