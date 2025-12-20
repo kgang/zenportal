@@ -169,6 +169,11 @@ class SessionStateWatcher:
                 session.error_message = error_msg
                 changed.append(session)
 
+                # Clear scrollback for terminal states to reclaim memory
+                # tmux keeps history even for dead panes with remain-on-exit
+                if new_state in (SessionState.COMPLETED, SessionState.FAILED):
+                    await self._async_tmux.clear_history(tmux_name)
+
                 # Emit change event
                 if self._on_state_change:
                     self._on_state_change(StateChangeEvent(

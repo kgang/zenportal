@@ -321,6 +321,21 @@ to bypass tmux's ~16KB command length limit.
 - `session_manager.py`: 686 lines
 - `main.py`: ~900 lines (acceptable with mixins)
 
+### tmux Memory Considerations
+
+**Known issue**: tmux memory grows with `history-limit` and high-output sessions due to glibc allocator behavior (not a true leak - freed memory not returned to OS).
+
+**Current setting**: `DEFAULT_HISTORY_LIMIT = 10000` (zen_portal/services/tmux.py:21)
+
+**Mitigations**:
+1. `clear_history()` called automatically when sessions transition to COMPLETED/FAILED (session_watcher.py:174)
+2. `clear_history()` called before killing sessions (tmux.py:245)
+3. Sessions with dead panes cleaned via `cleanup_dead_zen_sessions()`
+
+**If "server stopped unexpectedly" still occurs**:
+- Kill old tmux sessions manually: `tmux kill-server` (nuclear option)
+- Reduce parallel sessions or restart zen periodically
+
 **Refactoring Progress**:
 - ✓ Phase 1-4: Services container, EventBus, ZenError, SessionValidator, widget caching
 - ✓ Phase 5: @filepath expansion, session revival fixes

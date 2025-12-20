@@ -60,3 +60,7 @@ class AsyncTmuxService:
     async def kill_session(self, name: str) -> TmuxResult:
         """Kill a tmux session (non-blocking)."""
         return await asyncio.to_thread(self._tmux.kill_session, name)
+
+    async def clear_history(self, name: str) -> TmuxResult:
+        """Clear a session's scrollback history (non-blocking)."""
+        return await asyncio.to_thread(self._tmux.clear_history, name)

@@ -18,7 +18,7 @@ class TmuxService:
     """Low-level tmux operations. No business logic."""
 
     DEFAULT_TIMEOUT = 5
-    DEFAULT_HISTORY_LIMIT = 50000  # Lines of scrollback to preserve
+    DEFAULT_HISTORY_LIMIT = 10000  # Lines of scrollback (lower = less memory)
 
     def __init__(self, socket_path: Path | None = None, history_limit: int | None = None):
         """Initialize with optional dedicated socket and history limit."""
