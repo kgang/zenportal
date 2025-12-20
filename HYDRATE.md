@@ -353,15 +353,15 @@ See `docs/ENHANCEMENT_PLAN.md` for detailed roadmap.
 
 **Recent commits** (git log --oneline -10):
 ```
+7200da7 fix: reduce tmux memory pressure with lower history limit and auto-clearing
+c5038d6 docs: update HYDRATE.md with elastic resize commit
 3593856 feat: elastic sidebar resize - session list adapts to splitter width
 047400f fix: remove splitter text, enable output text wrapping
 e73d852 feat: slim UI with draggable sidebar splitter
 41c3bf4 fix: unset VIRTUAL_ENV to prevent zen-portal venv leaking into sessions
 d053476 feat: reactive architecture - eliminate polling with async tmux calls
-d3caa24 docs: update HYDRATE.md with test count and tmux limit note
 c02634e fix: handle large system prompts by using launcher scripts for tmux
 4527f5d feat: add system prompt support to session creation pipeline
-564664e chore: add .envrc to gitignore
 6676ea3 feat: add @filepath expansion for prompts in new session modal
 ```
 
