@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
+import shlex
 import subprocess
 
 
@@ -87,6 +88,12 @@ class TmuxService:
         # Use chained commands to set history-limit before creating session.
         # This is critical: history-limit is fixed at pane creation time.
         # Format: tmux set -g history-limit N \; new-session ...
+        #
+        # Wrap command in zsh -c with explicit ~/.zshrc sourcing.
+        # This ensures user's PATH and aliases are available in the session.
+        quoted_cmd = " ".join(shlex.quote(arg) for arg in command)
+        shell_wrapper = ["zsh", "-c", f"source ~/.zshrc 2>/dev/null; {quoted_cmd}"]
+
         args = [
             "set-option", "-g", "history-limit", str(self._history_limit),
             ";",  # Chain next command
@@ -94,7 +101,7 @@ class TmuxService:
             "-d",  # Detached
             "-s", name,
             "-c", str(working_dir),
-        ] + command
+        ] + shell_wrapper
 
         result = self._run(args)
 

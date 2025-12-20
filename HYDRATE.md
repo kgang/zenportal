@@ -353,6 +353,7 @@ See `docs/ENHANCEMENT_PLAN.md` for detailed roadmap.
 
 **Recent commits** (git log --oneline -10):
 ```
+PENDING feat: source ~/.zshrc in tmux sessions for user PATH/aliases
 7200da7 fix: reduce tmux memory pressure with lower history limit and auto-clearing
 c5038d6 docs: update HYDRATE.md with elastic resize commit
 3593856 feat: elastic sidebar resize - session list adapts to splitter width
