@@ -314,13 +314,14 @@ class TestWrapWithBannerLargeCommands:
         return SessionCommandBuilder()
 
     def test_small_command_uses_inline_script(self, builder):
-        """Small commands use inline bash -c approach."""
+        """Small commands use inline zsh -l -i -c approach."""
         command = ["claude", "--dangerously-skip-permissions"]
         result = builder.wrap_with_banner(command, "test", "test-123")
-        assert result[0] == "bash"
+        assert result[0] == "zsh"
         assert result[1] == "-l"
-        assert result[2] == "-c"
-        assert "claude" in result[3]
+        assert result[2] == "-i"
+        assert result[3] == "-c"
+        assert "claude" in result[4]
 
     def test_large_command_uses_launcher_script(self, builder, tmp_path):
         """Large commands (>12KB) create a launcher script file."""
@@ -330,10 +331,11 @@ class TestWrapWithBannerLargeCommands:
         result = builder.wrap_with_banner(command, "test", "test-large-123")
 
         # Should return a path to a script file instead of inline
-        assert result[0] == "bash"
+        assert result[0] == "zsh"
         assert result[1] == "-l"
-        # Third arg should be a path, not "-c"
-        assert result[2].endswith(".sh")
+        assert result[2] == "-i"
+        # Fourth arg should be a path, not "-c"
+        assert result[3].endswith(".sh")
 
     def test_launcher_script_is_executable(self, builder):
         """Launcher script has execute permissions."""
@@ -342,7 +344,7 @@ class TestWrapWithBannerLargeCommands:
         result = builder.wrap_with_banner(command, "test", "test-perm-123")
 
         from pathlib import Path
-        script_path = Path(result[2])
+        script_path = Path(result[3])  # zsh -l -i <script>
         assert script_path.exists()
         # Check owner has execute permission
         import stat
@@ -359,7 +361,7 @@ class TestWrapWithBannerLargeCommands:
         result = builder.wrap_with_banner(command, "test", "test-content-123")
 
         from pathlib import Path
-        script_path = Path(result[2])
+        script_path = Path(result[3])  # zsh -l -i <script>
         content = script_path.read_text()
 
         assert "claude" in content
@@ -376,7 +378,7 @@ class TestWrapWithBannerLargeCommands:
         result = builder.wrap_with_banner(command, "test", "test-clean-123")
 
         from pathlib import Path
-        script_path = Path(result[2])
+        script_path = Path(result[3])  # zsh -l -i <script>
         content = script_path.read_text()
 
         assert 'rm -f "$0"' in content

@@ -332,7 +332,10 @@ class SessionCommandBuilder:
             )
 
         # Standard inline approach for small commands
-        return ["bash", "-l", "-c", inline_script]
+        # Use zsh -l -i -c to source ~/.zshrc and get user's PATH/aliases
+        # -l = login shell (sources .zprofile)
+        # -i = interactive shell (sources .zshrc)
+        return ["zsh", "-l", "-i", "-c", inline_script]
 
     def _create_launcher_script(
         self,
@@ -354,7 +357,7 @@ class SessionCommandBuilder:
         script_path = script_dir / f"launch-{session_id}.sh"
 
         # Build the script content
-        script_content = f"""#!/bin/bash -l
+        script_content = f"""#!/bin/zsh -l
 # Auto-generated launcher script for zen-portal session
 # This file self-deletes after running
 
@@ -368,5 +371,6 @@ rm -f "$0"
         script_path.write_text(script_content, encoding="utf-8")
         script_path.chmod(0o700)  # Owner execute only
 
-        # Return command to run the script
-        return ["bash", "-l", str(script_path)]
+        # Return command to run the script via zsh for user PATH/aliases
+        # -l = login shell, -i = interactive (sources .zshrc)
+        return ["zsh", "-l", "-i", str(script_path)]

@@ -353,6 +353,7 @@ See `docs/ENHANCEMENT_PLAN.md` for detailed roadmap.
 
 **Recent commits** (git log --oneline -10):
 ```
+(pending) fix: use zsh -l for shell startup to properly source ~/.zshrc
 550aa84 feat: source ~/.zshrc in tmux sessions for user PATH/aliases
 7200da7 fix: reduce tmux memory pressure with lower history limit and auto-clearing
 c5038d6 docs: update HYDRATE.md with elastic resize commit
@@ -362,8 +363,6 @@ e73d852 feat: slim UI with draggable sidebar splitter
 41c3bf4 fix: unset VIRTUAL_ENV to prevent zen-portal venv leaking into sessions
 d053476 feat: reactive architecture - eliminate polling with async tmux calls
 c02634e fix: handle large system prompts by using launcher scripts for tmux
-4527f5d feat: add system prompt support to session creation pipeline
-6676ea3 feat: add @filepath expansion for prompts in new session modal
 ```
 
 ---
