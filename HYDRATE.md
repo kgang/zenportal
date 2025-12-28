@@ -360,6 +360,7 @@ See `docs/ENHANCEMENT_PLAN.md` for detailed roadmap.
 
 **Recent commits** (git log --oneline -10):
 ```
+7c538b9 refactor: simplify codebase with unified patterns and extracted concerns
 9997159 docs: update HYDRATE.md with zsh -l -i fix commit
 bd76672 fix: use zsh -l -i for proper ~/.zshrc sourcing in sessions
 550aa84 feat: source ~/.zshrc in tmux sessions for user PATH/aliases
@@ -369,7 +370,6 @@ bd76672 fix: use zsh -l -i for proper ~/.zshrc sourcing in sessions
 e73d852 feat: slim UI with draggable sidebar splitter
 41c3bf4 fix: unset VIRTUAL_ENV to prevent zen-portal venv leaking into sessions
 d053476 feat: reactive architecture - eliminate polling with async tmux calls
-c02634e fix: handle large system prompts by using launcher scripts for tmux
 ```
 
 ---
