@@ -9,7 +9,7 @@ from ..session_commands import SessionCommandBuilder
 from ..tmux import TmuxService
 from ..worktree import WorktreeService
 from ..proxy_validation import ProxyValidator
-from ...models.session import Session, SessionState, SessionFeatures, SessionType
+from ...models.session import Session, SessionState, SessionFeatures, SessionType, SessionTokenMetrics
 
 
 @dataclass
@@ -78,6 +78,11 @@ class CreateSessionModel:
     """Step: Create the Session dataclass."""
 
     def invoke(self, ctx: CreateContext) -> StepResult[CreateContext]:
+        # Create token_metrics if using proxy (for Claude AI sessions)
+        token_metrics = None
+        if ctx.uses_proxy:
+            token_metrics = SessionTokenMetrics(uses_proxy=True)
+
         session = Session(
             name=ctx.name,
             prompt=ctx.prompt if ctx.session_type == SessionType.AI else "",
@@ -87,7 +92,7 @@ class CreateSessionModel:
             resolved_working_dir=ctx.working_dir,
             resolved_model=ctx.resolved_config.model if ctx.session_type == SessionType.AI and ctx.provider == "claude" else None,
             dangerously_skip_permissions=ctx.dangerous_mode,
-            uses_proxy=ctx.uses_proxy,
+            token_metrics=token_metrics,
         )
 
         if ctx.session_type == SessionType.AI and ctx.provider == "claude":
@@ -215,7 +220,9 @@ class SpawnTmux:
 
         # Apply proxy warning if set
         if ctx.proxy_warning and ctx.session:
-            ctx.session.proxy_warning = ctx.proxy_warning
+            if ctx.session.token_metrics is None:
+                ctx.session.token_metrics = SessionTokenMetrics()
+            ctx.session.token_metrics.proxy_warning = ctx.proxy_warning
 
         return StepResult.success(ctx)
 

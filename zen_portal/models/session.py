@@ -14,6 +14,28 @@ if TYPE_CHECKING:
     from ..services.token_parser import TokenUsage
 
 
+@dataclass
+class SessionTokenMetrics:
+    """Token tracking metrics for Claude sessions.
+
+    Extracted from Session to separate concerns - these fields are
+    only relevant for Claude AI sessions with token tracking enabled.
+    """
+
+    # Core token usage (populated from Claude JSONL parsing)
+    token_stats: TokenUsage | None = None
+    # Extended token metrics (from SessionTokenStats)
+    message_count: int = 0  # Number of API turns
+    first_message_at: datetime | None = None  # Session start time (from Claude)
+    last_message_at: datetime | None = None  # Last activity time (from Claude)
+    # Token history for sparkline visualization (cumulative totals over time)
+    token_history: list[int] = field(default_factory=list)
+    # Proxy tracking - whether session uses OpenRouter billing (pay-per-token)
+    uses_proxy: bool = False
+    # Proxy warning (set when proxy validation finds issues)
+    proxy_warning: str = ""
+
+
 class SessionType(Enum):
     """Type of session."""
 
@@ -86,20 +108,46 @@ class Session:
     revived_at: datetime | None = None
     # Error tracking for failed sessions
     error_message: str = ""
-    # Token tracking (populated from Claude JSONL parsing)
-    token_stats: TokenUsage | None = None
-    # Extended token metrics (from SessionTokenStats)
-    message_count: int = 0  # Number of API turns
-    first_message_at: datetime | None = None  # Session start time (from Claude)
-    last_message_at: datetime | None = None  # Last activity time (from Claude)
-    # Proxy tracking - whether session uses OpenRouter billing (pay-per-token)
-    uses_proxy: bool = False
-    # Proxy warning (set when proxy validation finds issues)
-    proxy_warning: str = ""
-    # Token history for sparkline visualization (cumulative totals over time)
-    token_history: list[int] = field(default_factory=list)
+    # Token metrics for Claude sessions (None for non-Claude or shell sessions)
+    token_metrics: SessionTokenMetrics | None = None
     # tmux session name (e.g., "zen-a1b2c3d4")
     tmux_name: str = ""
+
+    # Convenience properties for backward compatibility with token_metrics fields
+    @property
+    def token_stats(self) -> TokenUsage | None:
+        """Get token_stats from token_metrics (backward compatibility)."""
+        return self.token_metrics.token_stats if self.token_metrics else None
+
+    @property
+    def message_count(self) -> int:
+        """Get message_count from token_metrics (backward compatibility)."""
+        return self.token_metrics.message_count if self.token_metrics else 0
+
+    @property
+    def first_message_at(self) -> datetime | None:
+        """Get first_message_at from token_metrics (backward compatibility)."""
+        return self.token_metrics.first_message_at if self.token_metrics else None
+
+    @property
+    def last_message_at(self) -> datetime | None:
+        """Get last_message_at from token_metrics (backward compatibility)."""
+        return self.token_metrics.last_message_at if self.token_metrics else None
+
+    @property
+    def token_history(self) -> list[int]:
+        """Get token_history from token_metrics (backward compatibility)."""
+        return self.token_metrics.token_history if self.token_metrics else []
+
+    @property
+    def uses_proxy(self) -> bool:
+        """Get uses_proxy from token_metrics (backward compatibility)."""
+        return self.token_metrics.uses_proxy if self.token_metrics else False
+
+    @property
+    def proxy_warning(self) -> str:
+        """Get proxy_warning from token_metrics (backward compatibility)."""
+        return self.token_metrics.proxy_warning if self.token_metrics else ""
 
     def __post_init__(self):
         # Don't auto-generate claude_session_id - let Claude Code generate it

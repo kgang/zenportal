@@ -107,9 +107,6 @@ class SessionValidator:
         if len(name) > MAX_SESSION_NAME_LENGTH:
             errors.append(f"name too long (max {MAX_SESSION_NAME_LENGTH} chars)")
 
-        if not re.match(r"^[a-zA-Z0-9_-]+$", name):
-            errors.append("name must be alphanumeric with hyphens/underscores")
-
         # Check for duplicates (warning, not error - tmux allows duplicates)
         if existing_names and name in existing_names:
             warnings.append(f"'{name}' already exists")

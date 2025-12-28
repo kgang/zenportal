@@ -129,15 +129,14 @@ class TestValidateSessionName:
         assert "empty" in error.lower()
 
     def test_name_with_spaces(self):
-        """Reject names with spaces."""
+        """Accept names with spaces (no character restrictions)."""
         valid, error = validate_session_name("my session")
-        assert valid is False
-        assert "alphanumeric" in error.lower()
+        assert valid is True
 
     def test_name_with_special_chars(self):
-        """Reject names with special characters."""
+        """Accept names with special characters (no character restrictions)."""
         valid, error = validate_session_name("session;rm")
-        assert valid is False
+        assert valid is True
 
     def test_name_too_long(self):
         """Reject names exceeding max length."""
@@ -245,12 +244,11 @@ class TestSessionValidator:
         assert result.is_valid  # Warning, not error
         assert "already exists" in result.first_warning
 
-    def test_validate_name_invalid_chars(self):
-        """Reject names with invalid characters."""
+    def test_validate_name_with_special_chars(self):
+        """Accept names with special characters (no restrictions)."""
         validator = SessionValidator()
         result = validator.validate_name("bad name!")
-        assert not result.is_valid
-        assert "alphanumeric" in result.first_error.lower()
+        assert result.is_valid
 
     def test_validate_directory_valid(self, tmp_path):
         """Accept valid directories."""

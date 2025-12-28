@@ -5,7 +5,7 @@ Extracted from SessionManager to provide focused token operations.
 
 from ..token_parser import TokenParser
 from ..discovery import DiscoveryService
-from ...models.session import Session, SessionType
+from ...models.session import Session, SessionType, SessionTokenMetrics
 
 
 class TokenManager:
@@ -46,17 +46,21 @@ class TokenManager:
 
         updated = False
 
+        # Ensure token_metrics exists
+        if session.token_metrics is None:
+            session.token_metrics = SessionTokenMetrics()
+
         # Update token statistics
         stats = self._parser.get_session_stats(
             claude_session_id=session.claude_session_id,
             working_dir=session.resolved_working_dir,
         )
         if stats:
-            session.token_stats = stats.total_usage
+            session.token_metrics.token_stats = stats.total_usage
             # Extended metrics from SessionTokenStats
-            session.message_count = stats.message_count
-            session.first_message_at = stats.first_message_at
-            session.last_message_at = stats.last_message_at
+            session.token_metrics.message_count = stats.message_count
+            session.token_metrics.first_message_at = stats.first_message_at
+            session.token_metrics.last_message_at = stats.last_message_at
             updated = True
 
         # Update token history for sparkline
@@ -65,7 +69,7 @@ class TokenManager:
             working_dir=session.resolved_working_dir,
         )
         if history:
-            session.token_history = history
+            session.token_metrics.token_history = history
             updated = True
 
         return updated
@@ -81,7 +85,9 @@ class TokenManager:
         """
         if session.session_type != SessionType.AI:
             return None
-        return session.token_stats
+        if session.token_metrics is None:
+            return None
+        return session.token_metrics.token_stats
 
     def get_history(self, session: Session) -> list[int]:
         """Get token history for sparkline visualization.
@@ -94,7 +100,9 @@ class TokenManager:
         """
         if session.session_type != SessionType.AI:
             return []
-        return session.token_history or []
+        if session.token_metrics is None:
+            return []
+        return session.token_metrics.token_history or []
 
     def _discover_session_id(self, session: Session) -> str | None:
         """Discover Claude session ID from JSONL files.

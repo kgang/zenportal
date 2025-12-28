@@ -3,15 +3,11 @@
 from dataclasses import dataclass
 from enum import Enum
 
-from .session import SessionFeatures
+from .session import SessionFeatures, SessionType
 from ..services.discovery import ClaudeSessionInfo, ExternalTmuxSession
 
-
-class NewSessionType(Enum):
-    """Type of session to create in new session modal."""
-
-    AI = "ai"  # AI session (with provider selection)
-    SHELL = "shell"  # Shell session
+# Backwards compatibility alias - use SessionType directly
+NewSessionType = SessionType
 
 
 class AIProvider(Enum):
@@ -41,7 +37,7 @@ class NewSessionResult:
     prompt: str = ""
     system_prompt: str = ""  # Claude --system-prompt argument
     features: SessionFeatures | None = None
-    session_type: NewSessionType = NewSessionType.AI
+    session_type: SessionType = SessionType.AI
     provider: AIProvider = AIProvider.CLAUDE  # AI provider for AI sessions
     # For ATTACH sessions
     tmux_session: ExternalTmuxSession | None = None

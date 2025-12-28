@@ -22,7 +22,7 @@ hydrate.time.witness       → git log, recent changes
 | Note enablement | `hydrate.project.afford` | Announce what you enable |
 | Update shared | `hydrate.concept.refine` | Prefix `[STALE?]` if uncertain |
 
-**Status**: 361 tests | Branch: `main` | Lines: ~21,300 | Version: 0.3.1
+**Status**: 361 tests | Branch: `main` | Lines: ~21,800 | Version: 0.3.1
 ################################################################################
 
 ## hydrate.project.manifest
@@ -46,9 +46,9 @@ zen_portal/
 ├── app.py                    # Entry point + Services container (DI)
 ├── __main__.py               # CLI entry
 ├── models/                   # Data models and enums
-│   ├── session.py            # Session, SessionType, SessionState, SessionFeatures
+│   ├── session.py            # Session, SessionType, SessionState, SessionFeatures, SessionTokenMetrics
 │   ├── template.py           # SessionTemplate for reusable configs
-│   ├── new_session.py        # NewSessionType, AIProvider, ResultType
+│   ├── new_session.py        # AIProvider, ResultType (NewSessionType aliased to SessionType)
 │   ├── events.py             # UI-level Textual messages (SessionSelected)
 │   └── exceptions.py         # ZenError hierarchy
 ├── services/                 # Business logic (no UI)
@@ -310,7 +310,7 @@ to bypass tmux's ~16KB command length limit.
 - API key pattern validation: ^[a-zA-Z0-9_-]+$
 - URL scheme whitelist: http, https only
 - Config files: 0600 permissions (atomic writes)
-- Input limits: prompt (2000 chars), name (64 chars)
+- Input limits: prompt (2000 chars), name (64 chars, no character restrictions)
 
 ---
 
@@ -341,9 +341,16 @@ to bypass tmux's ~16KB command length limit.
 - ✓ Phase 5: @filepath expansion, session revival fixes
 - ✓ Phase 6: Search mode j/k hotkey fix
 - ✓ Phase 7: **Reactive Architecture** - eliminated polling, async tmux calls
-- Next: Zen AI UX redesign (lightweight chat interface)
+- ✓ Phase 8: Session name restrictions removed (any characters allowed)
 
-**Stale Docs**: None - docs updated with reactive architecture
+**Completed Simplifications** (2024-12):
+| Done | Issue | Location | Result |
+|------|-------|----------|--------|
+| ✓ | Visibility toggle duplication | new_session_modal.py | Extracted `_update_ui_visibility()` (-25 lines) |
+| ✓ | NewSessionType/SessionType enum duplication | models/ | Unified to single SessionType enum |
+| ✓ | ListBuilder code duplication | new_session_lists.py | Extracted base `ListBuilder[T]` class |
+| ✓ | Session dataclass token concerns | models/session.py | Extracted `SessionTokenMetrics` dataclass |
+| | new_session_modal.py oversized (871 lines) | screens/ | Future: split into subdirectory |
 
 See `docs/ENHANCEMENT_PLAN.md` for detailed roadmap.
 
@@ -353,6 +360,7 @@ See `docs/ENHANCEMENT_PLAN.md` for detailed roadmap.
 
 **Recent commits** (git log --oneline -10):
 ```
+9997159 docs: update HYDRATE.md with zsh -l -i fix commit
 bd76672 fix: use zsh -l -i for proper ~/.zshrc sourcing in sessions
 550aa84 feat: source ~/.zshrc in tmux sessions for user PATH/aliases
 7200da7 fix: reduce tmux memory pressure with lower history limit and auto-clearing
@@ -362,7 +370,6 @@ e73d852 feat: slim UI with draggable sidebar splitter
 41c3bf4 fix: unset VIRTUAL_ENV to prevent zen-portal venv leaking into sessions
 d053476 feat: reactive architecture - eliminate polling with async tmux calls
 c02634e fix: handle large system prompts by using launcher scripts for tmux
-4527f5d feat: add system prompt support to session creation pipeline
 ```
 
 ---

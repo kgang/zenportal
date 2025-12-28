@@ -7,8 +7,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
-from ..models.session import Session, SessionState, SessionType
-from ..models.session import Session
+from ..models.session import Session, SessionState, SessionType, SessionTokenMetrics
 from .config import ClaudeModel
 from .state import SessionRecord, PortalState
 
@@ -144,14 +143,22 @@ class SessionStateService:
         if hasattr(session, "_external_tmux_name"):
             external_name = session._external_tmux_name
 
-        # Extract token stats if available
+        # Extract token stats from token_metrics if available
         input_tokens = 0
         output_tokens = 0
         cache_tokens = 0
-        if session.token_stats:
-            input_tokens = session.token_stats.input_tokens
-            output_tokens = session.token_stats.output_tokens
-            cache_tokens = session.token_stats.cache_tokens
+        message_count = 0
+        uses_proxy = False
+        token_history = []
+
+        if session.token_metrics:
+            if session.token_metrics.token_stats:
+                input_tokens = session.token_metrics.token_stats.input_tokens
+                output_tokens = session.token_metrics.token_stats.output_tokens
+                cache_tokens = session.token_metrics.token_stats.cache_tokens
+            message_count = session.token_metrics.message_count
+            uses_proxy = session.token_metrics.uses_proxy
+            token_history = session.token_metrics.token_history
 
         return SessionRecord(
             id=session.id,
@@ -170,9 +177,9 @@ class SessionStateService:
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cache_tokens=cache_tokens,
-            message_count=session.message_count,
-            uses_proxy=session.uses_proxy,
-            token_history=session.token_history,
+            message_count=message_count,
+            uses_proxy=uses_proxy,
+            token_history=token_history,
         )
 
     def session_from_record(
@@ -240,6 +247,15 @@ class SessionStateService:
         if not tmux_exists and not worktree_exists and state != SessionState.PAUSED:
             return None
 
+        # Reconstruct token_metrics if there's token data
+        token_metrics = None
+        if record.uses_proxy or record.message_count or record.token_history:
+            token_metrics = SessionTokenMetrics(
+                message_count=record.message_count,
+                uses_proxy=record.uses_proxy,
+                token_history=record.token_history,
+            )
+
         # Reconstruct session
         session = Session(
             name=record.name,
@@ -251,9 +267,7 @@ class SessionStateService:
             resolved_working_dir=Path(record.working_dir) if record.working_dir else None,
             worktree_path=Path(record.worktree_path) if record.worktree_path else None,
             worktree_branch=record.worktree_branch,
-            uses_proxy=record.uses_proxy,
-            message_count=record.message_count,
-            token_history=record.token_history,
+            token_metrics=token_metrics,
         )
 
         # Override the auto-generated ID with the persisted one
