@@ -279,6 +279,7 @@ a   attach      x kill     v revive       d clean
 e   rename      c config   i insert       / search
 I   info        S output   :  palette     T template
 ?   help        q quit     s streaming    R restart
+1-0 focus 1-10  (quick jump to session by position)
 ```
 
 **External Tools Required**:
@@ -291,8 +292,13 @@ I   info        S output   :  palette     T template
 
 **Session Matching** (for Claude revival):
 ```
-Match claude sessions by: modified_at >= session.created_at
-Prevents attaching wrong session after restart
+Match strategy (find_session_for_zenportal):
+1. Use created_at (st_birthtime on macOS) - find session created closest after zen-portal creation
+2. Fallback to modified_at - find session modified closest after zen-portal creation
+
+KILLED sessions: start fresh (no --resume or --continue)
+PAUSED: capture claude_session_id at pause time if not already set
+COMPLETED: use existing claude_session_id for --resume
 ```
 
 **@filepath Expansion**:
@@ -342,6 +348,7 @@ to bypass tmux's ~16KB command length limit.
 - ✓ Phase 6: Search mode j/k hotkey fix
 - ✓ Phase 7: **Reactive Architecture** - eliminated polling, async tmux calls
 - ✓ Phase 8: Session name restrictions removed (any characters allowed)
+- ✓ Phase 9: **Session revival fix** - accurate claude_session_id matching using created_at
 
 **Completed Simplifications** (2024-12):
 | Done | Issue | Location | Result |
