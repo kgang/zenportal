@@ -70,6 +70,17 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
         Binding(":", "command_palette", "Commands", show=False),
         Binding("ctrl+p", "command_palette", "Commands", show=False),
         Binding("T", "templates", "Templates", show=False),
+        # Number hotkeys for quick session focus (1=first, 0=tenth)
+        Binding("1", "focus_session_1", "Focus 1", show=False),
+        Binding("2", "focus_session_2", "Focus 2", show=False),
+        Binding("3", "focus_session_3", "Focus 3", show=False),
+        Binding("4", "focus_session_4", "Focus 4", show=False),
+        Binding("5", "focus_session_5", "Focus 5", show=False),
+        Binding("6", "focus_session_6", "Focus 6", show=False),
+        Binding("7", "focus_session_7", "Focus 7", show=False),
+        Binding("8", "focus_session_8", "Focus 8", show=False),
+        Binding("9", "focus_session_9", "Focus 9", show=False),
+        Binding("0", "focus_session_10", "Focus 10", show=False),
     ]
 
     info_mode: reactive[bool] = reactive(False)
@@ -709,6 +720,56 @@ class MainScreen(MainScreenPaletteMixin, MainScreenTemplateMixin, MainScreenActi
     def action_show_help(self) -> None:
         from ..screens.help import HelpScreen
         self.app.push_screen(HelpScreen())
+
+    # --- Session focus hotkeys (1-0) ---
+
+    def _focus_session_by_number(self, n: int) -> None:
+        """Focus the nth session (1-indexed). Respects search filter."""
+        # Block during modes where numbers might be typed
+        if self.search_mode:
+            return
+        # Block during move mode (numbers don't make sense while reordering)
+        if self.session_list.move_mode:
+            return
+
+        # Get filtered sessions (respects current search filter)
+        filtered = self.session_list.filtered_sessions
+        target_index = n - 1  # Convert 1-indexed to 0-indexed
+
+        if 0 <= target_index < len(filtered):
+            self.session_list.selected_index = target_index
+            self.session_list.refresh(recompose=True)
+            self._refresh_selected_output()
+
+    def action_focus_session_1(self) -> None:
+        self._focus_session_by_number(1)
+
+    def action_focus_session_2(self) -> None:
+        self._focus_session_by_number(2)
+
+    def action_focus_session_3(self) -> None:
+        self._focus_session_by_number(3)
+
+    def action_focus_session_4(self) -> None:
+        self._focus_session_by_number(4)
+
+    def action_focus_session_5(self) -> None:
+        self._focus_session_by_number(5)
+
+    def action_focus_session_6(self) -> None:
+        self._focus_session_by_number(6)
+
+    def action_focus_session_7(self) -> None:
+        self._focus_session_by_number(7)
+
+    def action_focus_session_8(self) -> None:
+        self._focus_session_by_number(8)
+
+    def action_focus_session_9(self) -> None:
+        self._focus_session_by_number(9)
+
+    def action_focus_session_10(self) -> None:
+        self._focus_session_by_number(10)
 
     def on_mouse_scroll_down(self, event: MouseScrollDown) -> None:
         event.stop()
