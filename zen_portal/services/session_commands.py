@@ -113,13 +113,13 @@ class SessionCommandBuilder:
     def build_revive_command(
         self,
         session: Session,
-        was_failed: bool = False,
+        start_fresh: bool = False,
     ) -> list[str]:
         """Build command args for reviving a session.
 
         Args:
             session: Session to revive
-            was_failed: Whether the session was in FAILED state
+            start_fresh: Whether to start a fresh session (for failed/killed)
 
         Returns:
             List of command arguments
@@ -143,8 +143,8 @@ class SessionCommandBuilder:
 
             else:
                 # Claude session (default)
-                if was_failed:
-                    # Failed session - start fresh
+                if start_fresh:
+                    # Failed/killed session - start fresh (no --resume or --continue)
                     command_args = ["claude"]
                 else:
                     # Completed/paused - try to resume

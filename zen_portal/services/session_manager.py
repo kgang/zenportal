@@ -288,30 +288,27 @@ class SessionManager:
             return False
 
         was_failed = session.state == SessionState.FAILED
-        if was_failed:
+        was_killed = session.state == SessionState.KILLED
+
+        # Clear session ID for failed/killed sessions - start fresh
+        if was_failed or was_killed:
             session.error_message = None
             session.claude_session_id = ""
 
-        # For non-failed Claude AI sessions, try to discover session ID
-        if session.session_type == SessionType.AI and session.provider == "claude" and not was_failed:
+        # For non-failed/killed Claude AI sessions, try to discover session ID
+        # (paused/completed sessions keep their existing claude_session_id for resumption)
+        if session.session_type == SessionType.AI and session.provider == "claude" and not was_failed and not was_killed:
             if not session.claude_session_id and session.resolved_working_dir:
                 discovery = DiscoveryService(session.resolved_working_dir)
-                sessions = discovery.list_claude_sessions(
+                discovered_id = discovery.find_session_for_zenportal(
                     project_path=session.resolved_working_dir,
-                    limit=5,
+                    zenportal_created_at=session.created_at,
                 )
-                # Find the most recent session modified after this zenportal session started
-                # This prevents reviving the wrong claude session when multiple exist
-                for claude_session in sessions:
-                    if claude_session.modified_at >= session.created_at:
-                        session.claude_session_id = claude_session.session_id
-                        break
-                else:
-                    # Fallback to most recent if none match the time window
-                    if sessions:
-                        session.claude_session_id = sessions[0].session_id
+                if discovered_id:
+                    session.claude_session_id = discovered_id
 
-        command_args = self._commands.build_revive_command(session, was_failed)
+        start_fresh = was_failed or was_killed
+        command_args = self._commands.build_revive_command(session, start_fresh)
 
         # Get OpenRouter proxy env vars if enabled for Claude AI sessions
         env_vars = None
@@ -357,6 +354,20 @@ class SessionManager:
         session = self._sessions.get(session_id)
         if not session:
             return False
+
+        # Capture claude_session_id before pausing if not already set
+        # This ensures we can resume the correct session later
+        if (session.session_type == SessionType.AI
+            and session.provider == "claude"
+            and not session.claude_session_id
+            and session.resolved_working_dir):
+            discovery = DiscoveryService(session.resolved_working_dir)
+            discovered_id = discovery.find_session_for_zenportal(
+                project_path=session.resolved_working_dir,
+                zenportal_created_at=session.created_at,
+            )
+            if discovered_id:
+                session.claude_session_id = discovered_id
 
         tmux_name = self.get_tmux_session_name(session_id)
         if tmux_name:

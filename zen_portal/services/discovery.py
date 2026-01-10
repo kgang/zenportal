@@ -14,6 +14,7 @@ class ClaudeSessionInfo:
     project_path: Path  # The working directory this session was in
     modified_at: datetime
     file_path: Path  # Path to the session file
+    created_at: datetime | None = None  # File creation time (macOS st_birthtime)
 
 
 @dataclass
@@ -209,11 +210,16 @@ class DiscoveryService:
             for session_file in session_files:
                 try:
                     stat = session_file.stat()
+                    # Use st_birthtime on macOS for accurate creation time
+                    created_at = None
+                    if hasattr(stat, 'st_birthtime'):
+                        created_at = datetime.fromtimestamp(stat.st_birthtime)
                     sessions.append(ClaudeSessionInfo(
                         session_id=session_file.stem,
                         project_path=self._claude_project_name_to_path(project_dir.name),
                         modified_at=datetime.fromtimestamp(stat.st_mtime),
                         file_path=session_file,
+                        created_at=created_at,
                     ))
                 except (OSError, ValueError):
                     continue
@@ -266,6 +272,55 @@ class DiscoveryService:
             List of ClaudeSessionInfo for the current project
         """
         return self.list_claude_sessions(project_path=self._working_dir, limit=limit)
+
+    def find_session_for_zenportal(
+        self,
+        project_path: Path,
+        zenportal_created_at: datetime,
+    ) -> str | None:
+        """Find the Claude session ID that best matches a zen-portal session.
+
+        Uses created_at (st_birthtime on macOS) for accurate matching when available.
+        Falls back to modified_at-based matching on other platforms.
+
+        Args:
+            project_path: Working directory of the zen-portal session
+            zenportal_created_at: When the zen-portal session was created
+
+        Returns:
+            Best matching session ID or None
+        """
+        sessions = self.list_claude_sessions(project_path=project_path, limit=10)
+        if not sessions:
+            return None
+
+        # Strategy 1: Use created_at if available (macOS)
+        # Find sessions created AFTER zen-portal session, pick the one closest in time
+        sessions_with_created = [s for s in sessions if s.created_at is not None]
+        if sessions_with_created:
+            candidates = [
+                s for s in sessions_with_created
+                if s.created_at >= zenportal_created_at
+            ]
+            if candidates:
+                # Pick the one created closest to zen-portal creation time
+                best = min(candidates, key=lambda s: s.created_at - zenportal_created_at)
+                return best.session_id
+
+        # Strategy 2: Fall back to modified_at
+        # Find sessions modified after zen-portal creation, pick closest match
+        candidates = [
+            s for s in sessions
+            if s.modified_at >= zenportal_created_at
+        ]
+        if candidates:
+            # Among candidates, prefer one modified closest to creation time
+            # (likely the one created around that time)
+            best = min(candidates, key=lambda s: s.modified_at - zenportal_created_at)
+            return best.session_id
+
+        # Last resort: most recently modified session
+        return sessions[0].session_id if sessions else None
 
     def list_all_projects(self) -> list[Path]:
         """List all projects that have Claude sessions.

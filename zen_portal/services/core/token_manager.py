@@ -107,8 +107,8 @@ class TokenManager:
     def _discover_session_id(self, session: Session) -> str | None:
         """Discover Claude session ID from JSONL files.
 
-        Looks for the most recent session file in the project directory
-        that was modified after the session was created.
+        Uses created_at (file birthtime on macOS) for accurate matching,
+        with modified_at fallback on other platforms.
 
         Args:
             session: Session to discover ID for
@@ -119,20 +119,7 @@ class TokenManager:
         if not session.resolved_working_dir:
             return None
 
-        # Find Claude sessions for this working directory
-        sessions = self._discovery.list_claude_sessions(
+        return self._discovery.find_session_for_zenportal(
             project_path=session.resolved_working_dir,
-            limit=5,
+            zenportal_created_at=session.created_at,
         )
-
-        if not sessions:
-            return None
-
-        # Find the most recent session that was modified after this session started
-        # This helps match the correct session when multiple exist
-        for claude_session in sessions:
-            if claude_session.modified_at >= session.created_at:
-                return claude_session.session_id
-
-        # Fallback to most recent if none match the time window
-        return sessions[0].session_id if sessions else None
