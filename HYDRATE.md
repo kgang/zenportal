@@ -367,16 +367,16 @@ See `docs/ENHANCEMENT_PLAN.md` for detailed roadmap.
 
 **Recent commits** (git log --oneline -10):
 ```
+613b3de docs: update HYDRATE.md with hotkey and revival improvements
+7f18c4c feat: add numeric hotkeys 1-0 for quick session focus
+48d2ff2 fix: improve session revival with accurate claude_session_id matching
+5b92278 docs: update HYDRATE.md with refactor commit
 7c538b9 refactor: simplify codebase with unified patterns and extracted concerns
 9997159 docs: update HYDRATE.md with zsh -l -i fix commit
 bd76672 fix: use zsh -l -i for proper ~/.zshrc sourcing in sessions
+45bbcf3 docs: update HYDRATE.md with zshrc sourcing commit
 550aa84 feat: source ~/.zshrc in tmux sessions for user PATH/aliases
-7200da7 fix: reduce tmux memory pressure with lower history limit and auto-clearing
-3593856 feat: elastic sidebar resize - session list adapts to splitter width
-047400f fix: remove splitter text, enable output text wrapping
-e73d852 feat: slim UI with draggable sidebar splitter
-41c3bf4 fix: unset VIRTUAL_ENV to prevent zen-portal venv leaking into sessions
-d053476 feat: reactive architecture - eliminate polling with async tmux calls
+b50b2f4 docs: update HYDRATE.md with tmux memory fix commit
 ```
 
 ---
