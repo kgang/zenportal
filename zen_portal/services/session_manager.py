@@ -223,7 +223,27 @@ class SessionManager:
         self._sessions[session.id] = session
         self._emit_created(session)
         self._persist_change(session, "created")
+
+        # Send initial prompt for Claude sessions (after session starts)
+        if (prompt and session.state == SessionState.RUNNING
+                and session_type == SessionType.AI and provider == "claude"):
+            self._send_initial_prompt(session, prompt)
+
         return session
+
+    def _send_initial_prompt(self, session: Session, prompt: str) -> None:
+        """Send initial prompt to a Claude session via tmux.
+
+        This allows Claude to start interactively and receive the prompt
+        as if the user typed it, rather than processing it as a one-shot
+        command-line argument.
+        """
+        import time
+        # Brief delay to let Claude start up
+        time.sleep(0.5)
+
+        if session.tmux_name:
+            self._tmux.send_text(session.tmux_name, prompt, enter=True)
 
     def create_session_with_resume(
         self,

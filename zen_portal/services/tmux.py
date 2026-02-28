@@ -181,6 +181,32 @@ class TmuxService:
 
         return TmuxResult(success=True)
 
+    def send_text(self, name: str, text: str, enter: bool = True) -> TmuxResult:
+        """Send literal text to a session.
+
+        Args:
+            name: tmux session name
+            text: Text to send (will be sent literally, no special key interpretation)
+            enter: if True, send Enter after the text (default True)
+
+        Returns:
+            TmuxResult indicating success/failure
+        """
+        if not text:
+            if enter:
+                return self._run(["send-keys", "-t", name, "Enter"])
+            return TmuxResult(success=True)
+
+        # Use -l flag to send text literally (no key interpretation)
+        result = self._run(["send-keys", "-t", name, "-l", text])
+        if not result.success:
+            return result
+
+        if enter:
+            return self._run(["send-keys", "-t", name, "Enter"])
+
+        return TmuxResult(success=True)
+
     def list_sessions(self) -> list[str]:
         """List all tmux session names."""
         result = self._run(["list-sessions", "-F", "#{session_name}"])

@@ -191,6 +191,6 @@ class SessionStateWatcher:
 
         # Persist state if anything changed
         if changed:
-            self._manager.persist()
+            self._manager.save_state()
 
         return changed

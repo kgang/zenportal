@@ -81,8 +81,7 @@ class SessionCommandBuilder:
                     command_args.append("--dangerously-skip-permissions")
                 if system_prompt:
                     command_args.extend(["--system-prompt", system_prompt])
-                if prompt:
-                    command_args.append(prompt)
+                # Note: prompt is sent via tmux after session starts (interactive mode)
 
             elif provider == "codex":
                 command_args = ["codex", "--cd", str(working_dir)]
