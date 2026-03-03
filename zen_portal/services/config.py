@@ -69,7 +69,7 @@ class ClaudeModel(Enum):
     """Claude model selection."""
 
     SONNET = "sonnet"
-    OPUS = "opus"
+    OPUS = "claude-opus-4-6"
     HAIKU = "haiku"
 
 
