@@ -39,7 +39,7 @@ Issues = "https://github.com/yourusername/zen-portal/issues"
 
 [project.scripts]
 zen = "zen_portal.app:main"
-zen-portal = "zen_portal.app:main"
+zenportal = "zen_portal.app:main"
 
 [build-system]
 requires = ["hatchling"]
