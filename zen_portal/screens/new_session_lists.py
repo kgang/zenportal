@@ -33,18 +33,24 @@ class ListBuilder(ABC, Generic[T]):
         """Render a single row label for the given session."""
         ...
 
-    def build_list(self, container: Vertical) -> None:
-        """Build the list display (called once on load)."""
-        container.remove_children()
+    async def build_list(self, container: Vertical) -> None:
+        """Build the list display (called once on load).
+
+        Must be awaited: ``remove_children()`` is asynchronous, and mounting
+        new rows before the old ones are removed raises ``DuplicateIds``
+        because row IDs (e.g. ``attach-row-0``) collide with the stale rows
+        still parented to the container.
+        """
+        await container.remove_children()
 
         if not self.sessions:
-            container.mount(Static(self.empty_message, classes="empty-list"))
+            await container.mount(Static(self.empty_message, classes="empty-list"))
             return
 
         for i, session in enumerate(self.sessions):
             label = self._render_row(session, i)
             classes = "list-row selected" if i == self.selected else "list-row"
-            container.mount(
+            await container.mount(
                 Static(label, id=f"{self.row_id_prefix}{i}", classes=classes, markup=True)
             )
 

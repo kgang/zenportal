@@ -359,7 +359,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
             self._conflict_hint = self.query_one("#conflict-hint", Static)
         return self._conflict_hint
 
-    def on_mount(self) -> None:
+    async def on_mount(self) -> None:
         """Focus the name input and load lists."""
         self.trap_focus = True
         # Populate cached widget references
@@ -375,7 +375,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         self._conflict_hint = self.query_one("#conflict-hint", Static)
 
         self.name_input.focus()
-        self._load_lists()
+        await self._load_lists()
         self._set_initial_visibility()
         self._check_conflicts()
 
@@ -437,12 +437,12 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
                         hint.add_class("error")
                     return
 
-    def _load_lists(self) -> None:
+    async def _load_lists(self) -> None:
         """Load attach and resume lists."""
-        self._refresh_attach_list()
-        self._refresh_resume_list()
+        await self._refresh_attach_list()
+        await self._refresh_resume_list()
 
-    def _refresh_attach_list(self) -> None:
+    async def _refresh_attach_list(self) -> None:
         """Refresh the attach list (reload from tmux)."""
         old_selected = self._attach_list.selected
         self._attach_list.load_sessions()
@@ -451,9 +451,9 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
             self._attach_list.selected = old_selected
         else:
             self._attach_list.selected = 0
-        self._attach_list.build_list(self.query_one("#attach-list", Vertical))
+        await self._attach_list.build_list(self.query_one("#attach-list", Vertical))
 
-    def _refresh_resume_list(self) -> None:
+    async def _refresh_resume_list(self) -> None:
         """Refresh the resume list (reload from Claude sessions)."""
         old_selected = self._resume_list.selected
         self._resume_list.load_sessions()
@@ -462,7 +462,7 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
             self._resume_list.selected = old_selected
         else:
             self._resume_list.selected = 0
-        self._resume_list.build_list(self.query_one("#resume-list", Vertical))
+        await self._resume_list.build_list(self.query_one("#resume-list", Vertical))
 
     def _update_ui_visibility(self, is_ai: bool, is_claude: bool) -> None:
         """Update UI element visibility based on session type and provider.
@@ -741,12 +741,12 @@ class NewSessionModal(ModalScreen[NewSessionResult | None]):
         except ValueError:
             self.tabs.active = "tab-new"
 
-    def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
+    async def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
         # Refresh lists when switching to attach/resume tabs to prevent stale data
         if event.pane.id == "tab-attach":
-            self._refresh_attach_list()
+            await self._refresh_attach_list()
         elif event.pane.id == "tab-resume":
-            self._refresh_resume_list()
+            await self._refresh_resume_list()
         self._focus_for_tab(event.pane.id)
 
     def _focus_for_tab(self, tab_id: str) -> None:
