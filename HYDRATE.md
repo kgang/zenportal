@@ -228,6 +228,18 @@ container.mount(Static("empty", classes="empty-list"))
 container.mount(Static("empty", id="empty-list"))
 ```
 
+**Async remove/mount** (also DuplicateIds source — even with unique IDs):
+```python
+# ✗ remove_children() returns AwaitRemove; mount runs before removal lands
+container.remove_children()
+container.mount(Static(..., id=f"row-{i}"))  # collides with stale row-{i}
+
+# ✓ await both — propagate async up the call chain (handlers can be async)
+await container.remove_children()
+await container.mount(Static(..., id=f"row-{i}"))
+```
+This bit `NewSessionModal` attach/resume tabs on re-activation (f7ddb37).
+
 **Reactive Watchers** (guard race conditions):
 ```python
 self._updating = True
@@ -367,16 +379,16 @@ See `docs/ENHANCEMENT_PLAN.md` for detailed roadmap.
 
 **Recent commits** (git log --oneline -10):
 ```
+f7ddb37 fix: prevent DuplicateIds crash when activating attach/resume tabs
+054aee9 change from zen-portal to zenportal
+fe15ddf feat: update default Opus model to Claude Opus 4.6
+a964fc8 fix prompt injection into fresh session
+f81493b docs: update HYDRATE.md with latest commits
 613b3de docs: update HYDRATE.md with hotkey and revival improvements
 7f18c4c feat: add numeric hotkeys 1-0 for quick session focus
 48d2ff2 fix: improve session revival with accurate claude_session_id matching
 5b92278 docs: update HYDRATE.md with refactor commit
 7c538b9 refactor: simplify codebase with unified patterns and extracted concerns
-9997159 docs: update HYDRATE.md with zsh -l -i fix commit
-bd76672 fix: use zsh -l -i for proper ~/.zshrc sourcing in sessions
-45bbcf3 docs: update HYDRATE.md with zshrc sourcing commit
-550aa84 feat: source ~/.zshrc in tmux sessions for user PATH/aliases
-b50b2f4 docs: update HYDRATE.md with tmux memory fix commit
 ```
 
 ---
