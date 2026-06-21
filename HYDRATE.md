@@ -22,7 +22,8 @@ hydrate.time.witness       → git log, recent changes
 | Note enablement | `hydrate.project.afford` | Announce what you enable |
 | Update shared | `hydrate.concept.refine` | Prefix `[STALE?]` if uncertain |
 
-**Status**: 361 tests | Branch: `main` | Lines: ~21,800 | Version: 0.3.1
+**Status**: 361 tests (⚠ 1 failing) | Branch: `main` | Lines: ~22k (17.7k code + 4.3k tests) | Version: ⚠ inconsistent (see void)
+**Last hydrated**: 2026-06-21 (deep re-exploration) | Last commit: 2026-05-20
 ################################################################################
 
 ## hydrate.project.manifest
@@ -30,8 +31,8 @@ hydrate.time.witness       → git log, recent changes
 **Zenportal** - Contemplative TUI for managing AI assistant sessions in parallel.
 
 ```
-zen                              # run
-uv run pytest zen_portal/tests/  # test
+zen                                          # run
+uv run --extra dev pytest zen_portal/tests/  # test (pytest is a dev extra)
 ```
 
 **Session types**: AI (claude/codex/gemini/openrouter), Shell
@@ -43,76 +44,103 @@ uv run pytest zen_portal/tests/  # test
 
 ```
 zen_portal/
-├── app.py                    # Entry point + Services container (DI)
+├── app.py                    # Entry point + Services container (DI, 8 services), 271 lines
 ├── __main__.py               # CLI entry
+├── __init__.py               # ⚠ __version__ = "0.1.0" (out of sync, see void)
 ├── models/                   # Data models and enums
-│   ├── session.py            # Session, SessionType, SessionState, SessionFeatures, SessionTokenMetrics
+│   ├── session.py            # Session, SessionType, SessionState, SessionFeatures, SessionTokenMetrics (211)
 │   ├── template.py           # SessionTemplate for reusable configs
 │   ├── new_session.py        # AIProvider, ResultType (NewSessionType aliased to SessionType)
 │   ├── events.py             # UI-level Textual messages (SessionSelected)
 │   └── exceptions.py         # ZenError hierarchy
 ├── services/                 # Business logic (no UI)
-│   ├── session_manager.py    # Lifecycle management (686 lines)
-│   ├── events.py             # EventBus pub/sub (235 lines)
-│   ├── session_state.py      # Thread-safe persistence (RLock, JSONL)
-│   ├── session_commands.py   # Shell command builder (330 lines)
-│   ├── validation.py         # SessionValidator, ValidationResult
-│   ├── tmux.py               # Low-level tmux operations
-│   ├── worktree.py           # Git worktree management
-│   ├── config.py             # 3-tier config resolution
-│   ├── discovery.py          # Claude session discovery
+│   ├── session_manager.py    # Lifecycle management (720 lines)
+│   ├── events.py             # EventBus pub/sub (234 lines)
+│   ├── session_state.py      # Thread-safe persistence (RLock, JSONL) (304)
+│   ├── state.py              # SessionRecord/PortalState persistence dataclasses (125)
+│   ├── session_commands.py   # Shell command builder (375 lines)
+│   ├── validation.py         # SessionValidator, ValidationResult (241)
+│   ├── conflict.py           # Pre-creation session conflict detection (81) [NEW]
+│   ├── command_registry.py   # Command metadata registry — data layer for palette (320) [NEW]
+│   ├── fuzzy.py              # Fuzzy match + scoring for command palette (110) [NEW]
+│   ├── token_parser.py       # Parse Claude JSONL → TokenUsage + cost estimate (281) [NEW]
+│   ├── context_parser.py     # @output/@error/@git context refs for Zen AI (185) [NEW]
+│   ├── tmux.py               # Low-level tmux operations (324)
+│   ├── tmux_async.py         # Async tmux wrapper (asyncio.to_thread)
+│   ├── worktree.py           # Git worktree management (434)
+│   ├── config.py             # 3-tier config resolution (549)
+│   ├── discovery.py          # Claude session discovery (473)
 │   ├── profile.py            # User preferences
 │   ├── notification.py       # Toast notifications
 │   ├── banner.py             # ASCII art banners
 │   ├── template_manager.py   # Template CRUD
-│   ├── zen_ai.py             # Lightweight AI queries (unused)
+│   ├── pipeline.py           # Step/StepResult protocol (composable steps)
+│   ├── zen_ai.py             # Lightweight AI backend — PRESERVED but DORMANT (323, see void)
+│   ├── billing_tracker.py    # ⚠ DEPRECATED shim → openrouter.billing
+│   ├── openrouter_models.py  # ⚠ DEPRECATED shim → openrouter.models
+│   ├── proxy_monitor.py      # ⚠ DEPRECATED shim → openrouter.monitor
+│   ├── proxy_validation.py   # ⚠ DEPRECATED shim → openrouter.validation
 │   ├── core/                 # Extracted core services
 │   │   ├── detection.py      # Session state detection
 │   │   ├── state_refresher.py # [LEGACY] Sync polling (replaced by reactive)
 │   │   └── token_manager.py  # Token tracking + sparklines
 │   ├── reactive/             # Reactive architecture (replaces polling)
-│   │   ├── signal.py         # Signal[T], Computed[T], Effect primitives
-│   │   └── session_watcher.py # Async state monitoring (10s heartbeat)
-│   ├── tmux_async.py         # Async tmux wrapper (asyncio.to_thread)
+│   │   ├── signal.py         # Signal[T], Computed[T], Effect primitives (275)
+│   │   └── session_watcher.py # Async state monitoring (10s heartbeat) (196)
 │   ├── git/                  # Git integration
-│   │   └── git_service.py    # Centralized git ops
-│   ├── openrouter/           # OpenRouter proxy support
-│   │   ├── billing.py        # Cost tracking
-│   │   ├── models.py         # Model fetching (24h cache)
-│   │   ├── validation.py     # Proxy config validation
-│   │   └── monitor.py        # Health monitoring
+│   │   └── git_service.py    # Centralized git ops (247)
+│   ├── openrouter/           # OpenRouter proxy support (canonical location)
+│   │   ├── billing.py        # Cost tracking (456)
+│   │   ├── models.py         # Model fetching (24h cache) (269)
+│   │   ├── validation.py     # Proxy config validation (358)
+│   │   └── monitor.py        # Health monitoring (412)
 │   └── pipelines/            # Composable multi-step operations
-│       └── create.py         # 8-step session creation pipeline
+│       └── create.py         # 8-step session creation pipeline (265)
 ├── screens/                  # Textual UI screens and modals
-│   ├── main.py               # MainScreen (900+ lines, uses mixins)
-│   ├── main_*.py             # MainScreen mixins (actions, exit, template, palette)
-│   ├── new_session_modal.py  # Session creation (35KB, 3 tabs)
+│   ├── base.py               # ZenScreen / ZenModalScreen base (notification rack) (97) [NEW]
+│   ├── main.py               # MainScreen (848 lines, uses 4 mixins)
+│   ├── main_actions.py       # MainScreenActionsMixin + MainScreenExitMixin
+│   ├── main_templates.py     # MainScreenPaletteMixin + MainScreenTemplateMixin
+│   ├── new_session_modal.py  # Session creation (871 lines, 3 tabs)
 │   ├── new_session/          # NewSession modal components
-│   ├── config_screen.py      # Configuration editor
-│   ├── command_palette.py    # Command registry + fuzzy search
-│   ├── template_*.py         # Template picker/editor
-│   ├── insert_modal.py       # Send keystrokes to tmux
-│   ├── exit_modal.py         # Exit confirmation
+│   │   ├── billing_widget.py # Claude vs OpenRouter billing select (243) [NEW]
+│   │   └── css.py            # NEW_SESSION_CSS constant (187) [NEW]
+│   ├── new_session_lists.py  # ListBuilder[T] base + list components
+│   ├── config_screen.py      # Configuration editor (386)
+│   ├── command_palette.py    # Palette UI (consumes command_registry + fuzzy) (212)
+│   ├── worktrees.py          # Worktree management modal (W key) (213) [NEW]
+│   ├── zen_prompt.py         # ZenPromptModal — DEFINED but DISABLED (209, see void) [NEW]
+│   ├── template_picker.py    # Template picker (218)
+│   ├── template_editor.py    # Template editor (240)
+│   ├── insert_modal.py       # Send keystrokes to tmux (215)
+│   ├── exit_modal.py         # Exit confirmation (188)
 │   ├── rename_modal.py       # Session rename
-│   ├── attach_session.py     # Adopt external tmux
+│   ├── attach_session.py     # Adopt external tmux (186)
 │   └── help.py               # Keybindings reference
 ├── widgets/                  # Reusable Textual widgets
-│   ├── session_list.py       # Session list with smart diffing (394 lines)
-│   ├── output_view.py        # Tmux output display (405 lines)
+│   ├── session_list.py       # Session list with smart diffing (443 lines)
+│   ├── output_view.py        # Tmux output display (407 lines)
 │   ├── session_info.py       # Session details panel (197 lines)
 │   ├── directory_browser.py  # Filesystem picker (339 lines)
-│   ├── model_selector.py     # Claude/OpenRouter model dropdown
-│   ├── proxy_status.py       # OpenRouter health/billing display
-│   ├── zen_dropdown.py       # Custom dropdown with search
-│   ├── splitter.py           # Draggable vertical splitter for resizable panes
+│   ├── path_input.py         # Path Input w/ live validation (69) [NEW]
+│   ├── model_selector.py     # Claude/OpenRouter model dropdown (335)
+│   ├── session_type_dropdown.py # Session-type filter dropdown (config) [NEW]
+│   ├── proxy_status.py       # OpenRouter health/billing display (327)
+│   ├── zen_dropdown.py       # Custom dropdown with search (222)
+│   ├── zen_ai_dropdown.py    # Zen AI config dropdown — WIRED into config (116) [NEW]
+│   ├── zen_mirror.py         # AI-context sidebar — DEFINED but UNUSED stub (149, see void) [NEW]
+│   ├── status.py             # StatusBar (duration + AAU budget) — exported, not mounted (46) [NEW]
+│   ├── splitter.py           # Draggable vertical splitter for resizable panes (106)
 │   └── notification.py       # Toast widget
-├── styles/                   # CSS styling
-└── tests/                    # 361 unit tests
+├── styles/                   # Python-defined CSS (not .tcss files)
+│   └── base.py               # BASE_CSS = 7 concatenated CSS constants (250)
+└── tests/                    # 17 test modules, 361 tests (⚠ 1 failing)
     ├── conftest.py           # Pytest fixtures
     └── test_*.py             # Test modules
 ```
 
-**File limit**: ~500 lines. Large modules split into `core/` or supporting files.
+**File limit**: ~500 lines. Largest: new_session_modal.py (871), main.py (848), session_manager.py (720).
+**[NEW]** = added since previous hydration. **⚠ DEPRECATED shim** = re-export for back-compat (removal candidate).
 
 ---
 
@@ -122,20 +150,42 @@ zen_portal/
 
 ### Architecture Patterns
 
-**Services Container** (`app.py`):
+**Services Container** (`app.py`, 8 services):
 ```python
 @dataclass
 class Services:
     tmux: TmuxService
     config: ConfigManager
+    profile: ProfileManager
+    notification: NotificationService
     sessions: SessionManager
     state: SessionStateService
-    worktree: WorktreeService | None  # None if not git repo
-    # ... other services
+    worktree: WorktreeService | None  # None if not a git repo
+    discovery: DiscoveryService
 
     @classmethod
     def create(cls, working_dir: Path | None = None) -> "Services":
-        # Wires all dependencies
+        # Wires all dependencies; created once in main() and reused
+        # across attach/detach cycles (persists the reactive watcher state)
+```
+
+**Command Palette architecture** (`:` / `ctrl+p`) — clean data/UI split:
+```python
+# DATA: services/command_registry.py — single source of truth for commands
+registry = create_default_registry()        # ~26 Command entries w/ metadata
+registry.get_contextual(has_selection)      # context-aware filtering
+# RANK: services/fuzzy.py — exact > prefix > word-boundary > contains > subseq
+rank_commands(query, items)
+# UI:   screens/command_palette.py — Textual modal, consumes the registry
+# Registry built once in MainScreen.__init__ → self._command_registry
+```
+
+**Token tracking** (`services/token_parser.py` + `core/token_manager.py`):
+```python
+# Parse Claude Code JSONL session logs → token usage + OpenRouter cost estimate
+TokenParser.get_session_stats(claude_session_id, working_dir) -> SessionTokenStats
+TokenParser.get_token_history(...) -> list[int]   # feeds sparklines
+# Surfaced on Session.token_metrics (SessionTokenMetrics dataclass)
 ```
 
 **EventBus** (`services/events.py`):
@@ -286,13 +336,16 @@ self.focus()
 
 **Keybindings**:
 ```
-j/k navigate    n new      l move mode    p pause
-a   attach      x kill     v revive       d clean
-e   rename      c config   i insert       / search
-I   info        S output   :  palette     T template
-?   help        q quit     s streaming    R restart
+j/k navigate    n new          l move mode    p pause
+a   attach tmux o attach exist x kill         v revive
+d   clean       e rename       c config       i insert
+I   info        s streaming    S out-search   / sess-search
+w   worktree    W worktrees    : palette      ctrl+p palette
+T   template    r refresh      R restart      ? help    q quit
 1-0 focus 1-10  (quick jump to session by position)
 ```
+Source of truth: `screens/main.py` BINDINGS (lines 42-84). Many actions also
+registered in `services/command_registry.py` for the `:` / ctrl+p palette.
 
 **External Tools Required**:
 - `tmux` - Session management (required)
@@ -334,10 +387,40 @@ to bypass tmux's ~16KB command length limit.
 
 ## hydrate.void.witness
 
-**Tech debt** (acknowledged):
-- `new_session_modal.py`: 35KB (896 lines) - widget caching, @filepath, 3 tabs
-- `session_manager.py`: 686 lines
-- `main.py`: ~900 lines (acceptable with mixins)
+**⚠ ACTIVE ISSUES (found 2026-06-21 re-exploration)**:
+
+1. **Version is inconsistent across 3 sources** — pick one and unify:
+   - `zen_portal/__init__.py` → `__version__ = "0.1.0"`
+   - `pyproject.toml` → `version = "0.3.0"`
+   - this doc (previously) → `0.3.1`
+
+2. **1 failing test**: `tests/test_config.py::TestFeatureSettings::test_to_dict_with_values`
+   - Expects `model == "opus"` but Opus 4.6 change (fe15ddf) now serializes
+     `"claude-opus-4-6"`. Test was never updated. Fix: update the assertion.
+   - `uv run --extra dev pytest` → 360 passed, 1 failed.
+
+3. **Dormant "Zen AI" feature** (built, then disconnected — preserved for future
+   non-blocking chat UX; do not assume it runs):
+   - `services/zen_ai.py` — backend, stable API, NOT wired to any action.
+   - `screens/zen_prompt.py` (`ZenPromptModal`) — DEFINED but no caller
+     (`action_zen_prompt`/`action_analyze` removed, see main_actions.py ~278).
+   - `widgets/zen_mirror.py` (`ZenMirror`) — DEFINED but never imported (stub).
+   - `widgets/zen_ai_dropdown.py` — the ONLY live piece (config_screen settings UI).
+
+4. **4 deprecated re-export shims** in `services/` top level (removal candidates
+   once no external imports depend on the old paths):
+   `billing_tracker.py`, `openrouter_models.py`, `proxy_monitor.py`,
+   `proxy_validation.py` → all re-export from `services/openrouter/`.
+
+5. **`widgets/status.py`** (`StatusBar`) — exported but not mounted anywhere
+   (AAU-budget UI; pending or abandoned).
+
+**Tech debt** (acknowledged, by size):
+- `screens/new_session_modal.py`: 871 lines — 3 tabs, @filepath, widget caching
+  (still flagged for split into a subdirectory; `new_session/` started this)
+- `services/session_manager.py`: 720 lines
+- `screens/main.py`: 848 lines (acceptable with 4 mixins)
+- `services/config.py`: 549 lines
 
 ### tmux Memory Considerations
 
@@ -361,6 +444,11 @@ to bypass tmux's ~16KB command length limit.
 - ✓ Phase 7: **Reactive Architecture** - eliminated polling, async tmux calls
 - ✓ Phase 8: Session name restrictions removed (any characters allowed)
 - ✓ Phase 9: **Session revival fix** - accurate claude_session_id matching using created_at
+- ✓ Phase 10: **Command palette** - registry/fuzzy/UI split (`:` / ctrl+p)
+- ✓ Phase 11: **Token tracking** - JSONL parsing → usage + cost (token_parser)
+- ✓ Phase 12: **Worktrees screen** (`W`) + `o` attach-existing + base ZenScreen/ZenModalScreen
+- ✓ Phase 13: **OpenRouter package** - moved to `services/openrouter/` (old paths now deprecated shims)
+- ◐ Phase 14: **Zen AI** - backend built, UI disconnected (dormant, see void)
 
 **Completed Simplifications** (2024-12):
 | Done | Issue | Location | Result |
@@ -379,17 +467,18 @@ See `docs/ENHANCEMENT_PLAN.md` for detailed roadmap.
 
 **Recent commits** (git log --oneline -10):
 ```
+b36101b docs: update HYDRATE.md with async remove/mount gotcha
 f7ddb37 fix: prevent DuplicateIds crash when activating attach/resume tabs
 054aee9 change from zen-portal to zenportal
-fe15ddf feat: update default Opus model to Claude Opus 4.6
+fe15ddf feat: update default Opus model to Claude Opus 4.6   ← broke test_config
 a964fc8 fix prompt injection into fresh session
 f81493b docs: update HYDRATE.md with latest commits
 613b3de docs: update HYDRATE.md with hotkey and revival improvements
 7f18c4c feat: add numeric hotkeys 1-0 for quick session focus
 48d2ff2 fix: improve session revival with accurate claude_session_id matching
 5b92278 docs: update HYDRATE.md with refactor commit
-7c538b9 refactor: simplify codebase with unified patterns and extracted concerns
 ```
+(working tree clean at hydration time; HEAD = b36101b, dated 2026-05-20)
 
 ---
 
